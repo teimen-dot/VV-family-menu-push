@@ -46,7 +46,6 @@
       "location": "both",
       "tips": [
         {"zh": "立夏后气温升高，饮食宜清淡但保持温热，可多食瓜类蔬菜。", "en": "After Start of Summer, eat light but keep food warm. More gourd vegetables recommended."},
-        {"zh": "深圳5月已入夏，注意补充水分，可煮绿豆汤（温饮）消暑。", "en": "Shenzhen enters summer in May. Stay hydrated; warm mung bean soup can help cool down."},
         {"zh": "当季时蔬：丝瓜、苦瓜、冬瓜、黄瓜、番茄。", "en": "Seasonal vegetables: luffa, bitter melon, winter melon, cucumber, tomato."}
       ]
     },
@@ -54,7 +53,6 @@
       "month": "6月 June",
       "location": "both",
       "tips": [
-        {"zh": "端午时节湿气重，粽子的糯米难消化，建议搭配山楂茶或陈皮水助消化。", "en": "Dragon Boat Festival: sticky rice zongzi is hard to digest. Pair with hawthorn tea or tangerine peel water."},
         {"zh": "夏季脾胃易虚弱，早餐粥品可加莲子、芡实健脾。", "en": "Summer weakens the spleen and stomach. Add lotus seeds and gordon euryale seeds to breakfast porridge."},
         {"zh": "当季时蔬：苋菜、空心菜、秋葵、茄子、豆角。", "en": "Seasonal vegetables: amaranth, water spinach, okra, eggplant, long beans."}
       ]
@@ -63,7 +61,7 @@
       "month": "7月 July",
       "location": "both",
       "tips": [
-        {"zh": "盛夏酷暑，饮食宜清淡温热，避免冰饮冷食伤脾胃。可饮常温酸梅汤。", "en": "Midsummer heat: eat light and warm. Avoid ice-cold drinks that harm the spleen. Room-temperature sour plum drink is refreshing."},
+        {"zh": "盛夏酷暑，饮食宜清淡温热，避免冰饮冷食伤脾胃。", "en": "Midsummer heat: eat light and warm. Avoid ice-cold drinks that harm the spleen."},
         {"zh": "深圳7月高温高湿，食材易变质，建议当天采购当天烹饪。", "en": "Shenzhen in July: hot and humid. Ingredients spoil easily. Buy and cook same day."},
         {"zh": "当季时蔬：秋葵、苋菜、空心菜、丝瓜、苦瓜、玉米。", "en": "Seasonal vegetables: okra, amaranth, water spinach, luffa, bitter melon, corn."}
       ]

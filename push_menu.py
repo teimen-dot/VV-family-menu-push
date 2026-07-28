@@ -16,7 +16,8 @@ from datetime import date, datetime
 MENU_FILE = "menu_data.json"
 CONFIG_FILE = "config.json"
 TIPS_FILE = "seasonal_tips.json"
-PUSHPLUS_API = "http://www.pushplus.plus/send"
+MANIFEST_FILE = "photo_manifest.json"
+PUSHPLUS_API = "https://www.pushplus.plus/send"
 CYCLE_START_DEFAULT = "2026-07-28"
 
 
@@ -31,6 +32,41 @@ def load_json(filepath):
     except json.JSONDecodeError as e:
         print(f"[ERROR] JSON 解析失败: {filepath} - {e}")
         return None
+
+
+def load_photo_manifest():
+    """加载菜品照片映射，不存在时返回空字典（优雅降级）"""
+    try:
+        with open(MANIFEST_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def find_meal_photo(zh_meal_str, manifest, github_raw_base):
+    """
+    方案B：从一餐的菜品字符串中找到第一个有照片的菜品，返回图片HTML。
+    匹配逻辑：先全名匹配，再用 " / " 前的部分匹配。
+    """
+    if not manifest:
+        return None
+
+    dishes = zh_meal_str.split(" ＋ ")
+    for dish in dishes:
+        dish = dish.strip()
+        # 全名匹配
+        if dish in manifest:
+            photo_file = manifest[dish].get("file", "")
+            if photo_file:
+                return f"<img src='{github_raw_base}/photos/{photo_file}' width='300'>"
+        # " / " 前的部分匹配（如 "清炒豆苗 / 豆苗菜" → "清炒豆苗"）
+        if " / " in dish:
+            short_name = dish.split(" / ")[0].strip()
+            if short_name in manifest:
+                photo_file = manifest[short_name].get("file", "")
+                if photo_file:
+                    return f"<img src='{github_raw_base}/photos/{photo_file}' width='300'>"
+    return None
 
 
 def calculate_day_number(cycle_start_str, total_days):
@@ -57,13 +93,19 @@ def get_seasonal_tips(tips_data, month):
     return []
 
 
-def format_menu_message(menu_entry, day_number, tips, config):
-    """格式化菜单为 Markdown 消息"""
+def format_menu_message(menu_entry, day_number, tips, config, manifest):
+    """格式化菜单为 Markdown 消息（含分隔线和照片）"""
     today_str = date.today().strftime("%Y年%m月%d日")
 
     # 根据 cook_language 决定语言排序
     cook_lang = config.get("cook_language", "zh")
     zh_first = cook_lang == "zh"
+
+    # GitHub raw URL 基地址
+    github_raw_base = config.get(
+        "github_raw_base",
+        "https://raw.githubusercontent.com/teimen-dot/VV-family-menu-push/main",
+    )
 
     lines = []
     lines.append(f"# 🍽️ 家庭菜单 | Day {day_number} | {today_str}")
@@ -82,27 +124,36 @@ def format_menu_message(menu_entry, day_number, tips, config):
         zh = meal.get("zh", "")
         en = meal.get("en", "")
 
-        if not zh or zh == "无需安排":
-            lines.append(f"## {emoji_label}")
-            lines.append("无需安排 | No arrangement needed")
-            lines.append("")
-            continue
-
         lines.append(f"## {emoji_label}")
-        if zh_first:
-            lines.append(f"**{zh}**")
-            if en:
-                lines.append(f"*{en}*")
+
+        if not zh or zh == "无需安排":
+            lines.append("无需安排 | No arrangement needed")
         else:
-            if en:
-                lines.append(f"**{en}**")
-            lines.append(f"*{zh}*")
+            if zh_first:
+                lines.append(f"**{zh}**")
+                if en:
+                    lines.append(f"*{en}*")
+            else:
+                if en:
+                    lines.append(f"**{en}**")
+                lines.append(f"*{zh}*")
+
+            # 方案B：每餐主菜配 1 张照片（第一个有照片的菜品）
+            photo_html = find_meal_photo(zh, manifest, github_raw_base)
+            if photo_html:
+                lines.append("")
+                lines.append(photo_html)
+
+        # 餐次间分隔线
+        lines.append("")
+        lines.append("---")
         lines.append("")
 
     # 当日备注
     notes = menu_entry.get("notes", {})
     notes_zh = notes.get("zh", "")
-    if notes_zh and notes_zh not in ["无", ""]:
+    has_notes = notes_zh and notes_zh not in ["无", ""]
+    if has_notes:
         lines.append("## 📌 当日备注 Notes")
         lines.append(f"{'**' + notes_zh + '**' if zh_first else '*' + notes_zh + '*'}")
         if notes.get("en"):
@@ -125,6 +176,7 @@ def format_menu_message(menu_entry, day_number, tips, config):
                 lines.append(f"  *{tip_zh}*")
         lines.append("")
 
+    # 页脚
     lines.append("---")
     lines.append("📱 由家庭菜单管家自动推送 | Auto-pushed by Family Menu Manager")
 
@@ -159,6 +211,12 @@ def send_pushplus(token, topic, title, content):
                 print(f"[OK] PushPlus 推送成功!")
                 print(f"  消息ID: {result.get('data', 'N/A')}")
                 return True
+            elif result.get("code") == 905:
+                print(f"[FAIL] PushPlus 账户未实名认证!")
+                print(f"  错误信息: {result.get('msg', '')}")
+                print(f"  请访问 https://verify.pushplus.plus 完成实名认证后重试。")
+                print(f"  完整返回: {result}")
+                return False
             else:
                 print(f"[FAIL] PushPlus 推送失败: {result.get('msg', 'Unknown error')}")
                 print(f"  完整返回: {result}")
@@ -181,6 +239,7 @@ def main():
     config = load_json(CONFIG_FILE) or {}
     menu_data = load_json(MENU_FILE)
     tips_data = load_json(TIPS_FILE)
+    manifest = load_photo_manifest()
 
     if not menu_data:
         print("[FATAL] 无法加载菜单数据，退出")
@@ -194,6 +253,7 @@ def main():
     print(f"周期起始日: {cycle_start}")
     print(f"周期总天数: {total_days}")
     print(f"今天是第: {day_number} 天")
+    print(f"照片映射: {len(manifest)} 道菜有照片")
 
     # 3. 获取今天菜单
     menu_list = menu_data.get("menu", [])
@@ -209,7 +269,7 @@ def main():
     print(f"当月时令建议: {len(tips)} 条")
 
     # 5. 格式化消息
-    content = format_menu_message(menu_entry, day_number, tips, config)
+    content = format_menu_message(menu_entry, day_number, tips, config, manifest)
     today_str = date.today().strftime("%m月%d日")
     title = f"家庭菜单 Day{day_number} | {today_str}"
 

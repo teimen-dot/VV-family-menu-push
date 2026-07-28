@@ -17,8 +17,8 @@
         "en": "Steamed / Boiled Egg"
       },
       "dinner": {
-        "zh": "白米混少量16谷饭 ＋ 香煎澳洲和牛片 ＋ 清炒豆苗 / 豆苗菜 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
-        "en": "White Rice mixed with 16-Grain Rice + Pan-fried Australian Wagyu Beef + Stir-fried Pea Shoots + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+        "zh": "白米混少量16谷饭 ＋ 清蒸银鳕鱼 / 清蒸新鲜鱼片 ＋ 清炒 / 蒜蓉空心菜 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Steamed Cod / Steamed Fresh Fish Fillet + Stir-fried / Garlic Water Spinach + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
       },
       "late_night": {
         "zh": "无需安排",
@@ -44,8 +44,8 @@
         "en": "Blueberries & Blackberries"
       },
       "dinner": {
-        "zh": "三色藜麦饭 ＋ 排骨焖土豆 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
-        "en": "Tri-color Quinoa Rice + Braised Pork Ribs with Potatoes + Warm Tossed Shredded/Sliced Celtuce + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+        "zh": "三色藜麦饭 ＋ 鲜松茸清炖去皮鸡肉 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "Tri-color Quinoa Rice + Clear Stewed Skinless Chicken with Fresh Matsutake + Warm Tossed Shredded/Sliced Celtuce + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
       },
       "late_night": {
         "zh": "无需安排",
@@ -71,8 +71,8 @@
         "en": "Sugar-free Yogurt (Cold) + Ophiopogon & Barley Tea"
       },
       "dinner": {
-        "zh": "二米饭 ＋ 番茄土豆牛肉片 ＋ 灼西兰花 / 清炒西兰花 ＋ 味噌汤",
-        "en": "Two-Grain Rice (Rice & Millet) + Tomato, Potato & Sliced Beef + Blanched / Stir-fried Broccoli + Miso Soup"
+        "zh": "二米饭 ＋ 葱香鸡腿肉 ＋ 灼西兰花 / 清炒西兰花 ＋ 味噌汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Scallion Chicken Thigh + Blanched / Stir-fried Broccoli + Miso Soup"
       },
       "late_night": {
         "zh": "无需安排",
@@ -90,8 +90,8 @@
         "en": "Pork & Chinese Yam Porridge + Thinly Sliced Beef / Diced Beef + Hong Kong Sweet Potato + Kiwi"
       },
       "lunch": {
-        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
-        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 香煎澳洲和牛片 ＋ 白灼 / 清炒芦笋 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Pan-fried Australian Wagyu Beef + Blanched / Stir-fried Asparagus + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
       },
       "afternoon_snack": {
         "zh": "熟核桃仁",
@@ -233,8 +233,8 @@
         "en": "Kiwi + Ophiopogon & Barley Tea"
       },
       "dinner": {
-        "zh": "纯白米饭 ＋ 清蒸银鳕鱼 / 清蒸新鲜鱼片/海鱼 ＋ 白灼 / 清炒芦笋 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤",
-        "en": "White Rice + Steamed Cod / Steamed Fresh Fish + Blanched / Stir-fried Asparagus + Zucchini, Matsutake & Meatball Soup / Zucchini, Yam, Tofu & Matsutake Soup"
+        "zh": "纯白米饭 ＋ 清蒸银鳕鱼 / 清蒸新鲜鱼片/海鱼 ＋ 蒜蓉红苋菜 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤",
+        "en": "White Rice + Steamed Cod / Steamed Fresh Fish + Garlic Red Amaranth + Zucchini, Matsutake & Meatball Soup / Zucchini, Yam, Tofu & Matsutake Soup"
       },
       "late_night": {
         "zh": "无需安排",
@@ -260,8 +260,8 @@
         "en": "Cherries"
       },
       "dinner": {
-        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 清蒸带子 ＋ 清炒豆苗 / 豆苗菜 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
-        "en": "16-Grain Rice + Steamed Scallops + Stir-fried Pea Shoots + Same as Lunch Soup (Reused for Dinner)"
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 清蒸带子 ＋ 清炒小白菜 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
+        "en": "16-Grain Rice + Steamed Scallops + Stir-fried Bok Choy + Same as Lunch Soup (Reused for Dinner)"
       },
       "late_night": {
         "zh": "无需安排",
@@ -395,8 +395,8 @@
         "en": "Steamed / Boiled Egg + Ophiopogon & Barley Tea"
       },
       "dinner": {
-        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 排骨焖土豆 ＋ 温拌云南小瓜丝 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
-        "en": "16-Grain Rice + Braised Pork Ribs with Potatoes + Warm Tossed Shredded Zucchini + Same as Lunch Soup (Reused for Dinner)"
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 葱烧鸡 ＋ 温拌云南小瓜丝 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
+        "en": "16-Grain Rice + Braised Chicken with Scallions + Warm Tossed Shredded Zucchini + Same as Lunch Soup (Reused for Dinner)"
       },
       "late_night": {
         "zh": "无需安排",
@@ -414,8 +414,8 @@
         "en": "Pork & Chinese Yam Porridge + Thinly Sliced Beef / Diced Beef + Hong Kong Sweet Potato + Orange"
       },
       "lunch": {
-        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
-        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Luffa Egg Soup / Luffa Tofu Soup"
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 番茄土豆牛肉片 ＋ 白灼 / 清炒芦笋 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Tomato, Potato & Sliced Beef + Blanched / Stir-fried Asparagus + Luffa Egg Soup / Luffa Tofu Soup"
       },
       "afternoon_snack": {
         "zh": "蓝莓 + 黑莓",
@@ -476,8 +476,8 @@
         "en": "Roasted Walnuts + Ophiopogon & Barley Tea"
       },
       "dinner": {
-        "zh": "二米饭 ＋ 红椒鸡丁西葫芦 / 葱姜生抽鸡丁 ＋ 白灼 / 清炒芦笋 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤",
-        "en": "Two-Grain Rice (Rice & Millet) + Diced Chicken with Zucchini / Scallion Ginger Soy Chicken + Blanched / Stir-fried Asparagus + Zucchini, Matsutake & Meatball Soup / Zucchini, Yam, Tofu & Matsutake Soup"
+        "zh": "二米饭 ＋ 红椒鸡丁西葫芦 / 葱姜生抽鸡丁 ＋ 蒜蓉红苋菜 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Diced Chicken with Zucchini / Scallion Ginger Soy Chicken + Garlic Red Amaranth + Zucchini, Matsutake & Meatball Soup / Zucchini, Yam, Tofu & Matsutake Soup"
       },
       "late_night": {
         "zh": "无需安排",
@@ -503,8 +503,8 @@
         "en": "Banana"
       },
       "dinner": {
-        "zh": "纯白米饭 ＋ 红烧鸡肉 ＋ 清炒豆苗 / 豆苗菜 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
-        "en": "White Rice + Braised Chicken + Stir-fried Pea Shoots + Luffa Egg Soup / Luffa Tofu Soup"
+        "zh": "纯白米饭 ＋ 红烧鸡肉 ＋ 清炒小白菜 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "White Rice + Braised Chicken + Stir-fried Bok Choy + Luffa Egg Soup / Luffa Tofu Soup"
       },
       "late_night": {
         "zh": "无需安排",

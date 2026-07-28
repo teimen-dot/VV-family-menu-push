@@ -8,6 +8,7 @@
   },
   "cook_language": "zh",
   "cook_language_note": "zh=中文为主（保姆看），en=英文为主（菲佣看）。影响推送消息的语言排序。",
+  "github_raw_base": "https://raw.githubusercontent.com/teimen-dot/VV-family-menu-push/main",
   "family_members": 4,
   "dietary_rules": {
     "warm_food_only": true,
