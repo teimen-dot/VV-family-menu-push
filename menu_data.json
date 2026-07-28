@@ -1,0 +1,546 @@
+{
+  "cycle_start": "2026-07-28",
+  "total_days": 20,
+  "menu": [
+    {
+      "day": 1,
+      "breakfast": {
+        "zh": "银鳕鱼淮山红萝卜松茸粥 ＋ 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 清炒豆苗 / 豆苗菜",
+        "en": "Cod, Chinese Yam, Carrot & Matsutake Porridge + Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Stir-fried Pea Shoots"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Pan-fried Australian Wagyu Beef + Warm Tossed Shredded/Sliced Celtuce + Luffa Egg Soup / Luffa Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "原味蒸鸡蛋 / 煮鸡蛋",
+        "en": "Steamed / Boiled Egg"
+      },
+      "dinner": {
+        "zh": "白米混少量16谷饭 ＋ 香煎澳洲和牛片 ＋ 清炒豆苗 / 豆苗菜 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Pan-fried Australian Wagyu Beef + Stir-fried Pea Shoots + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 2,
+      "breakfast": {
+        "zh": "淮山山药小米粥 ＋ 松茸蒸鸡蛋 ＋ 香港红薯 ＋ 香蕉",
+        "en": "Chinese Yam & Millet Porridge + Steamed Egg with Matsutake + Hong Kong Sweet Potato + Banana"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 排骨焖土豆 ＋ 灼西兰花 / 清炒西兰花 ＋ 火腿松茸豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Braised Pork Ribs with Potatoes + Blanched / Stir-fried Broccoli + Ham, Matsutake & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "蓝莓 + 黑莓",
+        "en": "Blueberries & Blackberries"
+      },
+      "dinner": {
+        "zh": "三色藜麦饭 ＋ 排骨焖土豆 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "Tri-color Quinoa Rice + Braised Pork Ribs with Potatoes + Warm Tossed Shredded/Sliced Celtuce + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 3,
+      "breakfast": {
+        "zh": "南瓜山药小米粥 ＋ 原味蒸鸡蛋 / 煮鸡蛋 ＋ 香港红薯 ＋ 苹果",
+        "en": "Pumpkin, Yam & Millet Porridge + Steamed / Boiled Egg + Hong Kong Sweet Potato + Apple"
+      },
+      "lunch": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 番茄土豆牛肉片 ＋ 温拌白萝卜丝 ＋ 枸杞叶淮山肉丸豆腐滚汤",
+        "en": "16-Grain Rice + Tomato, Potato & Sliced Beef + Warm Tossed Shredded White Radish + Goji Leaf, Yam, Meatball & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "无糖酸奶（生冷） ＋ 麦冬大麦茶",
+        "en": "Sugar-free Yogurt (Cold) + Ophiopogon & Barley Tea"
+      },
+      "dinner": {
+        "zh": "二米饭 ＋ 番茄土豆牛肉片 ＋ 灼西兰花 / 清炒西兰花 ＋ 味噌汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Tomato, Potato & Sliced Beef + Blanched / Stir-fried Broccoli + Miso Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "酸奶属于生冷，温拌菜必须温热",
+        "en": "Yogurt is cold/raw, Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 4,
+      "breakfast": {
+        "zh": "猪肉淮山粥 ＋ 薄切牛肉片 / 牛肉粒 ＋ 香港红薯 ＋ 奇异果",
+        "en": "Pork & Chinese Yam Porridge + Thinly Sliced Beef / Diced Beef + Hong Kong Sweet Potato + Kiwi"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "熟核桃仁",
+        "en": "Roasted Walnuts"
+      },
+      "dinner": {
+        "zh": "纯白米饭 ＋ 鲜松茸清炖去皮鸡肉 ＋ 清炒 / 蒜蓉空心菜 ＋ 小白菜松茸豆腐汤",
+        "en": "White Rice + Clear Stewed Skinless Chicken with Fresh Matsutake + Stir-fried / Garlic Water Spinach + Bok Choy, Matsutake & Tofu Soup"
+      },
+      "late_night": {
+        "zh": "藜麦淮山粥",
+        "en": "Quinoa & Chinese Yam Porridge"
+      },
+      "notes": {
+        "zh": "无",
+        "en": "None"
+      }
+    },
+    {
+      "day": 5,
+      "breakfast": {
+        "zh": "鸡肉淮山粥 ＋ 葱油鸡丝 / 葱香鸡丝 ＋ 香港红薯 ＋ 车厘子",
+        "en": "Chicken & Chinese Yam Porridge + Scallion Oil Shredded Chicken + Hong Kong Sweet Potato + Cherries"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 莲藕鸡汤芹菜松茸",
+        "en": "White Rice mixed with 16-Grain Rice + Pan-fried Australian Wagyu Beef + Warm Tossed Shredded/Sliced Celtuce + Lotus Root Chicken Soup with Celery & Matsutake"
+      },
+      "afternoon_snack": {
+        "zh": "香蕉",
+        "en": "Banana"
+      },
+      "dinner": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 红椒鸡丁西葫芦 / 葱姜生抽鸡丁 ＋ 蒜蓉红苋菜 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
+        "en": "16-Grain Rice + Diced Chicken with Zucchini / Scallion Ginger Soy Chicken + Garlic Red Amaranth + Same as Lunch Soup (Reused for Dinner)"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "午餐汤品晚餐复用，温拌菜必须温热",
+        "en": "Lunch soup reused for dinner, Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 6,
+      "breakfast": {
+        "zh": "藜麦淮山粥 ＋ 三文鱼籽 + 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 橘子",
+        "en": "Quinoa & Chinese Yam Porridge + Salmon Roe & Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Mandarin Orange"
+      },
+      "lunch": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 排骨焖土豆 ＋ 灼西兰花 / 清炒西兰花 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "16-Grain Rice + Braised Pork Ribs with Potatoes + Blanched / Stir-fried Broccoli + Luffa Egg Soup / Luffa Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "小软面包 ＋ 麦冬大麦茶",
+        "en": "Soft Bread Roll + Ophiopogon & Barley Tea"
+      },
+      "dinner": {
+        "zh": "白米混少量16谷饭 ＋ 红烧鸡肉 ＋ 温拌云南小瓜丝 ＋ 莲藕鸡汤芹菜松茸",
+        "en": "White Rice mixed with 16-Grain Rice + Braised Chicken + Warm Tossed Shredded Zucchini + Lotus Root Chicken Soup with Celery & Matsutake"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 7,
+      "breakfast": {
+        "zh": "银鳕鱼淮山红萝卜松茸粥 ＋ 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 橙子",
+        "en": "Cod, Chinese Yam, Carrot & Matsutake Porridge + Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Orange"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 番茄土豆牛肉片 ＋ 温拌白萝卜丝 ＋ 火腿松茸豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Tomato, Potato & Sliced Beef + Warm Tossed Shredded White Radish + Ham, Matsutake & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "黑巧克力",
+        "en": "Dark Chocolate"
+      },
+      "dinner": {
+        "zh": "三色藜麦饭 ＋ 葱香鸡腿肉 ＋ 沙拉菜 ＋ 莲藕鸡汤芹菜松茸",
+        "en": "Tri-color Quinoa Rice + Scallion Chicken Thigh + Salad Greens + Lotus Root Chicken Soup with Celery & Matsutake"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 8,
+      "breakfast": {
+        "zh": "淮山山药小米粥 ＋ 松茸蒸鸡蛋 ＋ 香港红薯 ＋ 水蜜桃",
+        "en": "Chinese Yam & Millet Porridge + Steamed Egg with Matsutake + Hong Kong Sweet Potato + Peach"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 枸杞叶淮山肉丸豆腐滚汤",
+        "en": "White Rice mixed with 16-Grain Rice + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Goji Leaf, Yam, Meatball & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "苹果",
+        "en": "Apple"
+      },
+      "dinner": {
+        "zh": "二米饭 ＋ 金银蒜焗黑虎虾 / 蒜香虾 ＋ 清炒小白菜 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Garlic Baked Black Tiger Shrimp / Garlic Shrimp + Stir-fried Bok Choy + Luffa Egg Soup / Luffa Tofu Soup"
+      },
+      "late_night": {
+        "zh": "藜麦淮山粥",
+        "en": "Quinoa & Chinese Yam Porridge"
+      },
+      "notes": {
+        "zh": "无",
+        "en": "None"
+      }
+    },
+    {
+      "day": 9,
+      "breakfast": {
+        "zh": "南瓜山药小米粥 ＋ 原味蒸鸡蛋 / 煮鸡蛋 ＋ 香港红薯 ＋ 白灼 / 清炒芦笋",
+        "en": "Pumpkin, Yam & Millet Porridge + Steamed / Boiled Egg + Hong Kong Sweet Potato + Blanched / Stir-fried Asparagus"
+      },
+      "lunch": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "16-Grain Rice + Pan-fried Australian Wagyu Beef + Warm Tossed Shredded/Sliced Celtuce + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "奇异果 ＋ 麦冬大麦茶",
+        "en": "Kiwi + Ophiopogon & Barley Tea"
+      },
+      "dinner": {
+        "zh": "纯白米饭 ＋ 清蒸银鳕鱼 / 清蒸新鲜鱼片/海鱼 ＋ 白灼 / 清炒芦笋 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤",
+        "en": "White Rice + Steamed Cod / Steamed Fresh Fish + Blanched / Stir-fried Asparagus + Zucchini, Matsutake & Meatball Soup / Zucchini, Yam, Tofu & Matsutake Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 10,
+      "breakfast": {
+        "zh": "猪肉淮山粥 ＋ 薄切牛肉片 / 牛肉粒 ＋ 香港红薯 ＋ 清炒豆苗 / 豆苗菜",
+        "en": "Pork & Chinese Yam Porridge + Thinly Sliced Beef / Diced Beef + Hong Kong Sweet Potato + Stir-fried Pea Shoots"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 排骨焖土豆 ＋ 灼西兰花 / 清炒西兰花 ＋ 莲藕鸡汤芹菜松茸",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Braised Pork Ribs with Potatoes + Blanched / Stir-fried Broccoli + Lotus Root Chicken Soup with Celery & Matsutake"
+      },
+      "afternoon_snack": {
+        "zh": "车厘子",
+        "en": "Cherries"
+      },
+      "dinner": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 清蒸带子 ＋ 清炒豆苗 / 豆苗菜 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
+        "en": "16-Grain Rice + Steamed Scallops + Stir-fried Pea Shoots + Same as Lunch Soup (Reused for Dinner)"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "午餐汤品晚餐复用",
+        "en": "Lunch soup reused for dinner"
+      }
+    },
+    {
+      "day": 11,
+      "breakfast": {
+        "zh": "鸡肉淮山粥 ＋ 葱油鸡丝 / 葱香鸡丝 ＋ 香港红薯 ＋ 香蕉",
+        "en": "Chicken & Chinese Yam Porridge + Scallion Oil Shredded Chicken + Hong Kong Sweet Potato + Banana"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 番茄土豆牛肉片 ＋ 温拌白萝卜丝 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Tomato, Potato & Sliced Beef + Warm Tossed Shredded White Radish + Luffa Egg Soup / Luffa Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "橘子",
+        "en": "Mandarin Orange"
+      },
+      "dinner": {
+        "zh": "白米混少量16谷饭 ＋ 蕃茄炒鸡蛋 ＋ 温拌莴笋丝 / 莴笋片 ＋ 丝瓜蛤蜊汤",
+        "en": "White Rice mixed with 16-Grain Rice + Tomato and Egg Stir-fry + Warm Tossed Shredded/Sliced Celtuce + Luffa & Clam Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 12,
+      "breakfast": {
+        "zh": "藜麦淮山粥 ＋ 三文鱼籽 + 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 苹果",
+        "en": "Quinoa & Chinese Yam Porridge + Salmon Roe & Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Apple"
+      },
+      "lunch": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 火腿松茸豆腐汤",
+        "en": "16-Grain Rice + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Ham, Matsutake & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "橙子 ＋ 麦冬大麦茶",
+        "en": "Orange + Ophiopogon & Barley Tea"
+      },
+      "dinner": {
+        "zh": "三色藜麦饭 ＋ 麻婆豆腐 ＋ 灼西兰花 / 清炒西兰花 ＋ 小白菜松茸豆腐汤",
+        "en": "Tri-color Quinoa Rice + Mapo Tofu + Blanched / Stir-fried Broccoli + Bok Choy, Matsutake & Tofu Soup"
+      },
+      "late_night": {
+        "zh": "藜麦淮山粥",
+        "en": "Quinoa & Chinese Yam Porridge"
+      },
+      "notes": {
+        "zh": "无",
+        "en": "None"
+      }
+    },
+    {
+      "day": 13,
+      "breakfast": {
+        "zh": "银鳕鱼淮山红萝卜松茸粥 ＋ 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 奇异果",
+        "en": "Cod, Chinese Yam, Carrot & Matsutake Porridge + Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Kiwi"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 枸杞叶淮山肉丸豆腐滚汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Pan-fried Australian Wagyu Beef + Warm Tossed Shredded/Sliced Celtuce + Goji Leaf, Yam, Meatball & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "水蜜桃",
+        "en": "Peach"
+      },
+      "dinner": {
+        "zh": "二米饭 ＋ 薄切牛肉片 / 牛肉粒 ＋ 清炒 / 蒜蓉空心菜 ＋ 丝瓜蛤蜊汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Thinly Sliced Beef / Diced Beef + Stir-fried / Garlic Water Spinach + Luffa & Clam Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 14,
+      "breakfast": {
+        "zh": "淮山山药小米粥 ＋ 松茸蒸鸡蛋 ＋ 香港红薯 ＋ 车厘子",
+        "en": "Chinese Yam & Millet Porridge + Steamed Egg with Matsutake + Hong Kong Sweet Potato + Cherries"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 排骨焖土豆 ＋ 灼西兰花 / 清炒西兰花 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Braised Pork Ribs with Potatoes + Blanched / Stir-fried Broccoli + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "小饭团",
+        "en": "Small Rice Ball"
+      },
+      "dinner": {
+        "zh": "纯白米饭 ＋ 香煎澳洲和牛片 ＋ 蒜蓉红苋菜 ＋ 味噌汤",
+        "en": "White Rice + Pan-fried Australian Wagyu Beef + Garlic Red Amaranth + Miso Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "无",
+        "en": "None"
+      }
+    },
+    {
+      "day": 15,
+      "breakfast": {
+        "zh": "南瓜山药小米粥 ＋ 原味蒸鸡蛋 / 煮鸡蛋 ＋ 香港红薯 ＋ 橘子",
+        "en": "Pumpkin, Yam & Millet Porridge + Steamed / Boiled Egg + Hong Kong Sweet Potato + Mandarin Orange"
+      },
+      "lunch": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 番茄土豆牛肉片 ＋ 温拌白萝卜丝 ＋ 莲藕鸡汤芹菜松茸",
+        "en": "16-Grain Rice + Tomato, Potato & Sliced Beef + Warm Tossed Shredded White Radish + Lotus Root Chicken Soup with Celery & Matsutake"
+      },
+      "afternoon_snack": {
+        "zh": "原味蒸鸡蛋 / 煮鸡蛋 ＋ 麦冬大麦茶",
+        "en": "Steamed / Boiled Egg + Ophiopogon & Barley Tea"
+      },
+      "dinner": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 排骨焖土豆 ＋ 温拌云南小瓜丝 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
+        "en": "16-Grain Rice + Braised Pork Ribs with Potatoes + Warm Tossed Shredded Zucchini + Same as Lunch Soup (Reused for Dinner)"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "午餐汤品晚餐复用，温拌菜必须温热",
+        "en": "Lunch soup reused for dinner, Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 16,
+      "breakfast": {
+        "zh": "猪肉淮山粥 ＋ 薄切牛肉片 / 牛肉粒 ＋ 香港红薯 ＋ 橙子",
+        "en": "Pork & Chinese Yam Porridge + Thinly Sliced Beef / Diced Beef + Hong Kong Sweet Potato + Orange"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Luffa Egg Soup / Luffa Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "蓝莓 + 黑莓",
+        "en": "Blueberries & Blackberries"
+      },
+      "dinner": {
+        "zh": "白米混少量16谷饭 ＋ 番茄土豆牛肉片 ＋ 沙拉菜 ＋ 小白菜松茸豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Tomato, Potato & Sliced Beef + Salad Greens + Bok Choy, Matsutake & Tofu Soup"
+      },
+      "late_night": {
+        "zh": "藜麦淮山粥",
+        "en": "Quinoa & Chinese Yam Porridge"
+      },
+      "notes": {
+        "zh": "无",
+        "en": "None"
+      }
+    },
+    {
+      "day": 17,
+      "breakfast": {
+        "zh": "鸡肉淮山粥 ＋ 葱油鸡丝 / 葱香鸡丝 ＋ 香港红薯 ＋ 水蜜桃",
+        "en": "Chicken & Chinese Yam Porridge + Scallion Oil Shredded Chicken + Hong Kong Sweet Potato + Peach"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 火腿松茸豆腐汤",
+        "en": "White Rice mixed with 16-Grain Rice + Pan-fried Australian Wagyu Beef + Warm Tossed Shredded/Sliced Celtuce + Ham, Matsutake & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "无糖酸奶（生冷）",
+        "en": "Sugar-free Yogurt (Cold)"
+      },
+      "dinner": {
+        "zh": "三色藜麦饭 ＋ 鲜松茸清炖去皮鸡肉 ＋ 清炒小白菜 ＋ 味噌汤",
+        "en": "Tri-color Quinoa Rice + Clear Stewed Skinless Chicken with Fresh Matsutake + Stir-fried Bok Choy + Miso Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "酸奶属于生冷，温拌菜必须温热",
+        "en": "Yogurt is cold/raw, Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 18,
+      "breakfast": {
+        "zh": "藜麦淮山粥 ＋ 三文鱼籽 + 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 白灼 / 清炒芦笋",
+        "en": "Quinoa & Chinese Yam Porridge + Salmon Roe & Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Blanched / Stir-fried Asparagus"
+      },
+      "lunch": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 排骨焖土豆 ＋ 灼西兰花 / 清炒西兰花 ＋ 枸杞叶淮山肉丸豆腐滚汤",
+        "en": "16-Grain Rice + Braised Pork Ribs with Potatoes + Blanched / Stir-fried Broccoli + Goji Leaf, Yam, Meatball & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "熟核桃仁 ＋ 麦冬大麦茶",
+        "en": "Roasted Walnuts + Ophiopogon & Barley Tea"
+      },
+      "dinner": {
+        "zh": "二米饭 ＋ 红椒鸡丁西葫芦 / 葱姜生抽鸡丁 ＋ 白灼 / 清炒芦笋 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Diced Chicken with Zucchini / Scallion Ginger Soy Chicken + Blanched / Stir-fried Asparagus + Zucchini, Matsutake & Meatball Soup / Zucchini, Yam, Tofu & Matsutake Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "无",
+        "en": "None"
+      }
+    },
+    {
+      "day": 19,
+      "breakfast": {
+        "zh": "银鳕鱼淮山红萝卜松茸粥 ＋ 黑鱼子酱配嫩豆腐 ＋ 香港红薯 ＋ 清炒豆苗 / 豆苗菜",
+        "en": "Cod, Chinese Yam, Carrot & Matsutake Porridge + Black Caviar with Silken Tofu + Hong Kong Sweet Potato + Stir-fried Pea Shoots"
+      },
+      "lunch": {
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 番茄土豆牛肉片 ＋ 温拌白萝卜丝 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Tomato, Potato & Sliced Beef + Warm Tossed Shredded White Radish + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+      },
+      "afternoon_snack": {
+        "zh": "香蕉",
+        "en": "Banana"
+      },
+      "dinner": {
+        "zh": "纯白米饭 ＋ 红烧鸡肉 ＋ 清炒豆苗 / 豆苗菜 ＋ 丝瓜鸡蛋汤 / 丝瓜豆腐汤",
+        "en": "White Rice + Braised Chicken + Stir-fried Pea Shoots + Luffa Egg Soup / Luffa Tofu Soup"
+      },
+      "late_night": {
+        "zh": "无需安排",
+        "en": "No arrangement needed"
+      },
+      "notes": {
+        "zh": "温拌菜必须温热",
+        "en": "Warm tossed dishes must be served warm"
+      }
+    },
+    {
+      "day": 20,
+      "breakfast": {
+        "zh": "淮山山药小米粥 ＋ 松茸蒸鸡蛋 ＋ 香港红薯 ＋ 香蕉",
+        "en": "Chinese Yam & Millet Porridge + Steamed Egg with Matsutake + Hong Kong Sweet Potato + Banana"
+      },
+      "lunch": {
+        "zh": "白米混少量16谷饭 ＋ 薄切牛肉片 / 牛肉粒 ＋ 白灼 / 清炒芦笋 ＋ 莲藕鸡汤芹菜松茸",
+        "en": "White Rice mixed with 16-Grain Rice + Thinly Sliced Beef / Diced Beef + Blanched / Stir-fried Asparagus + Lotus Root Chicken Soup with Celery & Matsutake"
+      },
+      "afternoon_snack": {
+        "zh": "小软面包",
+        "en": "Soft Bread Roll"
+      },
+      "dinner": {
+        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 葱香鸡腿肉 ＋ 温拌莴笋丝 / 莴笋片 ＋ 同午餐汤品（午餐煲制，晚餐复用）",
+        "en": "16-Grain Rice + Scallion Chicken Thigh + Warm Tossed Shredded/Sliced Celtuce + Same as Lunch Soup (Reused for Dinner)"
+      },
+      "late_night": {
+        "zh": "藜麦淮山粥",
+        "en": "Quinoa & Chinese Yam Porridge"
+      },
+      "notes": {
+        "zh": "午餐汤品晚餐复用，温拌菜必须温热",
+        "en": "Lunch soup reused for dinner, Warm tossed dishes must be served warm"
+      }
+    }
+  ]
+}

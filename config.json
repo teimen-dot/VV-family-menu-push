@@ -1,0 +1,19 @@
+{
+  "push_time_utc": "02:30",
+  "push_time_note": "UTC 02:30 = 北京时间10:30 / 香港时间10:30。修改推送时间需同时修改此文件和 .github/workflows/daily-push.yml 中的 cron 表达式。",
+  "location": "shenzhen",
+  "location_options": {
+    "shenzhen": "深圳（大陆保姆，看中文为主）",
+    "hongkong": "香港（菲佣，看英文为主）"
+  },
+  "cook_language": "zh",
+  "cook_language_note": "zh=中文为主（保姆看），en=英文为主（菲佣看）。影响推送消息的语言排序。",
+  "family_members": 4,
+  "dietary_rules": {
+    "warm_food_only": true,
+    "no_offal": true,
+    "seafood_allergy": "哥哥海鲜/贝壳/龙虾螃蟹过敏（最近不在家吃）",
+    "breakfast_structure": "蛋白质(1-2) + 蔬菜(2-3) + 粗粮(1-2) + 主食碳水(2)",
+    "lunch_dinner_structure": "蛋白质 + 蔬菜 + 淀粉，均衡搭配"
+  }
+}
