@@ -13,7 +13,7 @@ import os
 import re
 import base64
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 # ========== 路径配置 ==========
@@ -1484,13 +1484,30 @@ loadDishes();
 
 # ========== HTTP 服务器 ==========
 class PhotoManagerHandler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def log_message(self, format, *args):
         pass
 
+    def _safe_dispatch(self, method):
+        """统一异常保护，防止连接中断等错误崩溃服务器"""
+        try:
+            method()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            pass  # 客户端断开，忽略
+        except Exception as e:
+            print(f"  [ERROR] {self.path}: {e}")
+            try:
+                self._json_response(500, {"error": str(e)})
+            except Exception:
+                pass
+
     def do_GET(self):
+        self._safe_dispatch(self._do_get)
+
+    def _do_get(self):
         parsed = urlparse(self.path)
         path = parsed.path
-
         if path == "/" or path == "/index.html":
             self._serve_html()
         elif path == "/api/dishes":
@@ -1505,6 +1522,9 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._json_response(404, {"error": "Not found"})
 
     def do_POST(self):
+        self._safe_dispatch(self._do_post)
+
+    def _do_post(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/upload":
             self._handle_upload()
@@ -1522,10 +1542,12 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._json_response(404, {"error": "Not found"})
 
     def _serve_html(self):
+        body = HTML_PAGE.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(HTML_PAGE.encode("utf-8"))
+        self.wfile.write(body)
 
     def _serve_dishes(self):
         dishes = get_all_dishes()
@@ -1544,14 +1566,17 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         filepath = os.path.join(PHOTOS_DIR, filename)
         if not os.path.exists(filepath):
             self.send_response(404)
+            self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        with open(filepath, "rb") as f:
+            body = f.read()
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
+        self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
-        with open(filepath, "rb") as f:
-            self.wfile.write(f.read())
+        self.wfile.write(body)
 
     def _read_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
@@ -1790,10 +1815,12 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._json_response(500, {"success": False, "error": str(e)})
 
     def _json_response(self, code, data):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+        self.wfile.write(body)
 
 
 def main():
@@ -1826,7 +1853,8 @@ def main():
 
     webbrowser.open(f"http://localhost:{PORT}")
 
-    server = HTTPServer(("0.0.0.0", PORT), PhotoManagerHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", PORT), PhotoManagerHandler)
+    server.daemon_threads = True
     try:
         server.serve_forever()
     except KeyboardInterrupt:
