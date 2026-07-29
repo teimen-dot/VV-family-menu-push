@@ -3597,7 +3597,8 @@
       "name_en": "Sugar-free Yogurt",
       "category_id": "fruit_snack",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "afternoon_snack"
       ],
       "banquet": false,
       "protein_types": [],

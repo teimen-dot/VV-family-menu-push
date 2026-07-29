@@ -59,28 +59,28 @@
     {
       "day": 3,
       "breakfast": {
-        "zh": "杂蔬虾仁藜麦炒饭 ＋ 香港红薯 ＋ 温拌云南小瓜丝",
-        "en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables + Hong Kong Sweet Potato + Warm Tossed Shredded Zucchini"
+        "zh": "香港红薯 ＋ 藜麦蔬菜粥 ＋ 菌菇炒肉 ＋ 牛油果洋葱酱三文鱼籽 ＋ 哈密瓜",
+        "en": "Hong Kong Sweet Potato + Quinoa & Vegetable Porridge + Stir-Fried Pork with Mixed Mushrooms + Avocado with Onion Dressing and Salmon Roe + Hami melon"
       },
       "lunch": {
-        "zh": "鲜牛肉炒芹菜 ＋ 小米二米饭 ＋ 麻辣凉拌藕片",
-        "en": "Fresh Beef Stir-fried Celery + Two-Grain Rice (Rice & Millet) + Spicy and Numbing Lotus Root Salad"
+        "zh": "白菜烧豆腐 ＋ 小米二米饭 ＋ 手撕茄子",
+        "en": "Braised Tofu with Chinese Cabbage + Two-Grain Rice (Rice & Millet) + Hand-torn Eggplant"
       },
       "afternoon_snack": {
-        "zh": "无糖酸奶（生冷） ＋ 麦冬大麦茶",
-        "en": "Sugar-free Yogurt (Cold) + Ophiopogon & Barley Tea"
+        "zh": "熟核桃仁 ＋ 苹果",
+        "en": "Roasted Walnuts + Apple"
       },
       "dinner": {
-        "zh": "松茸竹荪菌菇鸡汤 ＋ 鱼籽寿司卷 ＋ 白米混少量16谷饭 ＋ 炒冬瓜片",
-        "en": "Chicken Soup with Matsutake, Bamboo Fungus and Mixed Mushrooms + Salmon Roe Sushi Roll + White Rice mixed with 16-Grain Rice + Stir-fried Winter Melon Slices"
+        "zh": "杂蔬虾仁藜麦炒饭 ＋ 小瓜肉丸汤 ＋ 牛油果土豆沙拉→温热牛油果土豆泥 ＋ 温拌莴笋片 ＋ 酱油腌青紫苏",
+        "en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables + Zucchini Meatball Soup + Avocado Potato Salad → Warm Avocado Potato Mash + Warm Tossed Sliced Celtuce + Soy-Marinated Green Shiso Leaves"
       },
       "late_night": {
         "zh": "无需安排",
         "en": "No arrangement needed"
       },
       "notes": {
-        "zh": "凉拌菜属生冷；温拌菜必须温热",
-        "en": "凉拌菜属生冷；温拌菜必须温热"
+        "zh": "凉拌菜属生冷；含生冷食物；温拌菜必须温热",
+        "en": "凉拌菜属生冷；含生冷食物；温拌菜必须温热"
       }
     },
     {

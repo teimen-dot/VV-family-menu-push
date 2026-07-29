@@ -218,13 +218,16 @@ class MealTarget:
             self.protein_max = 2
             self.vegetable_min = 2
             self.vegetable_max = 3
-            self.carb_min = 1
-            self.carb_max = 2
+            self.carb_min = 2   # 1粗粮 + 1粥
+            self.carb_max = 4   # 1-2粗粮 + 1粥 + 0-1馒头/饺子
             self.soup_default = False
             self.fruit_optional = True
-            self.min_dishes = 3   # 至少3道：蛋白质+蔬菜+主食
-            self.max_dishes = 5
+            self.min_dishes = 5   # 蛋白质1+蔬菜2+粗粮1+粥1
+            self.max_dishes = 8
             self.prefer_coarse_grain = True
+            self.need_coarse_grain = True   # 早餐必须有粗粮
+            self.need_porridge = True       # 早餐必须有粥
+            self.allow_rice = False         # 早餐不要米饭/炒饭
         elif meal_type == "lunch":
             self.richness = "LOW"
             self.protein_min = 1
@@ -235,22 +238,28 @@ class MealTarget:
             self.carb_max = 1
             self.soup_default = False
             self.fruit_optional = False
-            self.min_dishes = 3   # 蛋白质+蔬菜+主食
+            self.min_dishes = 3
             self.max_dishes = 4
             self.prefer_coarse_grain = True
+            self.need_coarse_grain = False
+            self.need_porridge = False
+            self.allow_rice = True
         elif meal_type == "dinner":
             self.richness = "HIGH"
-            self.protein_min = 1
-            self.protein_max = 2
-            self.vegetable_min = 2
-            self.vegetable_max = 3
+            self.protein_min = 2
+            self.protein_max = 2   # 恰好2份蛋白质
+            self.vegetable_min = 3
+            self.vegetable_max = 3   # 恰好3份蔬菜
             self.carb_min = 1
-            self.carb_max = 1
-            self.soup_default = True
+            self.carb_max = 1   # 严格1份主食，不可双主食
+            self.soup_default = True   # 必须有汤
             self.fruit_optional = False
-            self.min_dishes = 4   # 至少4道：蛋白质+蔬菜+汤+主食
+            self.min_dishes = 5   # 蛋白质2+蔬菜3+主食1+汤1=7，但汤可含蛋白/蔬菜
             self.max_dishes = 7
             self.prefer_coarse_grain = False
+            self.need_coarse_grain = False
+            self.need_porridge = False
+            self.allow_rice = True
         else:
             raise ValueError(f"Unknown meal type: {meal_type}")
 
@@ -361,7 +370,19 @@ class GapFiller:
             if analysis["carb_type"] in WEAK_CARB_TYPES and not state.has_strong_carb:
                 score -= 10
         elif state.carb_count >= target.carb_max and analysis["carb_type"]:
-            score -= 30
+            score -= 50  # 主食已满，大幅降分（晚餐严格1份主食）
+
+        # 早餐不要米饭/炒饭
+        if target.meal_type == "breakfast" and analysis["carb_type"] == "rice":
+            score -= 40
+        # 早餐需要粗粮
+        if target.meal_type == "breakfast" and analysis["carb_type"] == "coarse_grain":
+            if "coarse_grain" not in state.carb_types:
+                score += 20
+        # 早餐需要粥
+        if target.meal_type == "breakfast" and analysis["carb_type"] == "porridge":
+            if "porridge" not in state.carb_types:
+                score += 20
 
         if target.prefer_coarse_grain and analysis["carb_type"] == "coarse_grain":
             score += 8
@@ -404,12 +425,6 @@ class GapFiller:
         # 大幅降分：午餐应该有一道独立的蛋白质主菜
         if target.meal_type == "lunch" and analysis["category_id"] == "vegetable_mushroom" and analysis["proteins"]:
             score -= 25
-
-        # === 早餐第二主食奖励 ===
-        # 当已有主食但缺第二主食时，粥/粗粮/饭类主食加分
-        if target.meal_type == "breakfast" and state.carb_count == 1 and analysis["carb_type"] in ("porridge", "rice", "coarse_grain"):
-            if analysis["carb_type"] not in state.carb_types:
-                score += 20
 
         # === 食材重复检查（同餐内） ===
         all_ingredients = set()
@@ -474,7 +489,7 @@ class GapFiller:
         exclude = set(day_history) | set(locked_ids)
 
         # ---- 缺口补充循环 ----
-        max_iterations = 10
+        max_iterations = 12
         for iteration in range(max_iterations):
             gaps = self._check_gaps(state, target, locked_analyses)
 
@@ -519,6 +534,49 @@ class GapFiller:
                     candidates = filtered
                     log.append(f"  [FILTER] strong_carb gap: {len(candidates)} strong carb candidates")
 
+            # 早餐粗粮缺口过滤：只选 carb_type=coarse_grain 的菜品
+            if "coarse_grain" in gaps:
+                filtered = [c for c in candidates if c["carb_type"] == "coarse_grain"]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] coarse_grain gap: {len(candidates)} coarse grain candidates")
+
+            # 早餐粥缺口过滤：只选 carb_type=porridge 的菜品
+            if "porridge" in gaps:
+                filtered = [c for c in candidates if c["carb_type"] == "porridge"]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] porridge gap: {len(candidates)} porridge candidates")
+
+            # 晚餐主食缺口过滤：只选强主食（禁止 dim_sum/other 填充晚餐主食）
+            if "carb" in gaps and target.meal_type == "dinner":
+                strong_carb_types = {"rice", "coarse_grain", "porridge", "noodle"}
+                filtered = [c for c in candidates if c["carb_type"] in strong_carb_types]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] dinner carb gap: {len(candidates)} strong carb only")
+
+            # 主食已满时排除带主食的菜品（防止双主食）
+            if state.carb_count >= target.carb_max:
+                filtered = [c for c in candidates if not c["carb_type"]]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] carb full: {len(candidates)} non-carb candidates")
+
+            # 蛋白质已满时排除带新蛋白质的菜品（防止蛋白质过多）
+            if len(state.proteins) >= target.protein_max:
+                filtered = [c for c in candidates if not (set(c["proteins"]) - state.proteins)]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] protein full: {len(candidates)} candidates (no new proteins)")
+
+            # 汤已有时排除汤类菜品（防止双汤）
+            if state.has_soup:
+                filtered = [c for c in candidates if not c["is_soup"]]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] soup full: {len(candidates)} non-soup candidates")
+
             # 打分
             scored = []
             for c in candidates:
@@ -536,7 +594,7 @@ class GapFiller:
                     break
 
             # 关键缺口时只选最高分（不随机），非关键缺口从前3名随机选
-            critical_gaps = {"protein", "clear_protein", "carb", "strong_carb"}
+            critical_gaps = {"protein", "clear_protein", "carb", "strong_carb", "coarse_grain", "porridge", "soup"}
             has_critical = any(g in critical_gaps for g in gaps)
             if has_critical:
                 top_n = 1  # 关键缺口：选最高分
@@ -614,13 +672,15 @@ class GapFiller:
         if carb_dish_count >= target.carb_min and not has_strong and state.dish_count < target.max_dishes:
             gaps.append("strong_carb")
 
-        # 早餐第二主食偏好（HIGH丰富度需要1-2种主食）
-        if target.meal_type == "breakfast" and carb_dish_count == 1 and state.dish_count < target.max_dishes:
-            # 已有1种主食，仍有空间，加"second_staple"缺口
-            # 优先粥/米饭/粗粮饭作为第二主食
-            gaps.append("second_staple")
+        # 早餐粗粮缺口：必须有粗粮（红薯/玉米/怀山/燕麦等）
+        if target.meal_type == "breakfast" and "coarse_grain" not in all_carbs and state.dish_count < target.max_dishes:
+            gaps.append("coarse_grain")
 
-        # 汤缺口（仅晚餐默认需要）
+        # 早餐粥缺口：必须有粥
+        if target.meal_type == "breakfast" and "porridge" not in all_carbs and state.dish_count < target.max_dishes:
+            gaps.append("porridge")
+
+        # 汤缺口（晚餐必须，午餐不要）
         if target.soup_default and not state.has_soup and state.dish_count < target.max_dishes:
             gaps.append("soup")
 
@@ -672,16 +732,24 @@ class GapFiller:
         if b_state:
             if b_state.vegetable_count < 2:
                 issues.append(f"早餐蔬菜不足: {b_state.vegetable_count}种")
-            if b_state.carb_count > 2:
+            if b_state.carb_count > 4:
                 issues.append(f"早餐主食过多: {b_state.carb_count}道")
             if len(b_state.proteins) < 1:
                 issues.append("早餐蛋白质不足")
+            # 早餐必须有粗粮
+            if "coarse_grain" not in b_state.carb_types:
+                issues.append("早餐缺粗粮（红薯/玉米/怀山等）")
+            # 早餐必须有粥
+            if "porridge" not in b_state.carb_types:
+                issues.append("早餐缺粥")
+            # 早餐不应有米饭/炒饭
+            if "rice" in b_state.carb_types:
+                issues.append("早餐不应有米饭/炒饭")
 
         # LUNCH CHECK
         if l_state:
             if l_state.dish_count > 4:
                 issues.append(f"午餐菜品过多: {l_state.dish_count}道")
-            # 用实际蛋白质类型而非类别计数
             if len(l_state.proteins) < 1:
                 issues.append("午餐缺蛋白质")
             if l_state.vegetable_count < 1:
@@ -691,14 +759,19 @@ class GapFiller:
 
         # DINNER CHECK
         if d_state:
-            if l_state and d_state.dish_count <= l_state.dish_count:
-                issues.append("晚餐菜品数不多于午餐")
+            if len(d_state.proteins) < 2:
+                issues.append(f"晚餐蛋白质不足: {len(d_state.proteins)}种（需2种）")
+            if d_state.vegetable_count < 3:
+                issues.append(f"晚餐蔬菜不足: {d_state.vegetable_count}种（需3种）")
+            if d_state.carb_count > 1:
+                issues.append(f"晚餐主食过多: {d_state.carb_count}道（只允许1道）")
+            if not d_state.has_soup:
+                issues.append("晚餐缺汤")
             if len(d_state.cooking_methods) < 2 and d_state.dish_count >= 3:
                 issues.append(f"晚餐烹饪方式单一: {d_state.cooking_methods}")
             spicy_count = d_state.tastes.count("spicy")
             if spicy_count > 1:
                 issues.append(f"晚餐辣味过多: {spicy_count}道")
-            # 晚餐弱主食检查：有主食但没有强主食（米饭/粗粮/粥/面）
             if d_state.carb_types and not d_state.has_strong_carb:
                 issues.append(f"晚餐主食过弱: {list(d_state.carb_types)}（需米饭/粗粮饭）")
 
@@ -759,9 +832,41 @@ def get_dish_name(dishes, dish_id):
             return d["name_cn"]
     return dish_id
 
+def generate_afternoon_snack(gap_filler):
+    """从菜品库动态选择下午茶（严格从菜品库选，不硬编码）"""
+    snack_candidates = [
+        a for a in gap_filler.analyzed.values()
+        if "afternoon_snack" in a["meal_tags"]
+    ]
+    if not snack_candidates:
+        return {"zh": "无", "en": "None"}
+
+    rng = gap_filler.rng
+    # 优先组合：酸奶/坚果 + 水果
+    yogurt_nut = [c for c in snack_candidates if c["category_id"] == "fruit_snack"
+                  and any(k in c["name_cn"] for k in ["酸奶", "核桃", "巧克力"])]
+    fruits = [c for c in snack_candidates if c["category_id"] == "fruit_snack"
+              and c["name_cn"] not in [n["name_cn"] for n in yogurt_nut]]
+
+    chosen = []
+    if yogurt_nut:
+        chosen.append(rng.choice(yogurt_nut))
+    if fruits and len(chosen) < 2:
+        chosen.append(rng.choice(fruits))
+    if not chosen:
+        chosen = [rng.choice(snack_candidates)]
+
+    zh = " ＋ ".join(d["name_cn"] for d in chosen)
+    en = " + ".join(d["name_en"] for d in chosen)
+    return {"zh": zh, "en": en}
+
+
 def generate_menu_entry(day_number, gap_filler, locked=None, seed=None):
     """生成一天的菜单条目"""
     result, logs = gap_filler.generate_day(locked=locked, seed=seed)
+
+    # 动态生成下午茶（严格从菜品库选）
+    snack = generate_afternoon_snack(gap_filler)
 
     entry = {
         "day": day_number,
@@ -773,10 +878,7 @@ def generate_menu_entry(day_number, gap_filler, locked=None, seed=None):
             "zh": format_meal_zh(result["lunch"]["dishes"]),
             "en": format_meal_en(result["lunch"]["dishes"]),
         },
-        "afternoon_snack": {
-            "zh": "无糖酸奶（生冷） ＋ 麦冬大麦茶",
-            "en": "Sugar-free Yogurt (Cold) + Ophiopogon & Barley Tea",
-        },
+        "afternoon_snack": snack,
         "dinner": {
             "zh": format_meal_zh(result["dinner"]["dishes"]),
             "en": format_meal_en(result["dinner"]["dishes"]),
@@ -839,7 +941,7 @@ def generate_preview_html(entry, day_number, day_date, manifest):
     weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekday_cn[day_date.weekday()]
 
-    # 罗马数字转换
+    # 罗马数字转换（保留用于其他用途，但标题用阿拉伯数字）
     roman_map = {1:"I",2:"II",3:"III",4:"IV",5:"V",6:"VI",7:"VII",8:"VIII",9:"IX",10:"X",
                  11:"XI",12:"XII",13:"XIII",14:"XIV",15:"XV",16:"XVI",17:"XVII",18:"XVIII",19:"XIX",20:"XX"}
     day_roman = roman_map.get(day_number, str(day_number))
@@ -950,7 +1052,7 @@ body {{
 <div class="container">
     <div class="header">
         <div class="main-title">家庭菜单</div>
-        <div class="sub-title">Family Table &middot; Day {day_roman}</div>
+        <div class="sub-title">Family Table &middot; Day {day_number}</div>
         <div class="date-line">{date_str} {weekday}</div>
         <div class="divider">
             <span class="line"></span>
