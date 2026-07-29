@@ -59,28 +59,28 @@
     {
       "day": 3,
       "breakfast": {
-        "zh": "南瓜山药小米粥 ＋ 鱼子酱溏心蛋 ＋ 香港红薯 ＋ 苹果",
-        "en": "Pumpkin, Yam & Millet Porridge + Soft-Boiled Egg with Caviar + Hong Kong Sweet Potato + Apple"
+        "zh": "杂蔬虾仁藜麦炒饭 ＋ 香港红薯 ＋ 温拌云南小瓜丝",
+        "en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables + Hong Kong Sweet Potato + Warm Tossed Shredded Zucchini"
       },
       "lunch": {
-        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 肥牛金针菇卷 ＋ 温拌白萝卜丝 ＋ 紫菜虾米豆腐汤",
-        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Beef & Enoki Mushroom Rolls + Warm Tossed Shredded White Radish + Seaweed & Dried Shrimp Tofu Soup"
+        "zh": "鲜牛肉炒芹菜 ＋ 小米二米饭 ＋ 麻辣凉拌藕片",
+        "en": "Fresh Beef Stir-fried Celery + Two-Grain Rice (Rice & Millet) + Spicy and Numbing Lotus Root Salad"
       },
       "afternoon_snack": {
         "zh": "无糖酸奶（生冷） ＋ 麦冬大麦茶",
         "en": "Sugar-free Yogurt (Cold) + Ophiopogon & Barley Tea"
       },
       "dinner": {
-        "zh": "小米二米饭 ＋ 葱香鸡腿肉 ＋ 灼西兰花 / 清炒西兰花 ＋ 白萝卜炖鸡汤",
-        "en": "Two-Grain Rice (Rice & Millet) + Scallion Chicken Thigh + Blanched / Stir-fried Broccoli + White Radish Chicken Soup"
+        "zh": "松茸竹荪菌菇鸡汤 ＋ 鱼籽寿司卷 ＋ 白米混少量16谷饭 ＋ 炒冬瓜片",
+        "en": "Chicken Soup with Matsutake, Bamboo Fungus and Mixed Mushrooms + Salmon Roe Sushi Roll + White Rice mixed with 16-Grain Rice + Stir-fried Winter Melon Slices"
       },
       "late_night": {
         "zh": "无需安排",
         "en": "No arrangement needed"
       },
       "notes": {
-        "zh": "酸奶属于生冷，温拌菜必须温热",
-        "en": "Yogurt is cold/raw, Warm tossed dishes must be served warm"
+        "zh": "凉拌菜属生冷；温拌菜必须温热",
+        "en": "凉拌菜属生冷；温拌菜必须温热"
       }
     },
     {

@@ -287,8 +287,14 @@ class GapFiller:
         day_proteins = day_proteins or set()
 
         # === 一餐型料理降分 ===
+        # 一餐型料理是单菜组合，适合个人午餐，不适合家庭晚餐
         if analysis["category_id"] == "one_pot_meal":
-            score -= 40
+            if target.meal_type == "dinner":
+                score -= 200  # 家庭晚餐几乎排除
+            elif target.meal_type == "breakfast":
+                score -= 120  # 家庭早餐也不适合一锅料理
+            else:
+                score -= 25  # 午餐可接受，但也不优先
 
         # === 无营养数据菜品降分 ===
         # 如果一道菜没有蛋白质、没有蔬菜、没有主食、不是汤、不是水果
@@ -391,6 +397,20 @@ class GapFiller:
         elif analysis["taste"] == "light" and "spicy" in state.tastes:
             score += 5
 
+        # === 午餐偏好明确蛋白质主菜（protein_main/egg_tofu类别）===
+        if target.meal_type == "lunch" and analysis["category_id"] in ("protein_main", "egg_tofu"):
+            score += 25
+        # 午餐不偏好蛋白质埋在蔬菜里（如肉末空心菜）
+        # 大幅降分：午餐应该有一道独立的蛋白质主菜
+        if target.meal_type == "lunch" and analysis["category_id"] == "vegetable_mushroom" and analysis["proteins"]:
+            score -= 25
+
+        # === 早餐第二主食奖励 ===
+        # 当已有主食但缺第二主食时，粥/粗粮/饭类主食加分
+        if target.meal_type == "breakfast" and state.carb_count == 1 and analysis["carb_type"] in ("porridge", "rice", "coarse_grain"):
+            if analysis["carb_type"] not in state.carb_types:
+                score += 20
+
         # === 食材重复检查（同餐内） ===
         all_ingredients = set()
         for d in state.dishes:
@@ -475,6 +495,30 @@ class GapFiller:
                 log.append(f"  [WARN] No more candidates")
                 break
 
+            # 关键缺口过滤：午餐明确蛋白质缺口时，只选 protein_main/egg_tofu 类别
+            # 同时排除"肉末"类菜品（蛋白质仅作调味，不是主菜）
+            if "clear_protein" in gaps:
+                filtered = [
+                    c for c in candidates
+                    if c["category_id"] in ("protein_main", "egg_tofu")
+                    and "肉末" not in c["name_cn"]
+                ]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] clear_protein gap: {len(candidates)} clear protein candidates")
+
+            # 强主食缺口过滤：只选 staple_carb 类别且非弱主食类型
+            if "strong_carb" in gaps:
+                strong_carb_types = {"rice", "coarse_grain", "porridge", "noodle"}
+                filtered = [
+                    c for c in candidates
+                    if c["category_id"] == "staple_carb"
+                    and c["carb_type"] in strong_carb_types
+                ]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] strong_carb gap: {len(candidates)} strong carb candidates")
+
             # 打分
             scored = []
             for c in candidates:
@@ -491,14 +535,21 @@ class GapFiller:
                     log.append(f"  [STOP] No beneficial dish to add (best={scored[0][0]:.1f})")
                     break
 
-            # 从前3名中随机选择（增加多样性）
-            top_n = min(3, len(scored))
-            chosen = self.rng.choice(scored[:top_n])[1]
+            # 关键缺口时只选最高分（不随机），非关键缺口从前3名随机选
+            critical_gaps = {"protein", "clear_protein", "carb", "strong_carb"}
+            has_critical = any(g in critical_gaps for g in gaps)
+            if has_critical:
+                top_n = 1  # 关键缺口：选最高分
+            else:
+                top_n = min(3, len(scored))  # 非关键缺口：前3随机
+            chosen_idx = self.rng.randint(0, top_n - 1) if top_n > 1 else 0
+            chosen = scored[chosen_idx][1]
+            chosen_score = scored[chosen_idx][0]
 
             state.add_dish(chosen)
             exclude.add(chosen["id"])
             log.append(
-                f"  [ADD] {chosen['name_cn']} (score={max(s for s,_ in scored[:top_n]):.1f}) | "
+                f"  [ADD] {chosen['name_cn']} (score={chosen_score:.1f}) | "
                 f"protein={chosen['proteins']} veg={chosen['vegetables']} "
                 f"carb={chosen['carb_type']} soup={chosen['is_soup']}"
             )
@@ -525,6 +576,7 @@ class GapFiller:
         all_carbs = set(state.carb_types)
         protein_dish_count = state.protein_count  # 类别计数（protein_main/egg_tofu/one_pot_meal）
         carb_dish_count = state.carb_count
+        clear_protein_dish_count = 0  # 明确的蛋白质主菜（非蔬菜/菌菇类）
         for la in locked_analyses:
             all_proteins |= set(la["proteins"])
             all_vegs |= set(la["vegetables"])
@@ -532,16 +584,22 @@ class GapFiller:
                 all_carbs.add(la["carb_type"])
             if la["category_id"] in ("protein_main", "egg_tofu", "one_pot_meal"):
                 protein_dish_count += 1
+            # 午餐偏好明确蛋白质主菜（非蔬菜/菌菇类）
+            if la["category_id"] in ("protein_main", "egg_tofu"):
+                clear_protein_dish_count += 1
             if la["category_id"] in ("staple_carb", "one_pot_meal"):
                 carb_dish_count += 1
 
-        # 蛋白质缺口：看实际蛋白质类型数量，而非仅类别道数
-        # 如果已有 >=1 种蛋白质类型，且蛋白质主菜道数 >= min，则蛋白质已满足
+        # 蛋白质缺口
         if len(all_proteins) < target.protein_min and protein_dish_count < target.protein_min:
             gaps.append("protein")
-        # 如果蛋白质主菜道数还没到最低要求，也缺
         if protein_dish_count < target.protein_min and len(all_proteins) == 0:
             gaps.append("protein")
+
+        # 午餐明确蛋白质主菜缺口（不要蛋白质埋在蔬菜里）
+        if target.meal_type == "lunch" and clear_protein_dish_count < 1:
+            if clear_protein_dish_count + state.protein_count < 1:
+                gaps.append("clear_protein")
 
         # 蔬菜缺口
         if len(all_vegs) < target.vegetable_min:
@@ -550,6 +608,17 @@ class GapFiller:
         # 主食缺口
         if carb_dish_count < target.carb_min:
             gaps.append("carb")
+
+        # 强主食缺口：已有主食但全是弱主食（dim_sum/other），晚餐需要米饭/粗粮饭
+        has_strong = bool(all_carbs - WEAK_CARB_TYPES)
+        if carb_dish_count >= target.carb_min and not has_strong and state.dish_count < target.max_dishes:
+            gaps.append("strong_carb")
+
+        # 早餐第二主食偏好（HIGH丰富度需要1-2种主食）
+        if target.meal_type == "breakfast" and carb_dish_count == 1 and state.dish_count < target.max_dishes:
+            # 已有1种主食，仍有空间，加"second_staple"缺口
+            # 优先粥/米饭/粗粮饭作为第二主食
+            gaps.append("second_staple")
 
         # 汤缺口（仅晚餐默认需要）
         if target.soup_default and not state.has_soup and state.dish_count < target.max_dishes:
@@ -629,6 +698,9 @@ class GapFiller:
             spicy_count = d_state.tastes.count("spicy")
             if spicy_count > 1:
                 issues.append(f"晚餐辣味过多: {spicy_count}道")
+            # 晚餐弱主食检查：有主食但没有强主食（米饭/粗粮/粥/面）
+            if d_state.carb_types and not d_state.has_strong_carb:
+                issues.append(f"晚餐主食过弱: {list(d_state.carb_types)}（需米饭/粗粮饭）")
 
         # 跨餐检查
         all_vegs = []
@@ -715,15 +787,19 @@ def generate_menu_entry(day_number, gap_filler, locked=None, seed=None):
 
     # 自动备注
     notes = []
+    # 凉拌菜检查：按烹饪方法 cold_mix 判断（不限类别）
     for mk in ["breakfast", "lunch", "dinner"]:
         for d in result[mk]["dishes"]:
             cms = d.get("cooking_methods", [])
-            if d.get("category_id") == "cold_dish" and "warm_toss" not in cms:
+            if "cold_mix" in cms and "warm_toss" not in cms:
                 notes.append("凉拌菜属生冷")
+                break
+    # 生冷食物检查
     for d in result["breakfast"]["dishes"] + result["lunch"]["dishes"]:
         if d.get("is_fruit") or "生冷" in d.get("name_cn", ""):
             notes.append("含生冷食物")
             break
+    # 温拌菜检查
     for mk in ["breakfast", "lunch", "dinner"]:
         for d in result[mk]["dishes"]:
             if d.get("cooking_methods") and "warm_toss" in d.get("cooking_methods", []):
@@ -762,11 +838,19 @@ def generate_preview_html(entry, day_number, day_date, manifest):
 
     weekday_cn = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
     weekday = weekday_cn[day_date.weekday()]
+
+    # 罗马数字转换
+    roman_map = {1:"I",2:"II",3:"III",4:"IV",5:"V",6:"VI",7:"VII",8:"VIII",9:"IX",10:"X",
+                 11:"XI",12:"XII",13:"XIII",14:"XIV",15:"XV",16:"XVI",17:"XVII",18:"XVIII",19:"XIX",20:"XX"}
+    day_roman = roman_map.get(day_number, str(day_number))
+
+    date_str = day_date.strftime("%Y.%m.%d")
+
     meals = [
-        ("🌅 早餐 Breakfast", "breakfast"),
-        ("☀️ 午餐 Lunch", "lunch"),
-        ("🍵 下午茶/加餐 Afternoon Snack", "afternoon_snack"),
-        ("🌙 晚餐 Dinner", "dinner"),
+        ("breakfast", "早餐", "Breakfast", "#E8A87C"),
+        ("lunch", "午餐", "Lunch", "#C38D9E"),
+        ("afternoon_snack", "下午茶", "Afternoon Snack", "#85B79D"),
+        ("dinner", "晚餐", "Dinner", "#7C9EB2"),
     ]
 
     html = f"""<!DOCTYPE html>
@@ -777,34 +861,118 @@ def generate_preview_html(entry, day_number, day_date, manifest):
 <title>家庭菜单 Day {day_number} | {day_date.strftime('%m月%d日')}</title>
 <style>
 * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; background: #f5f5f5; padding: 20px; color: #333; line-height: 1.6; }}
-.container {{ max-width: 500px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.1); }}
-.header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; padding: 24px 20px; text-align: center; }}
-.header h1 {{ font-size: 22px; margin-bottom: 6px; }}
-.header .date {{ font-size: 14px; opacity: 0.9; }}
-.meal {{ padding: 20px; border-bottom: 1px solid #f0f0f0; }}
-.meal:last-child {{ border-bottom: none; }}
-.meal-title {{ font-size: 18px; font-weight: 600; margin-bottom: 12px; }}
-.photos {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }}
-.photos img {{ width: 100px; height: 100px; border-radius: 8px; object-fit: cover; }}
-.dish-zh {{ font-size: 16px; font-weight: 600; color: #222; margin-bottom: 4px; }}
-.dish-en {{ font-size: 13px; color: #888; font-style: italic; }}
-.notes {{ background: #fff8e1; padding: 12px 20px; font-size: 13px; color: #8d6e63; }}
-.footer {{ text-align: center; padding: 16px; font-size: 12px; color: #bbb; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #f0ede8; padding: 24px 16px; color: #2c2c2c; line-height: 1.7;
+}}
+.container {{
+    max-width: 480px; margin: 0 auto; background: #fffdf9;
+    border-radius: 6px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}}
+
+/* ---- 杂志风格页头 ---- */
+.header {{
+    text-align: center; padding: 40px 24px 32px;
+    border-bottom: 1px solid #e8e2d8;
+}}
+.header .main-title {{
+    font-family: 'Georgia', 'Songti SC', 'STSong', serif;
+    font-size: 32px; font-weight: 700; color: #1a1a1a;
+    letter-spacing: 8px; margin-bottom: 8px;
+}}
+.header .sub-title {{
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 15px; font-style: italic; color: #999;
+    letter-spacing: 2px; margin-bottom: 16px;
+}}
+.header .date-line {{
+    font-size: 13px; color: #888; letter-spacing: 1px;
+    margin-bottom: 20px;
+}}
+.header .divider {{
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+}}
+.header .divider .line {{
+    width: 60px; height: 1px; background: #d4cec3;
+}}
+.header .divider .dot {{
+    width: 5px; height: 5px; border-radius: 50%; display: inline-block;
+}}
+.header .divider .dot:nth-child(2) {{ background: #E8A87C; }}
+.header .divider .dot:nth-child(4) {{ background: #C38D9E; }}
+.header .divider .dot:nth-child(6) {{ background: #85B79D; }}
+
+/* ---- 餐次区块 ---- */
+.meal {{
+    padding: 24px 24px; border-bottom: 1px solid #f0ebe3;
+}}
+.meal:last-of-type {{ border-bottom: none; }}
+.meal-header {{
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+}}
+.meal-header .bar {{
+    width: 4px; height: 20px; border-radius: 2px;
+}}
+.meal-header .meal-zh {{
+    font-size: 17px; font-weight: 600; color: #333;
+}}
+.meal-header .meal-en {{
+    font-size: 12px; color: #bbb; font-style: italic; margin-left: auto;
+}}
+.photos {{
+    display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+}}
+.photos img {{
+    width: 96px; height: 96px; border-radius: 6px; object-fit: cover;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}}
+.dish-zh {{
+    font-size: 15px; font-weight: 500; color: #2c2c2c; margin-bottom: 3px;
+    line-height: 1.5;
+}}
+.dish-en {{
+    font-size: 12px; color: #aaa; font-style: italic; line-height: 1.4;
+}}
+
+/* ---- 备注与页脚 ---- */
+.notes {{
+    background: #faf6ee; padding: 14px 24px; font-size: 12px; color: #9c8b6f;
+    border-top: 1px solid #f0ebe3;
+}}
+.footer {{
+    text-align: center; padding: 20px; font-size: 11px; color: #ccc;
+    background: #fffdf9;
+}}
 </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <h1>🍽️ 家庭菜单 | Day {day_number}</h1>
-        <div class="date">{day_date.strftime('%Y年%m月%d日')} {weekday}</div>
+        <div class="main-title">家庭菜单</div>
+        <div class="sub-title">Family Table &middot; Day {day_roman}</div>
+        <div class="date-line">{date_str} {weekday}</div>
+        <div class="divider">
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
+        </div>
     </div>
 """
-    for emoji_label, meal_key in meals:
+    for meal_key, zh_label, en_label, bar_color in meals:
         meal = entry.get(meal_key, {})
         zh = meal.get("zh", "")
         en = meal.get("en", "")
-        html += f'    <div class="meal">\n        <div class="meal-title">{emoji_label}</div>\n'
+        html += f'    <div class="meal">\n'
+        html += f'        <div class="meal-header">\n'
+        html += f'            <span class="bar" style="background:{bar_color}"></span>\n'
+        html += f'            <span class="meal-zh">{zh_label}</span>\n'
+        html += f'            <span class="meal-en">{en_label}</span>\n'
+        html += f'        </div>\n'
         if not zh or zh == "无需安排":
             html += '        <div class="dish-zh">无需安排</div>\n'
         else:
@@ -822,7 +990,7 @@ body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC
     notes_zh = entry.get("notes", {}).get("zh", "")
     if notes_zh and notes_zh != "无":
         html += f'    <div class="notes">📌 {notes_zh}</div>\n'
-    html += '    <div class="footer">📱 由家庭菜单管家 AI 缺口补充法生成 | Generated by Gap-Filler Engine</div>\n'
+    html += '    <div class="footer">由家庭菜单管家 AI 缺口补充法生成 · Generated by Gap-Filler Engine</div>\n'
     html += '</div>\n</body>\n</html>'
     return html
 

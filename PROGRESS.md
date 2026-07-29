@@ -30,7 +30,7 @@
 
 | 文件 | 说明 |
 |------|------|
-| `dish_pool.json` | 菜品数据库 v2.0（115 道普通菜 + 27 项轮换池） |
+| `dish_pool.json` | 菜品数据库 v2.0（142 道菜，轮换池已合并） |
 | `photo_manager.py` | 本地菜品管理器 v2.0（端口 8080，纯 Python stdlib） |
 | `push_menu.py` | 推送脚本（PushPlus + GitHub Actions） |
 | `photo_manifest.json` | 照片映射（中文菜名 → 文件名） |
@@ -38,6 +38,9 @@
 | `config.json` | 推送配置 |
 | `seasonal_tips.json` | 时令建议（12 个月，中英双语） |
 | `migrate_v2.py` | v1→v2 数据迁移脚本 |
+| `merge_rotation_pools.py` | 轮换池合并迁移脚本（已执行，一次性） |
+| `export_excel.py` | Excel 导出脚本（供多人协作填写） |
+| `import_excel.py` | Excel 导入脚本（按 ID 匹配，只更新非空单元格） |
 | `sync.sh` | Git 一键同步脚本 |
 | `photos/` | 菜品照片（正方形 400×400 JPEG） |
 | `.github/workflows/daily-push.yml` | GitHub Actions 定时任务 |
@@ -79,11 +82,7 @@
   ],
   "custom_tags_def": [
     { "label": "老板喜欢" }, { "label": "快速菜" }, { "label": "Toby喜欢" }
-  ],
-  "rotation_pools": {
-    "porridge_base": { "description": "粥底轮换池", "items": [...] },
-    "egg_styles": { "description": "鸡蛋做法轮换池", "items": [...] }
-  }
+  ]
 }
 ```
 
@@ -106,7 +105,7 @@
 - `banquet`：true/false（家宴推荐，不是独立分类）
 - `protein_types`：fish / shrimp / other_seafood / beef / pork / chicken / egg / tofu / other / none（多选）
 - `vegetables`：字符串数组，如 `["芹菜"]`；`vegetable_count` 自动计算
-- `carb_type`：rice / porridge / noodle / dim_sum / coarse_grain / tuber / other（仅主食/碳水分类适用）
+- `carb_type`：rice / porridge / noodle / dim_sum / coarse_grain / other（仅主食/碳水分类适用，薯类已并入粗粮）
 - `meal_components`：protein / vegetable / carb（仅一餐型料理适用，标记这道菜已包含什么）
 - `taste`：light / normal / rich / spicy（单选）
 - `cooking_methods`：steam / boil / stir_fry / braise / simmer / pan_fry / roast / cold_mix / other（多选）
@@ -140,7 +139,7 @@
 ### 双层筛选
 
 - 第一层：全部 / 早餐 / 午餐 / 晚餐 / 家宴
-- 第二层：8 个分类 + 2 个轮换池
+- 第二层：8 个分类
 - 两个条件可组合
 
 ### 搜索
@@ -219,6 +218,18 @@
   - 增强搜索
   - 分类管理 + 标签管理
 - [x] 11 项数据完整性验证全部通过
+- [x] **Excel 协作流程**：
+  - export_excel.py：从 dish_pool.json 导出为 Excel，含填写说明
+  - import_excel.py：按 ID 匹配导回，只更新非空单元格，自动备份
+  - 同事只录入新菜，不影响本地已有数据
+- [x] **轮换池合并到主菜品库（方案 B）**：
+  - 27 项轮换池（粥底 10 + 鸡蛋 17）合并到 dishes 数组（dish_0120~dish_0146）
+  - 删除 rotation_pools 字段，统一数据结构
+  - 薯类(tuber)并入粗粮(coarse_grain)，carb_type 选项从 6 个减为 5 个
+  - photo_manager.py 删除轮换池相关 UI/API/编辑窗口/CSS/JS
+  - export_excel.py / import_excel.py 同步更新映射表
+  - 总计 142 道菜，全部字段完整性验证通过
+  - Git 提交 2836d97 已推送到 GitHub
 
 ---
 
@@ -268,5 +279,5 @@
 | 主食 / 碳水 (staple) | 主食 / 碳水 (staple_carb) | 按原有 tags |
 | 水果 / 加餐 (fruit_snack) | 水果 / 加餐 / 下午茶 (fruit_snack) | 保持 |
 | 冷菜类 (cold_dish_reform) | 冷菜 / 凉拌 (cold_dish) | lunch, dinner |
-| 粥底轮换池 | 不迁入普通分类，保留为轮换组件 | — |
-| 鸡蛋做法轮换池 | 不迁入普通分类，保留为轮换组件 | — |
+| 粥底轮换池 | 主食 / 碳水 (staple_carb)，carb_type=porridge | breakfast |
+| 鸡蛋做法轮换池 | 蛋类 / 豆制品 (egg_tofu) | 按菜名判断 |

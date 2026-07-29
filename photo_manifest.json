@@ -566,5 +566,229 @@
   "日式玉子烧": {
     "file": "japanese_tamagoyaki.jpg",
     "uploaded": "2026-07-29"
+  },
+  "凉拌鸡丝配牛油果": {
+    "file": "chilled_shredded_chicken_with_avocado.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "香煎豆腐块": {
+    "file": "panfried_tofu_cubes.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "水煮鱼": {
+    "file": "sichuanstyle_poached_fish_in_chili_oil.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "炒花甲": {
+    "file": "stirfried_clams.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "红烧豆腐煲": {
+    "file": "braised_tofu_parcels.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "白菜烧豆腐": {
+    "file": "braised_tofu_with_chinese_cabbage.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "菌菇炒肉": {
+    "file": "stirfried_pork_with_mixed_mushrooms.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒虾仁": {
+    "file": "lightly_stirfried_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "豆芽炒肉丝": {
+    "file": "stirfried_bean_sprouts_with_shredded_pork.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "干煸四季豆": {
+    "file": "sichuanstyle_dryfried_green_beans.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "酱油腌青紫苏": {
+    "file": "soymarinated_green_shiso_leaves.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "茴香蘑菇沙拉": {
+    "file": "fennel_and_mushroom_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "酱油凉拌豆腐牛油果": {
+    "file": "chilled_tofu_and_avocado_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "四味豆腐沙拉": {
+    "file": "fourflavour_tofu_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "鸡丝青瓜丝嫩豆腐": {
+    "file": "silken_tofu_with_shredded_chicken_and_cucumber.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "日式拌豆腐": {
+    "file": "japanesestyle_tofu_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "西兰花鸡蛋番茄沙拉": {
+    "file": "broccoli_egg_and_tomato_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "松茸竹荪菌菇鸡汤": {
+    "file": "chicken_soup_with_matsutake_bamboo_fungus_and_mixed_mushrooms.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "紫菜虾米豆腐汤": {
+    "file": "seaweed_dried_shrimp_and_tofu_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "豆腐青菜羹": {
+    "file": "tofu_and_green_vegetable_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "白萝卜炖鸡汤": {
+    "file": "chicken_soup_with_white_radish.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "凉拌虾仁荞麦面": {
+    "file": "chilled_soba_noodles_with_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "葱丝蒸鲍鱼": {
+    "file": "steamed_abalone_with_shredded_scallions.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "啫啫花螺": {
+    "file": "sizzling_clay_pot_spotted_babylon_snails.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "肥牛金针菇卷": {
+    "file": "beef_rolls_with_enoki_mushrooms.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "麻辣凉拌藕片": {
+    "file": "spicy_and_numbing_lotus_root_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "酸辣娃娃菜": {
+    "file": "hot_and_sour_baby_chinese_cabbage.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "芦笋拌水煮蛋": {
+    "file": "chilled_asparagus_with_boiled_eggs.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "青椒辣炒蟹味菇": {
+    "file": "spicy_stirfried_shimeji_mushrooms_with_green_peppers.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "火腿蓝莓蔬菜沙拉": {
+    "file": "mixed_green_salad_with_ham_and_blueberries.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "牛油果洋葱酱三文鱼籽": {
+    "file": "avocado_with_onion_dressing_and_salmon_roe.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "山药疙瘩汤": {
+    "file": "chinese_yam_doughdrop_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "杂蔬虾仁藜麦炒饭": {
+    "file": "quinoa_fried_rice_with_shrimp_and_mixed_vegetables.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "牛油果虾仁鸡蛋能量碗": {
+    "file": "avocado_shrimp_and_egg_power_bowl.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "姜葱三文鱼焖饭": {
+    "file": "ginger_and_scallion_salmon_rice.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "虾仁火腿蔬菜汤面": {
+    "file": "noodle_soup_with_shrimp_ham_and_vegetables.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸帝王蟹": {
+    "file": "steamed_king_crab.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸皮皮虾": {
+    "file": "steamed_mantis_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "香草烤羊腿": {
+    "file": "herbroasted_leg_of_lamb.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "海胆鱼籽生蚝拼盘": {
+    "file": "oysters_with_sea_urchin_salmon_roe_and_caviar.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "刺身拼盘": {
+    "file": "sashimi_platter.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "牛油果滑蛋虾仁鱼籽吐司": {
+    "file": "avocado_toast_with_scrambled_eggs_shrimp_and_caviar.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "水果蔬菜拼盘": {
+    "file": "fruit_and_green_salad_platter.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "寿司拼盘": {
+    "file": "sushi_platter.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "江西炒米粉": {
+    "file": "jiangxistyle_stirfried_rice_noodles.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "哈密瓜": {
+    "file": "hami_melon.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "青提": {
+    "file": "green_grape.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "草莓": {
+    "file": "strawberry.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "剁椒蒸鲍鱼": {
+    "file": "steamed_abalone_with_chopped_chili.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "鲜橙桃胶冻": {
+    "file": "orange_peach_gum_jelly.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸红斑鱼": {
+    "file": "steamed_red_grouper_with_scallions.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "辣子鸡": {
+    "file": "spicy_chicken.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸龙虾": {
+    "file": "steamed_lobster.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "雪媚娘水果酸奶杯": {
+    "file": "fruit_and_yogurt_cup_with_snow_skin_mochi.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "烧椒皮蛋": {
+    "file": "century_eggs_with_roasted_green_chili_sauce.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "钵钵鸡": {
+    "file": "bobo_chicken.jpg",
+    "uploaded": "2026-07-29"
   }
 }

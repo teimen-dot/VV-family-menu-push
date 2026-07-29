@@ -1309,7 +1309,7 @@
       "id": "dish_0038",
       "name_cn": "肉末空心菜",
       "name_en": "Minced Meat Water Spinach",
-      "category_id": "protein_main",
+      "category_id": "vegetable_mushroom",
       "meal_tags": [
         "breakfast",
         "lunch",
@@ -1822,7 +1822,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "cold_mix"
+        "warm_toss"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -3206,7 +3206,7 @@
       "id": "dish_0097",
       "name_cn": "饭菜一锅蒸",
       "name_en": "One-Pot Steamed Rice & Dishes",
-      "category_id": "staple_carb",
+      "category_id": "one_pot_meal",
       "meal_tags": [
         "breakfast",
         "lunch",
@@ -5545,8 +5545,7 @@
       "banquet": false,
       "protein_types": [
         "shrimp",
-        "egg",
-        "caviar"
+        "egg"
       ],
       "vegetables": [],
       "vegetable_count": 0,
@@ -5564,8 +5563,9 @@
       "id": "dish_0184",
       "name_cn": "江西炒米粉",
       "name_en": "Jiangxi-Style Stir-Fried Rice Noodles",
-      "category_id": "staple_carb",
+      "category_id": "one_pot_meal",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5583,7 +5583,7 @@
       "meal_components": [],
       "taste": "spicy",
       "cooking_methods": [
-        "stir_fried"
+        "boil"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5691,7 +5691,9 @@
         "other"
       ],
       "can_serve_warm": false,
-      "custom_tags": [],
+      "custom_tags": [
+        "寿司"
+      ],
       "needs_review": false
     },
     {
@@ -5718,7 +5720,9 @@
         "other"
       ],
       "can_serve_warm": false,
-      "custom_tags": [],
+      "custom_tags": [
+        "刺身"
+      ],
       "needs_review": false
     },
     {
@@ -5771,6 +5775,277 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false
+    },
+    {
+      "id": "dish_0192",
+      "name_cn": "哈密瓜",
+      "name_en": "Hami melon",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0193",
+      "name_cn": "青提",
+      "name_en": "green grape",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0194",
+      "name_cn": "草莓",
+      "name_en": "strawberry",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0195",
+      "name_cn": "剁椒蒸鲍鱼",
+      "name_en": "Steamed Abalone with Chopped Chili",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0196",
+      "name_cn": "鲜橙桃胶冻",
+      "name_en": "Orange Peach Gum Jelly",
+      "category_id": "fruit_snack",
+      "meal_tags": [],
+      "banquet": true,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0197",
+      "name_cn": "清蒸红斑鱼",
+      "name_en": "Steamed Red Grouper with Scallions",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0198",
+      "name_cn": "辣子鸡",
+      "name_en": "Spicy Chicken",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "stir_fry"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0199",
+      "name_cn": "清蒸龙虾",
+      "name_en": "Steamed Lobster",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0200",
+      "name_cn": "雪媚娘水果酸奶杯",
+      "name_en": "Fruit and Yogurt Cup with Snow Skin Mochi",
+      "category_id": "fruit_snack",
+      "meal_tags": [],
+      "banquet": true,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [
+        "甜品"
+      ],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0201",
+      "name_cn": "烧椒皮蛋",
+      "name_en": "Century Eggs with Roasted Green Chili Sauce",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0202",
+      "name_cn": "钵钵鸡",
+      "name_en": "Bobo Chicken",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish",
+        "shrimp",
+        "other_seafood",
+        "beef",
+        "pork",
+        "chicken",
+        "egg",
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
     }
   ],
   "custom_tags_def": [
