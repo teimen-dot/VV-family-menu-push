@@ -69,11 +69,13 @@
       "name_en": "Black Caviar with Silken Tofu",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch",
+        "dinner"
       ],
       "banquet": true,
       "protein_types": [
-        "fish",
+        "other_seafood",
         "tofu"
       ],
       "vegetables": [],
@@ -82,7 +84,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "steam"
+        "cold_mix"
       ],
       "can_serve_warm": false,
       "custom_tags": [
@@ -107,11 +109,11 @@
       "category_id": "protein_main",
       "meal_tags": [
         "breakfast",
-        "lunch"
+        "lunch",
+        "dinner"
       ],
       "banquet": true,
       "protein_types": [
-        "fish",
         "other_seafood",
         "tofu"
       ],
@@ -142,20 +144,23 @@
       "name_en": "Salmon Roe & Black Caviar with Silken Tofu",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch",
+        "dinner"
       ],
       "banquet": true,
       "protein_types": [
-        "fish",
-        "tofu",
-        "caviar"
+        "other_seafood",
+        "tofu"
       ],
       "vegetables": [],
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -176,9 +181,11 @@
       "name_en": "Thinly Sliced Beef",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch",
+        "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -187,7 +194,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "pan_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -205,9 +214,11 @@
       "name_en": "Diced Beef",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch",
+        "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -216,7 +227,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "pan_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -234,9 +247,11 @@
       "name_en": "Scallion Shredded Chicken",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch",
+        "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "chicken"
       ],
@@ -245,7 +260,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -264,7 +281,9 @@
       "name_en": "Shrimp stir-fried with eggs",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch",
+        "dinner"
       ],
       "banquet": false,
       "protein_types": [
@@ -277,7 +296,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -292,20 +311,22 @@
       "name_en": "Soft-Boiled Egg with Caviar",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast"
+        "breakfast",
+        "lunch"
       ],
       "banquet": false,
       "protein_types": [
-        "fish",
-        "egg",
-        "caviar"
+        "other_seafood",
+        "egg"
       ],
       "vegetables": [],
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -319,6 +340,7 @@
       "name_en": "Pan-fried Australian Wagyu Beef",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -332,7 +354,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "pan_fried"
+        "pan_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -446,10 +468,11 @@
       "name_en": "Asparagus Stir-fried Beef",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -461,7 +484,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -484,7 +507,7 @@
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -494,7 +517,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "pan_fried"
+        "pan_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -516,7 +539,7 @@
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -526,7 +549,7 @@
       "meal_components": [],
       "taste": "spicy",
       "cooking_methods": [
-        "boiled"
+        "boil"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -549,7 +572,7 @@
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -558,7 +581,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "pan_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -577,6 +602,7 @@
       "name_en": "Fresh Beef Stir-fried Celery",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -592,7 +618,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -627,7 +653,9 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stewed"
+        "stir_fry",
+        "stew",
+        "braise"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -652,7 +680,8 @@
       ],
       "banquet": false,
       "protein_types": [
-        "pork"
+        "pork",
+        "tofu"
       ],
       "vegetables": [],
       "vegetable_count": 0,
@@ -660,7 +689,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "steamed"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -680,6 +709,7 @@
       "name_en": "Clear Stewed Skinless Chicken with Fresh Matsutake",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -687,13 +717,15 @@
       "protein_types": [
         "chicken"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "松茸"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stewed"
+        "boil"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -726,7 +758,10 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "rich",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry",
+        "braise"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -744,6 +779,7 @@
       "name_en": "Diced Chicken with Zucchini & Red Pepper",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -751,12 +787,17 @@
       "protein_types": [
         "chicken"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "红椒",
+        "西葫芦"
+      ],
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -776,6 +817,7 @@
       "name_en": "Scallion Ginger Soy Diced Chicken",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -788,7 +830,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -820,7 +864,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -883,7 +929,8 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "pan_fried"
+        "stir_fry",
+        "pan_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -937,6 +984,7 @@
       "name_en": "Steamed Cod",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -950,7 +998,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "steamed"
+        "steam"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -970,6 +1018,7 @@
       "name_en": "Steamed Fresh Fish Fillet",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -983,7 +1032,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "steamed"
+        "steam"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1002,18 +1051,21 @@
       "name_en": "Steamed Scallops",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [],
+      "protein_types": [
+        "other_seafood"
+      ],
       "vegetables": [],
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "steamed"
+        "steam"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1062,6 +1114,7 @@
       "name_en": "Garlic Baked Black Tiger Shrimp",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -1074,7 +1127,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1093,6 +1148,7 @@
       "name_en": "Garlic Shrimp",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -1105,7 +1161,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1252,11 +1310,14 @@
       "name_en": "Minced Meat Water Spinach",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [],
+      "protein_types": [
+        "pork"
+      ],
       "vegetables": [
         "空心菜"
       ],
@@ -1264,7 +1325,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1295,7 +1358,10 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1422,7 +1488,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "warm_tossed"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1488,7 +1554,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "blanched"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1554,7 +1620,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "blanched"
+        "boil"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1587,7 +1653,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1620,7 +1686,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "warm_tossed"
+        "cold_mix"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1685,7 +1751,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1718,7 +1786,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1751,7 +1821,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "warm_tossed"
+        "cold_mix"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1818,7 +1888,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1850,9 +1920,9 @@
       "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
-      "taste": "normal",
+      "taste": "light",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1918,7 +1988,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1942,18 +2012,17 @@
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [
-        "seafood"
-      ],
+      "protein_types": [],
       "vegetables": [
-        "蟹味菇"
+        "蟹味菇",
+        "蘑菇"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -1982,8 +2051,10 @@
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2014,7 +2085,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2046,7 +2119,7 @@
       "meal_components": [],
       "taste": "rich",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -2080,7 +2153,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -2095,16 +2168,18 @@
     },
     {
       "id": "dish_0064",
-      "name_cn": "芦笋百合",
-      "name_en": "Asparagus & Lily Bulb",
-      "category_id": "vegetable_mushroom",
+      "name_cn": "芦笋百合虾",
+      "name_en": "Asparagus & Lily Bulb &prawn",
+      "category_id": "protein_main",
       "meal_tags": [
         "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [],
+      "protein_types": [
+        "shrimp"
+      ],
       "vegetables": [
         "芦笋",
         "百合"
@@ -2113,49 +2188,15 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
       "ingredients": [
         "芦笋",
         "百合"
-      ],
-      "old_tags": [
-        "温热"
-      ],
-      "old_category": "vegetable"
-    },
-    {
-      "id": "dish_0065",
-      "name_cn": "洋葱炒鸡蛋",
-      "name_en": "Onion & Egg Stir-fry",
-      "category_id": "egg_tofu",
-      "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [
-        "egg"
-      ],
-      "vegetables": [
-        "洋葱"
-      ],
-      "vegetable_count": 1,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [
-        "stir_fried"
-      ],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "洋葱",
-        "鸡蛋"
       ],
       "old_tags": [
         "温热"
@@ -2182,7 +2223,7 @@
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -2214,7 +2255,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2245,7 +2288,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2293,6 +2338,7 @@
       "name_en": "Luffa Egg Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2307,7 +2353,10 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2322,15 +2371,17 @@
     },
     {
       "id": "dish_0071",
-      "name_cn": "丝瓜豆腐汤",
-      "name_en": "Luffa Tofu Soup",
+      "name_cn": "丝瓜豆腐鸡蛋汤",
+      "name_en": "Luffa Tofu Eggs Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
       "protein_types": [
+        "egg",
         "tofu"
       ],
       "vegetables": [
@@ -2340,7 +2391,10 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2359,6 +2413,7 @@
       "name_en": "Tomato, Mushroom & Bok Choy Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2367,13 +2422,16 @@
       "vegetables": [
         "小白菜",
         "番茄",
-        "白菜"
+        "白菜",
+        "蘑菇"
       ],
-      "vegetable_count": 3,
+      "vegetable_count": 4,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2427,19 +2485,24 @@
       "name_en": "Ham, Matsutake & Tofu Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": true,
       "protein_types": [
-        "tofu"
+        "tofu",
+        "none"
       ],
       "vegetables": [],
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2465,16 +2528,21 @@
       ],
       "banquet": false,
       "protein_types": [
+        "pork",
         "tofu"
       ],
       "vegetables": [
-        "淮山"
+        "淮山",
+        "枸杞叶",
+        "山药"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 3,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2491,10 +2559,11 @@
     },
     {
       "id": "dish_0076",
-      "name_cn": "莲藕鸡汤芹菜松茸",
+      "name_cn": "莲藕松茸芹菜粒鸡汤",
       "name_en": "Lotus Root Chicken Soup with Celery & Matsutake",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2504,15 +2573,20 @@
       ],
       "vegetables": [
         "莲藕",
-        "芹菜"
+        "芹菜",
+        "松茸"
       ],
-      "vegetable_count": 2,
+      "vegetable_count": 3,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
-      "custom_tags": [],
+      "custom_tags": [
+        "鸡汤"
+      ],
       "needs_review": false,
       "ingredients": [
         "莲藕",
@@ -2595,11 +2669,14 @@
       "name_en": "Luffa & Clam Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [],
+      "protein_types": [
+        "other_seafood"
+      ],
       "vegetables": [
         "丝瓜"
       ],
@@ -2607,7 +2684,10 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2622,7 +2702,7 @@
     },
     {
       "id": "dish_0080",
-      "name_cn": "西葫芦松茸肉丸汤",
+      "name_cn": "冬瓜松茸肉丸汤",
       "name_en": "Zucchini, Matsutake & Meatball Soup",
       "category_id": "soup",
       "meal_tags": [
@@ -2630,9 +2710,14 @@
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "protein_types": [
+        "pork"
+      ],
+      "vegetables": [
+        "冬瓜",
+        "松茸"
+      ],
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
@@ -2691,6 +2776,7 @@
       "name_en": "Zucchini Meatball Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2702,8 +2788,10 @@
       "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2722,6 +2810,7 @@
       "name_en": "Matsutake Chicken Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2729,12 +2818,17 @@
       "protein_types": [
         "chicken"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "松茸"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2782,52 +2876,30 @@
       "old_category": "soup"
     },
     {
-      "id": "dish_0085",
-      "name_cn": "丝瓜汤",
-      "name_en": "Luffa Soup",
-      "category_id": "soup",
-      "meal_tags": [
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [],
-      "vegetables": [
-        "丝瓜"
-      ],
-      "vegetable_count": 1,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "丝瓜"
-      ],
-      "old_tags": [
-        "温热"
-      ],
-      "old_category": "soup"
-    },
-    {
       "id": "dish_0086",
       "name_cn": "枸杞叶生滚汤",
       "name_en": "Goji Leaf Fresh Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
-      "protein_types": [],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "protein_types": [
+        "pork"
+      ],
+      "vegetables": [
+        "枸杞"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2876,6 +2948,7 @@
       "name_en": "Pumpkin & Tofu Clay Pot",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2890,7 +2963,10 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2902,35 +2978,6 @@
         "温热"
       ],
       "old_category": "soup"
-    },
-    {
-      "id": "dish_0089",
-      "name_cn": "16谷米饭/16谷粗粮饭",
-      "name_en": "16-Grain Rice",
-      "category_id": "staple_carb",
-      "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [],
-      "vegetables": [],
-      "vegetable_count": 0,
-      "carb_type": "coarse_grain",
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "16谷米"
-      ],
-      "old_tags": [
-        "粗粮"
-      ],
-      "old_category": "staple"
     },
     {
       "id": "dish_0090",
@@ -2979,7 +3026,9 @@
       "carb_type": "coarse_grain",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3024,7 +3073,7 @@
     },
     {
       "id": "dish_0093",
-      "name_cn": "二米饭",
+      "name_cn": "小米二米饭",
       "name_en": "Two-Grain Rice (Rice & Millet)",
       "category_id": "staple_carb",
       "meal_tags": [
@@ -3039,7 +3088,9 @@
       "carb_type": "coarse_grain",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3092,13 +3143,16 @@
       "banquet": false,
       "protein_types": [],
       "vegetables": [
-        "红薯"
+        "红薯",
+        "粗粮"
       ],
-      "vegetable_count": 1,
-      "carb_type": "tuber",
+      "vegetable_count": 2,
+      "carb_type": "coarse_grain",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3167,7 +3221,7 @@
       ],
       "taste": "normal",
       "cooking_methods": [
-        "steamed"
+        "steam"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -3184,8 +3238,8 @@
     },
     {
       "id": "dish_0098",
-      "name_cn": "小软面包",
-      "name_en": "Soft Bread Roll",
+      "name_cn": "酸种面包",
+      "name_en": "Sourdough Bread",
       "category_id": "staple_carb",
       "meal_tags": [
         "breakfast",
@@ -3196,14 +3250,18 @@
       "protein_types": [],
       "vegetables": [],
       "vegetable_count": 0,
-      "carb_type": "noodle",
+      "carb_type": "dim_sum",
       "meal_components": [
         "carb"
       ],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "other"
+      ],
       "can_serve_warm": false,
-      "custom_tags": [],
+      "custom_tags": [
+        "面包"
+      ],
       "needs_review": false,
       "ingredients": [
         "面包"
@@ -3228,7 +3286,9 @@
       "carb_type": "dim_sum",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "other"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3531,42 +3591,12 @@
       "old_category": "fruit_snack"
     },
     {
-      "id": "dish_0111",
-      "name_cn": "麦冬大麦茶",
-      "name_en": "Ophiopogon & Barley Tea",
-      "category_id": "fruit_snack",
-      "meal_tags": [
-        "breakfast",
-        "afternoon_snack"
-      ],
-      "banquet": false,
-      "protein_types": [],
-      "vegetables": [],
-      "vegetable_count": 0,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "麦冬",
-        "大麦"
-      ],
-      "old_tags": [
-        "温热"
-      ],
-      "old_category": "fruit_snack"
-    },
-    {
       "id": "dish_0112",
       "name_cn": "无糖酸奶",
       "name_en": "Sugar-free Yogurt",
       "category_id": "fruit_snack",
       "meal_tags": [
-        "breakfast",
-        "afternoon_snack"
+        "breakfast"
       ],
       "banquet": false,
       "protein_types": [],
@@ -3577,7 +3607,9 @@
       "taste": "normal",
       "cooking_methods": [],
       "can_serve_warm": false,
-      "custom_tags": [],
+      "custom_tags": [
+        "酸奶"
+      ],
       "needs_review": false,
       "ingredients": [
         "酸奶"
@@ -3594,20 +3626,22 @@
       "name_en": "Avocado Potato Salad → Warm Avocado Potato Mash",
       "category_id": "cold_dish",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
       "protein_types": [],
       "vegetables": [
-        "土豆"
+        "土豆",
+        "牛油果"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "cold_mixed"
+        "cold_mix"
       ],
       "can_serve_warm": true,
       "custom_tags": [],
@@ -3628,6 +3662,7 @@
       "name_en": "Marinated Okra → Warm Marinated Okra",
       "category_id": "cold_dish",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3640,7 +3675,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": true,
       "custom_tags": [],
       "needs_review": false,
@@ -3685,6 +3722,804 @@
         "需改造"
       ],
       "old_category": "cold_dish_reform"
+    },
+    {
+      "id": "dish_0116",
+      "name_cn": "韩式煎鸡蛋豆腐",
+      "name_en": "Korean Pan-Fried Egg Tofu",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "egg",
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fry"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0117",
+      "name_cn": "白菜豆腐汤",
+      "name_en": "Chinese Cabbage and Tofu Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg",
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0118",
+      "name_cn": "豆腐蒸蛋",
+      "name_en": "Steamed Egg with Tofu",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg",
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0119",
+      "name_cn": "火腿松茸味噌汤",
+      "name_en": "Ham and Matsutake Miso Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "pork",
+        "other"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil",
+        "stew"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [
+        "火腿",
+        "快手汤"
+      ],
+      "needs_review": false,
+      "ingredients": []
+    },
+    {
+      "id": "dish_0120",
+      "name_cn": "时蔬鳕鱼瘦肉粥",
+      "name_en": "Seasonal Vegetable, Cod & Lean Meat Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0121",
+      "name_cn": "藜麦蔬菜粥",
+      "name_en": "Quinoa & Vegetable Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0122",
+      "name_cn": "松茸粥",
+      "name_en": "Matsutake Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0123",
+      "name_cn": "藜麦牛肉粥",
+      "name_en": "Quinoa & Beef Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0124",
+      "name_cn": "南瓜山药小米粥",
+      "name_en": "Pumpkin, Yam & Millet Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0125",
+      "name_cn": "银鳕鱼淮山红萝卜松茸粥",
+      "name_en": "Cod, Chinese Yam, Carrot & Matsutake Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0126",
+      "name_cn": "淮山山药小米粥",
+      "name_en": "Chinese Yam & Millet Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0127",
+      "name_cn": "猪肉淮山粥",
+      "name_en": "Pork & Chinese Yam Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0128",
+      "name_cn": "鸡肉淮山粥",
+      "name_en": "Chicken & Chinese Yam Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0129",
+      "name_cn": "藜麦淮山粥",
+      "name_en": "Quinoa & Chinese Yam Porridge",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "porridge",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "粥底轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0130",
+      "name_cn": "水煮蛋",
+      "name_en": "Boiled Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0131",
+      "name_cn": "原味蒸鸡蛋",
+      "name_en": "Steamed Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0132",
+      "name_cn": "煎蛋",
+      "name_en": "Fried Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0133",
+      "name_cn": "红油辣椒蛋",
+      "name_en": "Chili Sauce Fried Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0134",
+      "name_cn": "松茸蒸蛋",
+      "name_en": "Steamed Egg with Matsutake",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0135",
+      "name_cn": "日式溏心蛋",
+      "name_en": "Japanese Soft-Boiled Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0136",
+      "name_cn": "温泉蛋",
+      "name_en": "Onsen Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0137",
+      "name_cn": "水波蛋",
+      "name_en": "Poached Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0138",
+      "name_cn": "太阳蛋",
+      "name_en": "Sunny Side Up Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0139",
+      "name_cn": "金银蛋炒虾仁",
+      "name_en": "Salted & Fresh Egg Stir-fried with Shrimp",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0140",
+      "name_cn": "番茄蘑菇蛋汤",
+      "name_en": "Tomato & Mushroom Egg Soup",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0141",
+      "name_cn": "日式玉子烧",
+      "name_en": "Japanese Tamagoyaki",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0142",
+      "name_cn": "鲜贝瑶柱滑蛋",
+      "name_en": "Scallop & Dried Scallops Scrambled Egg",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0143",
+      "name_cn": "茶碗蒸",
+      "name_en": "Chawanmushi",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0144",
+      "name_cn": "韭菜炒蛋",
+      "name_en": "Chive & Egg Stir-fry",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0145",
+      "name_cn": "蕃茄炒鸡蛋",
+      "name_en": "Tomato & Egg Stir-fry",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
+    },
+    {
+      "id": "dish_0146",
+      "name_cn": "丝瓜焖荷包蛋",
+      "name_en": "Luffa & Poached Egg Stew",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [
+        "鸡蛋做法轮换"
+      ],
+      "needs_review": true
     }
   ],
   "custom_tags_def": [
@@ -3697,137 +4532,5 @@
     {
       "label": "Toby喜欢"
     }
-  ],
-  "rotation_pools": {
-    "porridge": {
-      "description": "粥底轮换池（仅限以下10款，不额外添加）",
-      "rule": "淮山粥不连续使用，需与非淮山粥交替轮换",
-      "items": [
-        {
-          "zh": "时蔬鳕鱼瘦肉粥",
-          "en": "Seasonal Vegetable, Cod & Lean Meat Porridge",
-          "has_yam": false
-        },
-        {
-          "zh": "藜麦蔬菜粥",
-          "en": "Quinoa & Vegetable Porridge",
-          "has_yam": false
-        },
-        {
-          "zh": "松茸粥",
-          "en": "Matsutake Porridge",
-          "has_yam": false
-        },
-        {
-          "zh": "藜麦牛肉粥",
-          "en": "Quinoa & Beef Porridge",
-          "has_yam": false
-        },
-        {
-          "zh": "南瓜山药小米粥",
-          "en": "Pumpkin, Yam & Millet Porridge",
-          "has_yam": false
-        },
-        {
-          "zh": "银鳕鱼淮山红萝卜松茸粥",
-          "en": "Cod, Chinese Yam, Carrot & Matsutake Porridge",
-          "has_yam": true
-        },
-        {
-          "zh": "淮山山药小米粥",
-          "en": "Chinese Yam & Millet Porridge",
-          "has_yam": true
-        },
-        {
-          "zh": "猪肉淮山粥",
-          "en": "Pork & Chinese Yam Porridge",
-          "has_yam": true
-        },
-        {
-          "zh": "鸡肉淮山粥",
-          "en": "Chicken & Chinese Yam Porridge",
-          "has_yam": true
-        },
-        {
-          "zh": "藜麦淮山粥",
-          "en": "Quinoa & Chinese Yam Porridge",
-          "has_yam": true
-        }
-      ]
-    },
-    "egg_styles": {
-      "description": "鸡蛋做法轮换池",
-      "rule": "每天换不同做法，不连续重复",
-      "items": [
-        {
-          "zh": "水煮蛋",
-          "en": "Boiled Egg"
-        },
-        {
-          "zh": "原味蒸鸡蛋",
-          "en": "Steamed Egg"
-        },
-        {
-          "zh": "煎蛋",
-          "en": "Fried Egg"
-        },
-        {
-          "zh": "红油辣椒蛋",
-          "en": "Chili Sauce Fried Egg"
-        },
-        {
-          "zh": "松茸蒸蛋",
-          "en": "Steamed Egg with Matsutake"
-        },
-        {
-          "zh": "日式溏心蛋",
-          "en": "Japanese Soft-Boiled Egg"
-        },
-        {
-          "zh": "温泉蛋",
-          "en": "Onsen Egg"
-        },
-        {
-          "zh": "水波蛋",
-          "en": "Poached Egg"
-        },
-        {
-          "zh": "太阳蛋",
-          "en": "Sunny Side Up Egg"
-        },
-        {
-          "zh": "金银蛋炒虾仁",
-          "en": "Salted & Fresh Egg Stir-fried with Shrimp"
-        },
-        {
-          "zh": "番茄蘑菇蛋汤",
-          "en": "Tomato & Mushroom Egg Soup"
-        },
-        {
-          "zh": "日式玉子烧",
-          "en": "Japanese Tamagoyaki"
-        },
-        {
-          "zh": "鲜贝瑶柱滑蛋",
-          "en": "Scallop & Dried Scallops Scrambled Egg"
-        },
-        {
-          "zh": "茶碗蒸",
-          "en": "Chawanmushi"
-        },
-        {
-          "zh": "韭菜炒蛋",
-          "en": "Chive & Egg Stir-fry"
-        },
-        {
-          "zh": "蕃茄炒鸡蛋",
-          "en": "Tomato & Egg Stir-fry"
-        },
-        {
-          "zh": "丝瓜焖荷包蛋",
-          "en": "Luffa & Poached Egg Stew"
-        }
-      ]
-    }
-  }
+  ]
 }

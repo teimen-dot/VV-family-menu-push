@@ -95,10 +95,6 @@
     "file": "luffa_poached_egg_stew.jpg",
     "uploaded": "2026-07-29"
   },
-  "洋葱炒鸡蛋": {
-    "file": "onion_egg_stirfry.jpg",
-    "uploaded": "2026-07-29"
-  },
   "紫菜蛋花汤": {
     "file": "seaweed_egg_drop_soup.jpg",
     "uploaded": "2026-07-29"
@@ -201,6 +197,374 @@
   },
   "藜麦牛肉粥": {
     "file": "quinoa_beef_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "藜麦蔬菜粥": {
+    "file": "quinoa_vegetable_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "松茸粥": {
+    "file": "matsutake_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蒜香口蘑虾": {
+    "file": "garlic_mushroom_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蒜香黄油虾": {
+    "file": "garlic_butter_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "韩式煎鸡蛋豆腐": {
+    "file": "korean_panfried_egg_tofu.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "白菜豆腐汤": {
+    "file": "chinese_cabbage_and_tofu_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "豆腐蒸蛋": {
+    "file": "steamed_egg_with_tofu.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "枸杞芽炒口蘑": {
+    "file": "goji_berry_shoots_stirfried_mushrooms.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "葱油云南小瓜": {
+    "file": "scallion_oil_zucchini.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "小瓜肉丸汤": {
+    "file": "zucchini_meatball_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "小炒西兰花": {
+    "file": "stirfried_broccoli.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "碧翠揽芳华": {
+    "file": "emerald_beauty_platter.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "白灼芦笋": {
+    "file": "blanched_asparagus.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "牛油果土豆沙拉→温热牛油果土豆泥": {
+    "file": "avocado_potato_salad_warm_avocado_potato_mash.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "柠檬煎鸡腿肉": {
+    "file": "panfried_chicken_thigh_with_lemon.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "肉末空心菜": {
+    "file": "minced_meat_water_spinach.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "松茸鸡汤": {
+    "file": "matsutake_chicken_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "芦笋百合虾": {
+    "file": "asparagus_lily_bulb_prawn.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "炒冬瓜片": {
+    "file": "stirfried_winter_melon_slices.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "XO酱爆炒芥蓝": {
+    "file": "xo_sauce_stirfried_chinese_kale.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "捞汁秋葵→温热捞汁秋葵": {
+    "file": "marinated_okra_warm_marinated_okra.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "手撕茄子": {
+    "file": "handtorn_eggplant.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "枸杞叶生滚汤": {
+    "file": "goji_leaf_fresh_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒藕片": {
+    "file": "stirfried_lotus_root_slices.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "葱油拌舞茸（温热版）": {
+    "file": "scallion_oil_maitake_warm_version.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "南瓜豆腐煲": {
+    "file": "pumpkin_tofu_clay_pot.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "南瓜山药小米粥": {
+    "file": "pumpkin_yam_millet_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒小白菜": {
+    "file": "stirfried_bok_choy.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "麻婆豆腐": {
+    "file": "mapo_tofu.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "火腿松茸豆腐汤": {
+    "file": "ham_matsutake_tofu_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "火腿松茸味噌汤": {
+    "file": "ham_and_matsutake_miso_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "丝瓜豆腐鸡蛋汤": {
+    "file": "luffa_tofu_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "丝瓜蛤蜊汤": {
+    "file": "luffa_clam_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "排骨焖土豆": {
+    "file": "braised_pork_ribs_with_potatoes.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "葱香鸡腿肉": {
+    "file": "scallion_chicken_thigh.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "红烧鸡肉": {
+    "file": "braised_chicken.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "鲜松茸清炖去皮鸡肉": {
+    "file": "clear_stewed_skinless_chicken_with_fresh_matsutake.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "红椒鸡丁西葫芦": {
+    "file": "diced_chicken_with_zucchini_red_pepper.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "香煎澳洲和牛片": {
+    "file": "panfried_australian_wagyu_beef.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "葱姜生抽鸡丁": {
+    "file": "scallion_ginger_soy_diced_chicken.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸银鳕鱼": {
+    "file": "steamed_cod.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸新鲜鱼片": {
+    "file": "steamed_fresh_fish_fillet.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清蒸带子": {
+    "file": "steamed_scallops.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "金银蒜焗黑虎虾": {
+    "file": "garlic_baked_black_tiger_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蒜香虾": {
+    "file": "garlic_shrimp.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒豆苗": {
+    "file": "stirfried_pea_shoots.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "温拌莴笋丝": {
+    "file": "warm_tossed_shredded_celtuce.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "温拌莴笋片": {
+    "file": "warm_tossed_sliced_celtuce.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "灼西兰花": {
+    "file": "blanched_broccoli.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒西兰花": {
+    "file": "stirfried_broccoli.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒芦笋": {
+    "file": "stirfried_asparagus.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "温拌白萝卜丝": {
+    "file": "warm_tossed_shredded_white_radish.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "清炒空心菜": {
+    "file": "stirfried_water_spinach.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蒜蓉空心菜": {
+    "file": "garlic_water_spinach.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蒜蓉红苋菜": {
+    "file": "garlic_red_amaranth.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "温拌云南小瓜丝": {
+    "file": "warm_tossed_shredded_zucchini.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "炒蟹味菇": {
+    "file": "stirfried_brown_crab_mushroom.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "开胃萝卜丝": {
+    "file": "appetizer_shredded_radish.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "沙拉菜": {
+    "file": "salad_greens.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "番茄菌菇小白菜汤": {
+    "file": "tomato_mushroom_bok_choy_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "枸杞叶淮山肉丸豆腐滚汤": {
+    "file": "goji_leaf_yam_meatball_tofu_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "莲藕松茸芹菜粒鸡汤": {
+    "file": "lotus_root_chicken_soup_with_celery_matsutake.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "味噌汤": {
+    "file": "miso_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "小白菜松茸豆腐汤": {
+    "file": "bok_choy_matsutake_tofu_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "冬瓜松茸肉丸汤": {
+    "file": "zucchini_matsutake_meatball_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "西葫芦淮山豆腐松茸汤": {
+    "file": "zucchini_yam_tofu_matsutake_soup.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "白米混少量16谷饭": {
+    "file": "white_rice_mixed_with_16grain_rice.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "三色藜麦饭": {
+    "file": "tricolor_quinoa_rice.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "小米二米饭": {
+    "file": "twograin_rice_rice_millet.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "纯白米饭": {
+    "file": "white_rice.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "16谷粗粮饭（加新鲜莲子粒）": {
+    "file": "16grain_rice_with_fresh_lotus_seeds.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "香港红薯": {
+    "file": "hong_kong_sweet_potato.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "饭菜一锅蒸": {
+    "file": "onepot_steamed_rice_dishes.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "酸种面包": {
+    "file": "soft_bread_roll.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "小饭团": {
+    "file": "small_rice_balls.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "香蕉": {
+    "file": "banana.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "苹果": {
+    "file": "apple.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "奇异果": {
+    "file": "kiwi.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "车厘子": {
+    "file": "cherries.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "橙子": {
+    "file": "orange.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "橘子": {
+    "file": "mandarin_orange.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "水蜜桃": {
+    "file": "peach.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蓝莓+黑莓": {
+    "file": "blueberries_blackberries.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "熟核桃仁": {
+    "file": "roasted_walnuts.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "黑巧克力": {
+    "file": "dark_chocolate.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "无糖酸奶": {
+    "file": "sugarfree_yogurt.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "淮山山药小米粥": {
+    "file": "chinese_yam_millet_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "银鳕鱼淮山红萝卜松茸粥": {
+    "file": "cod_chinese_yam_carrot_matsutake_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "猪肉淮山粥": {
+    "file": "pork_chinese_yam_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "鸡肉淮山粥": {
+    "file": "chicken_chinese_yam_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "藜麦淮山粥": {
+    "file": "quinoa_chinese_yam_porridge.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "日式玉子烧": {
+    "file": "japanese_tamagoyaki.jpg",
     "uploaded": "2026-07-29"
   }
 }

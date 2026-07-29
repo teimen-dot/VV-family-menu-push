@@ -76,7 +76,7 @@ def generate_dish_id(pool):
 
 
 def get_all_dishes():
-    """返回所有菜品（普通菜品 + 轮换池），含照片信息"""
+    """返回所有菜品，含照片信息"""
     pool = load_dish_pool()
     manifest = load_manifest()
     categories = {c["id"]: c for c in pool.get("categories", [])}
@@ -110,51 +110,16 @@ def get_all_dishes():
             "can_serve_warm": dish.get("can_serve_warm", False),
             "custom_tags": dish.get("custom_tags", []),
             "needs_review": dish.get("needs_review", False),
-            "is_rotation": False,
-            "rotation_pool": None,
             "has_photo": has_photo,
             "photo_file": photo_file,
             "slug": slugify(dish.get("name_en", "")),
         })
 
-    # 轮换池菜品
-    for pool_key, pool_data in pool.get("rotation_pools", {}).items():
-        for item in pool_data.get("items", []):
-            zh = item.get("zh", "")
-            en = item.get("en", "")
-            has_photo = zh in manifest
-            photo_file = manifest.get(zh, {}).get("file", "") if has_photo else ""
-
-            result.append({
-                "id": None,
-                "name_cn": zh,
-                "name_en": en,
-                "category_id": f"rotation_{pool_key}",
-                "category_label": pool_data.get("description", pool_key),
-                "meal_tags": [],
-                "banquet": False,
-                "protein_types": [],
-                "vegetables": [],
-                "vegetable_count": 0,
-                "carb_type": None,
-                "meal_components": [],
-                "taste": "normal",
-                "cooking_methods": [],
-                "can_serve_warm": False,
-                "custom_tags": [],
-                "needs_review": False,
-                "is_rotation": True,
-                "rotation_pool": pool_key,
-                "has_photo": has_photo,
-                "photo_file": photo_file,
-                "slug": slugify(en),
-            })
-
     return result
 
 
 def get_categories():
-    """返回所有分类（含轮换池）"""
+    """返回所有分类"""
     pool = load_dish_pool()
     cats = []
     for c in pool.get("categories", []):
@@ -168,17 +133,6 @@ def get_categories():
             "dish_count": sum(1 for d in pool.get("dishes", []) if d.get("category_id") == c["id"]),
         })
     cats.sort(key=lambda c: c["order"])
-
-    for pool_key, pool_data in pool.get("rotation_pools", {}).items():
-        cats.append({
-            "id": f"rotation_{pool_key}",
-            "label_cn": pool_data.get("description", pool_key),
-            "label_en": "",
-            "order": 999,
-            "active": True,
-            "type": "rotation_pool",
-            "dish_count": len(pool_data.get("items", [])),
-        })
 
     return cats
 
@@ -378,7 +332,6 @@ body {
 .badge-meal { background: #fff3e0; color: #f97316; }
 .badge-banquet { background: #fce4ec; color: #e91e63; }
 .badge-review { background: #fff8e1; color: #ff9800; }
-.badge-rotation { background: #f3e5f5; color: #9c27b0; }
 .card-actions {
   display: flex;
   gap: 0;
@@ -740,8 +693,7 @@ body {
             <option value="porridge">粥</option>
             <option value="noodle">面</option>
             <option value="dim_sum">包点 / 饺子</option>
-            <option value="coarse_grain">粗粮</option>
-            <option value="tuber">薯类</option>
+            <option value="coarse_grain">粗粮（含薯类）</option>
             <option value="other">其他</option>
           </select>
         </div>
@@ -776,22 +728,6 @@ body {
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('editModal')">取消</button>
       <button class="btn-save" onclick="saveEdit()">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- Edit Rotation Modal -->
-<div class="modal-overlay" id="editRotationModal">
-  <div class="modal">
-    <h3>编辑轮换池菜品</h3>
-    <div class="modal-note">轮换池组件，仅支持修改名称</div>
-    <label>中文名</label>
-    <input type="text" id="editRotZh" placeholder="中文名">
-    <label>英文名</label>
-    <input type="text" id="editRotEn" placeholder="英文名">
-    <div class="modal-actions">
-      <button class="btn-cancel" onclick="closeModal('editRotationModal')">取消</button>
-      <button class="btn-save" onclick="saveEditRotation()">保存</button>
     </div>
   </div>
 </div>
@@ -882,7 +818,6 @@ let allCustomTags = [];
 let currentMealFilter = 'all';
 let currentCategoryFilter = 'all';
 let editingDish = null;
-let editingRotation = null;
 
 // ========== 初始化 ==========
 async function loadDishes() {
@@ -1013,7 +948,6 @@ function renderDishCard(d, idx) {
   }
   if (d.banquet) badges += '<span class="badge badge-banquet">家宴</span>';
   if (d.needs_review) badges += '<span class="badge badge-review">待审核</span>';
-  if (d.is_rotation) badges += '<span class="badge badge-rotation">轮换</span>';
 
   return '<div class="dish-card ' + (d.has_photo ? 'has-photo' : '') + '" data-idx="' + idx + '" data-slug="' + escAttr(d.slug) + '" data-name-cn="' + escAttr(d.name_cn) + '">' +
     '<div class="dish-photo-area" onclick="triggerUpload(this)" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(event,this)" ondrop="onDrop(event,this)">' +
@@ -1046,16 +980,11 @@ function renderAddCategories() {
 function openEditByIndex(idx) {
   const d = allDishes[idx];
   if (!d) return;
-  if (d.is_rotation) {
-    openEditRotationModal(d);
-  } else {
-    openEditModal(d);
-  }
+  openEditModal(d);
 }
 
 function openEditModal(d) {
   editingDish = d;
-  editingRotation = null;
 
   document.getElementById('editZh').value = d.name_cn;
   document.getElementById('editEn').value = d.name_en;
@@ -1083,14 +1012,6 @@ function openEditModal(d) {
 
   onCategoryChange();
   document.getElementById('editModal').classList.add('show');
-}
-
-function openEditRotationModal(d) {
-  editingDish = null;
-  editingRotation = d;
-  document.getElementById('editRotZh').value = d.name_cn;
-  document.getElementById('editRotEn').value = d.name_en;
-  document.getElementById('editRotationModal').classList.add('show');
 }
 
 function onCategoryChange() {
@@ -1178,38 +1099,7 @@ async function saveEdit() {
       throw new Error(result.error || '更新失败');
     }
   } catch(err) {
-    showToast('更新失败: ' + err.message, 'error');
-  }
-}
-
-async function saveEditRotation() {
-  const newZh = document.getElementById('editRotZh').value.trim();
-  const newEn = document.getElementById('editRotEn').value.trim();
-  if (!newZh || !newEn) { showToast('中英文名都不能为空', 'error'); return; }
-
-  try {
-    const resp = await fetch('/api/edit_dish', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: null,
-        rotation_pool: editingRotation.rotation_pool,
-        old_name_cn: editingRotation.name_cn,
-        name_cn: newZh, name_en: newEn
-      })
-    });
-    const result = await resp.json();
-    if (result.success) {
-      editingRotation.name_cn = newZh;
-      editingRotation.name_en = newEn;
-      editingRotation.slug = result.new_slug || slugify(newEn);
-      closeModal('editRotationModal');
-      render();
-      showToast('已更新：「' + newZh + '」', 'success');
-    } else {
-      throw new Error(result.error || '更新失败');
-    }
-  } catch(err) {
-    showToast('更新失败: ' + err.message, 'error');
+      showToast('更新失败: ' + err.message, 'error');
   }
 }
 
@@ -1256,7 +1146,7 @@ async function saveAdd() {
         protein_types: [], vegetables: [], vegetable_count: 0,
         carb_type: null, meal_components: [], taste: 'normal',
         cooking_methods: [], can_serve_warm: false, custom_tags: [],
-        needs_review: false, is_rotation: false, rotation_pool: null,
+        needs_review: false,
         has_photo: false, photo_file: '', slug: result.slug
       });
       closeModal('addModal');
@@ -1277,9 +1167,7 @@ function deleteByIndex(idx) {
   if (!d) return;
   if (!confirm('确定删除「' + d.name_cn + '」吗？\n如果有照片，照片也会一起删除。')) return;
 
-  const body = d.is_rotation
-    ? { id: null, rotation_pool: d.rotation_pool, name_cn: d.name_cn }
-    : { id: d.id, rotation_pool: null, name_cn: d.name_cn };
+  const body = { id: d.id, name_cn: d.name_cn };
 
   fetch('/api/delete_dish', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1573,7 +1461,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('show'); 
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    ['editModal','editRotationModal','addModal','categoryModal','tagModal'].forEach(id => closeModal(id));
+    ['editModal','addModal','categoryModal','tagModal'].forEach(id => closeModal(id));
   }
 });
 
@@ -1707,12 +1595,11 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         try:
             data = self._read_body()
             dish_id = data.get("id", "")
-            rotation_pool = data.get("rotation_pool", "")
 
             pool = load_dish_pool()
 
             if dish_id:
-                # 普通菜品 - 按 ID 查找
+                # 按 ID 查找
                 dish = None
                 for d in pool.get("dishes", []):
                     if d.get("id") == dish_id:
@@ -1765,37 +1652,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                     "photo_file": photo_file,
                 })
 
-            elif rotation_pool:
-                # 轮换池菜品 - 按旧名查找
-                old_name_cn = data.get("old_name_cn", "")
-                items = pool.get("rotation_pools", {}).get(rotation_pool, {}).get("items", [])
-                found = False
-                for item in items:
-                    if item.get("zh") == old_name_cn:
-                        new_zh = data.get("name_cn", "").strip()
-                        new_en = data.get("name_en", "").strip()
-                        old_zh = item.get("zh", "")
-                        item["zh"] = new_zh
-                        item["en"] = new_en
-                        found = True
-
-                        manifest = load_manifest()
-                        if old_zh != new_zh and old_zh in manifest:
-                            manifest[new_zh] = manifest.pop(old_zh)
-                            save_manifest(manifest)
-                        break
-
-                if not found:
-                    self._json_response(404, {"success": False, "error": f"轮换池菜品不存在: {old_name_cn}"})
-                    return
-
-                save_dish_pool(pool)
-                new_slug = slugify(data.get("name_en", ""))
-                print(f"  [OK] 编辑轮换池菜品: {old_name_cn} -> {data.get('name_cn')}")
-                self._json_response(200, {"success": True, "new_slug": new_slug})
-
             else:
-                self._json_response(400, {"success": False, "error": "缺少 id 或 rotation_pool"})
+                self._json_response(400, {"success": False, "error": "缺少 id"})
 
         except Exception as e:
             print(f"  [ERROR] 编辑失败: {e}")
@@ -1859,7 +1717,6 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         try:
             data = self._read_body()
             dish_id = data.get("id", "")
-            rotation_pool = data.get("rotation_pool", "")
             name_cn = data.get("name_cn", "")
 
             pool = load_dish_pool()
@@ -1893,36 +1750,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 print(f"  [OK] 删除菜品: {name_cn}")
                 self._json_response(200, {"success": True})
 
-            elif rotation_pool:
-                items = pool.get("rotation_pools", {}).get(rotation_pool, {}).get("items", [])
-                found = False
-                for i, item in enumerate(items):
-                    if item.get("zh") == name_cn:
-                        items.pop(i)
-                        found = True
-                        break
-
-                if not found:
-                    self._json_response(404, {"success": False, "error": f"轮换池菜品不存在: {name_cn}"})
-                    return
-
-                save_dish_pool(pool)
-
-                manifest = load_manifest()
-                if name_cn in manifest:
-                    photo_file = manifest[name_cn].get("file", "")
-                    if photo_file:
-                        photo_path = os.path.join(PHOTOS_DIR, photo_file)
-                        if os.path.exists(photo_path):
-                            os.remove(photo_path)
-                    del manifest[name_cn]
-                    save_manifest(manifest)
-
-                print(f"  [OK] 删除轮换池菜品: {name_cn}")
-                self._json_response(200, {"success": True})
-
             else:
-                self._json_response(400, {"success": False, "error": "缺少 id 或 rotation_pool"})
+                self._json_response(400, {"success": False, "error": "缺少 id"})
 
         except Exception as e:
             print(f"  [ERROR] 删除失败: {e}")
