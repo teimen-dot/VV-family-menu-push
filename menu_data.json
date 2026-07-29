@@ -32,28 +32,28 @@
     {
       "day": 2,
       "breakfast": {
-        "zh": "淮山山药小米粥 ＋ 松茸蒸鸡蛋 ＋ 香港红薯 ＋ 香蕉",
-        "en": "Chinese Yam & Millet Porridge + Steamed Egg with Matsutake + Hong Kong Sweet Potato + Banana"
+        "zh": "白米混少量16谷饭 ＋ 鸡肉淮山粥 ＋ 芦笋百合虾 ＋ 豆芽炒肉丝 ＋ 蓝莓+黑莓",
+        "en": "White Rice mixed with 16-Grain Rice + Chicken & Chinese Yam Porridge + Asparagus & Lily Bulb &prawn + Stir-Fried Bean Sprouts with Shredded Pork + Blueberries & Blackberries"
       },
       "lunch": {
-        "zh": "白米混少量16谷饭 ＋ 排骨焖土豆 ＋ 灼西兰花 / 清炒西兰花 ＋ 火腿松茸豆腐汤",
-        "en": "White Rice mixed with 16-Grain Rice + Braised Pork Ribs with Potatoes + Blanched / Stir-fried Broccoli + Ham, Matsutake & Tofu Soup"
+        "zh": "凉拌鸡丝配牛油果 ＋ 小米二米饭 ＋ 蒜蓉空心菜",
+        "en": "Chilled Shredded Chicken with Avocado + Two-Grain Rice (Rice & Millet) + Garlic Water Spinach"
       },
       "afternoon_snack": {
-        "zh": "蓝莓 + 黑莓",
-        "en": "Blueberries & Blackberries"
+        "zh": "黑巧克力 ＋ 车厘子",
+        "en": "Dark Chocolate + Cherries"
       },
       "dinner": {
-        "zh": "三色藜麦饭 ＋ 鲜松茸清炖去皮鸡肉 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤",
-        "en": "Tri-color Quinoa Rice + Clear Stewed Skinless Chicken with Fresh Matsutake + Warm Tossed Shredded/Sliced Celtuce + Tomato, Mushroom & Bok Choy Soup / Tomato, Mushroom & Tofu Soup"
+        "zh": "杂蔬虾仁藜麦炒饭 ＋ 丝瓜鸡蛋汤 ＋ 温拌白萝卜丝 ＋ 酱油腌青紫苏 ＋ 温拌云南小瓜丝",
+        "en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables + Luffa Egg Soup + Warm Tossed Shredded White Radish + Soy-Marinated Green Shiso Leaves + Warm Tossed Shredded Zucchini"
       },
       "late_night": {
         "zh": "无需安排",
         "en": "No arrangement needed"
       },
       "notes": {
-        "zh": "温拌菜必须温热",
-        "en": "Warm tossed dishes must be served warm"
+        "zh": "凉拌菜属生冷；含生冷食物；温拌菜必须温热",
+        "en": "凉拌菜属生冷；含生冷食物；温拌菜必须温热"
       }
     },
     {

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家庭菜单 Day 2 | 07月29日</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: #f0ede8; padding: 24px 16px; color: #2c2c2c; line-height: 1.7;
+}
+.container {
+    max-width: 480px; margin: 0 auto; background: #fffdf9;
+    border-radius: 6px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+}
+
+/* ---- 杂志风格页头 ---- */
+.header {
+    text-align: center; padding: 40px 24px 32px;
+    border-bottom: 1px solid #e8e2d8;
+}
+.header .main-title {
+    font-family: 'Georgia', 'Songti SC', 'STSong', serif;
+    font-size: 32px; font-weight: 700; color: #1a1a1a;
+    letter-spacing: 8px; margin-bottom: 8px;
+}
+.header .sub-title {
+    font-family: 'Georgia', 'Times New Roman', serif;
+    font-size: 15px; font-style: italic; color: #999;
+    letter-spacing: 2px; margin-bottom: 16px;
+}
+.header .date-line {
+    font-size: 13px; color: #888; letter-spacing: 1px;
+    margin-bottom: 20px;
+}
+.header .divider {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.header .divider .line {
+    width: 60px; height: 1px; background: #d4cec3;
+}
+.header .divider .dot {
+    width: 5px; height: 5px; border-radius: 50%; display: inline-block;
+}
+.header .divider .dot:nth-child(2) { background: #E8A87C; }
+.header .divider .dot:nth-child(4) { background: #C38D9E; }
+.header .divider .dot:nth-child(6) { background: #85B79D; }
+
+/* ---- 餐次区块 ---- */
+.meal {
+    padding: 24px 24px; border-bottom: 1px solid #f0ebe3;
+}
+.meal:last-of-type { border-bottom: none; }
+.meal-header {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+}
+.meal-header .bar {
+    width: 4px; height: 20px; border-radius: 2px;
+}
+.meal-header .meal-zh {
+    font-size: 17px; font-weight: 600; color: #333;
+}
+.meal-header .meal-en {
+    font-size: 12px; color: #bbb; font-style: italic; margin-left: auto;
+}
+.photos {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;
+}
+.photos img {
+    width: 96px; height: 96px; border-radius: 6px; object-fit: cover;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+.dish-zh {
+    font-size: 15px; font-weight: 500; color: #2c2c2c; margin-bottom: 3px;
+    line-height: 1.5;
+}
+.dish-en {
+    font-size: 12px; color: #aaa; font-style: italic; line-height: 1.4;
+}
+
+/* ---- 备注与页脚 ---- */
+.notes {
+    background: #faf6ee; padding: 14px 24px; font-size: 12px; color: #9c8b6f;
+    border-top: 1px solid #f0ebe3;
+}
+.footer {
+    text-align: center; padding: 20px; font-size: 11px; color: #ccc;
+    background: #fffdf9;
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="main-title">家庭菜单</div>
+        <div class="sub-title">Family Table &middot; Day 2</div>
+        <div class="date-line">2026.07.29 星期三</div>
+        <div class="divider">
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
+            <span class="dot"></span>
+            <span class="line"></span>
+        </div>
+    </div>
+    <div class="meal">
+        <div class="meal-header">
+            <span class="bar" style="background:#E8A87C"></span>
+            <span class="meal-zh">早餐</span>
+            <span class="meal-en">Breakfast</span>
+        </div>
+        <div class="photos"><img src="photos/white_rice_mixed_with_16grain_rice.jpg" loading="lazy"><img src="photos/chicken_chinese_yam_porridge.jpg" loading="lazy"><img src="photos/asparagus_lily_bulb_prawn.jpg" loading="lazy"><img src="photos/stirfried_bean_sprouts_with_shredded_pork.jpg" loading="lazy"><img src="photos/blueberries_blackberries.jpg" loading="lazy"></div>
+        <div class="dish-zh">白米混少量16谷饭 ＋ 鸡肉淮山粥 ＋ 芦笋百合虾 ＋ 豆芽炒肉丝 ＋ 蓝莓+黑莓</div>
+        <div class="dish-en">White Rice mixed with 16-Grain Rice + Chicken & Chinese Yam Porridge + Asparagus & Lily Bulb &prawn + Stir-Fried Bean Sprouts with Shredded Pork + Blueberries & Blackberries</div>
+    </div>
+    <div class="meal">
+        <div class="meal-header">
+            <span class="bar" style="background:#C38D9E"></span>
+            <span class="meal-zh">午餐</span>
+            <span class="meal-en">Lunch</span>
+        </div>
+        <div class="photos"><img src="photos/chilled_shredded_chicken_with_avocado.jpg" loading="lazy"><img src="photos/twograin_rice_rice_millet.jpg" loading="lazy"><img src="photos/garlic_water_spinach.jpg" loading="lazy"></div>
+        <div class="dish-zh">凉拌鸡丝配牛油果 ＋ 小米二米饭 ＋ 蒜蓉空心菜</div>
+        <div class="dish-en">Chilled Shredded Chicken with Avocado + Two-Grain Rice (Rice & Millet) + Garlic Water Spinach</div>
+    </div>
+    <div class="meal">
+        <div class="meal-header">
+            <span class="bar" style="background:#85B79D"></span>
+            <span class="meal-zh">下午茶</span>
+            <span class="meal-en">Afternoon Snack</span>
+        </div>
+        <div class="photos"><img src="photos/dark_chocolate.jpg" loading="lazy"><img src="photos/cherries.jpg" loading="lazy"></div>
+        <div class="dish-zh">黑巧克力 ＋ 车厘子</div>
+        <div class="dish-en">Dark Chocolate + Cherries</div>
+    </div>
+    <div class="meal">
+        <div class="meal-header">
+            <span class="bar" style="background:#7C9EB2"></span>
+            <span class="meal-zh">晚餐</span>
+            <span class="meal-en">Dinner</span>
+        </div>
+        <div class="photos"><img src="photos/quinoa_fried_rice_with_shrimp_and_mixed_vegetables.jpg" loading="lazy"><img src="photos/luffa_egg_soup.jpg" loading="lazy"><img src="photos/warm_tossed_shredded_white_radish.jpg" loading="lazy"><img src="photos/soymarinated_green_shiso_leaves.jpg" loading="lazy"><img src="photos/warm_tossed_shredded_zucchini.jpg" loading="lazy"></div>
+        <div class="dish-zh">杂蔬虾仁藜麦炒饭 ＋ 丝瓜鸡蛋汤 ＋ 温拌白萝卜丝 ＋ 酱油腌青紫苏 ＋ 温拌云南小瓜丝</div>
+        <div class="dish-en">Quinoa Fried Rice with Shrimp and Mixed Vegetables + Luffa Egg Soup + Warm Tossed Shredded White Radish + Soy-Marinated Green Shiso Leaves + Warm Tossed Shredded Zucchini</div>
+    </div>
+    <div class="notes">📌 凉拌菜属生冷；含生冷食物；温拌菜必须温热</div>
+    <div class="footer">由家庭菜单管家 AI 缺口补充法生成 · Generated by Gap-Filler Engine</div>
+</div>
+</body>
+</html>

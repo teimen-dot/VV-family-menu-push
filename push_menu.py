@@ -66,8 +66,8 @@ def find_meal_photos(zh_meal_str, manifest, github_raw_base):
                 photo_file = manifest[candidate].get("file", "")
                 if photo_file and photo_file not in seen_files:
                     photos.append(
-                        f"<img src='{github_raw_base}/photos/{photo_file}' width='160' "
-                        f"style='border-radius:8px;object-fit:cover;aspect-ratio:1/1;'>"
+                        f"<img src='{github_raw_base}/photos/{photo_file}' width='100%' "
+                        f"style='border-radius:6px;object-fit:cover;aspect-ratio:1/1;'>"
                     )
                     seen_files.add(photo_file)
                     break
@@ -99,8 +99,8 @@ def get_seasonal_tips(tips_data, month):
 
 
 def format_menu_message(menu_entry, day_number, tips, config, manifest):
-    """格式化菜单为 Markdown 消息（含分隔线和照片）"""
-    today_str = date.today().strftime("%Y年%m月%d日")
+    """格式化菜单为 HTML 消息（杂志风格 + iPhone 适配）"""
+    today_str = date.today().strftime("%Y.%m.%d")
 
     # 根据 cook_language 决定语言排序
     cook_lang = config.get("cook_language", "zh")
@@ -112,82 +112,121 @@ def format_menu_message(menu_entry, day_number, tips, config, manifest):
         "https://raw.githubusercontent.com/teimen-dot/VV-family-menu-push/main",
     )
 
+    # 星期几中文
+    weekday_zh = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][date.today().weekday()]
+
     lines = []
-    lines.append(f"# 🍽️ 家庭菜单 | Day {day_number} | {today_str}")
-    lines.append("")
+
+    # ========== 杂志风格页头 ==========
+    lines.append("<div style='font-family:-apple-system,BlinkMacSystemFont,\"PingFang SC\",\"Helvetica Neue\",sans-serif;max-width:680px;margin:0 auto;padding:18px 16px;background:#faf7f2;color:#3a3530;'>")
+
+    # 顶部装饰横线
+    lines.append("<div style='display:flex;align-items:center;gap:10px;margin-bottom:8px;'>")
+    lines.append("<div style='width:24px;height:1px;background:#b8a89a;'></div>")
+    lines.append("<div style='font-size:10px;letter-spacing:3px;color:#b8a89a;text-transform:uppercase;'>FAMILY MENU</div>")
+    lines.append("<div style='flex:1;height:1px;background:#b8a89a;'></div>")
+    lines.append("</div>")
+
+    # 主标题区
+    lines.append("<div style='text-align:center;padding:14px 0 6px;'>")
+    lines.append(f"<div style='font-family:Georgia,serif;font-size:30px;font-weight:300;color:#2c2620;letter-spacing:8px;line-height:1.2;'>家庭菜单</div>")
+    lines.append(f"<div style='font-family:Georgia,serif;font-style:italic;font-size:14px;color:#9a8a7a;margin-top:4px;letter-spacing:1px;'>Family Table &middot; Day {day_number}</div>")
+    lines.append(f"<div style='font-size:12px;color:#a89888;margin-top:8px;letter-spacing:2px;'>{today_str} &nbsp;·&nbsp; {weekday_zh}</div>")
+    lines.append("</div>")
+
+    # 底部装饰
+    lines.append("<div style='display:flex;justify-content:center;gap:6px;margin:6px 0 18px;'>")
+    lines.append("<div style='width:5px;height:5px;border-radius:50%;background:#c4a87c;'></div>")
+    lines.append("<div style='width:5px;height:5px;border-radius:50%;background:#a89878;'></div>")
+    lines.append("<div style='width:5px;height:5px;border-radius:50%;background:#c4a87c;'></div>")
+    lines.append("</div>")
 
     meals = [
-        ("🌅 早餐 Breakfast", "breakfast"),
-        ("☀️ 午餐 Lunch", "lunch"),
-        ("🍵 下午茶/加餐 Afternoon Snack", "afternoon_snack"),
-        ("🌙 晚餐 Dinner", "dinner"),
-        ("😴 夜宵/睡前调理 Late Night", "late_night"),
+        ("早", "Breakfast", "breakfast", "#c9a876"),
+        ("午", "Lunch", "lunch", "#a89878"),
+        ("茶", "Afternoon Snack", "afternoon_snack", "#9a9080"),
+        ("晚", "Dinner", "dinner", "#7a6a5a"),
     ]
 
-    for emoji_label, meal_key in meals:
+    for zh_label, en_label, meal_key, color in meals:
         meal = menu_entry.get(meal_key, {})
         zh = meal.get("zh", "")
         en = meal.get("en", "")
 
-        lines.append(f"## {emoji_label}")
+        # 餐次区块开始
+        lines.append("<div style='margin:14px 0;'>")
+
+        # 餐次标题（彩色竖条 + 中文大字 + 英文斜体小字）
+        lines.append("<div style='display:flex;align-items:baseline;gap:10px;border-left:3px solid " + color + ";padding-left:10px;margin-bottom:8px;'>")
+        lines.append(f"<div style='font-family:Georgia,serif;font-size:20px;font-weight:400;color:#2c2620;letter-spacing:4px;'>{zh_label}</div>")
+        lines.append(f"<div style='font-family:Georgia,serif;font-style:italic;font-size:11px;color:#a89888;letter-spacing:1px;'>{en_label}</div>")
+        lines.append("</div>")
 
         if not zh or zh == "无需安排":
-            lines.append("无需安排 | No arrangement needed")
+            lines.append("<div style='font-size:13px;color:#a89888;font-style:italic;padding:6px 0 6px 14px;'>无需安排 / No arrangement needed</div>")
         else:
-            # 收集一餐中所有有照片的菜品，横向排列在文字上方
+            # 收集一餐中所有有照片的菜品，2列网格
             photo_htmls = find_meal_photos(zh, manifest, github_raw_base)
             if photo_htmls:
                 lines.append(
-                    "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;'>"
+                    "<div style='display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin:6px 0 10px;'>"
                 )
                 for ph in photo_htmls:
                     lines.append(ph)
                 lines.append("</div>")
 
+            # 菜品文字（小字号+宽松行距）
             if zh_first:
-                lines.append(f"**{zh}**")
+                lines.append(f"<div style='font-size:14px;color:#3a3530;line-height:1.75;padding-left:14px;letter-spacing:0.3px;'>{zh}</div>")
                 if en:
-                    lines.append(f"*{en}*")
+                    lines.append(f"<div style='font-size:11px;color:#a89888;font-style:italic;line-height:1.6;padding:2px 0 0 14px;letter-spacing:0.5px;'>{en}</div>")
             else:
                 if en:
-                    lines.append(f"**{en}**")
-                lines.append(f"*{zh}*")
+                    lines.append(f"<div style='font-size:14px;color:#3a3530;line-height:1.75;padding-left:14px;'>{en}</div>")
+                lines.append(f"<div style='font-size:11px;color:#a89888;font-style:italic;line-height:1.6;padding:2px 0 0 14px;'>{zh}</div>")
 
-        # 餐次间分隔线
-        lines.append("")
-        lines.append("---")
-        lines.append("")
+        lines.append("</div>")
 
     # 当日备注
     notes = menu_entry.get("notes", {})
     notes_zh = notes.get("zh", "")
     has_notes = notes_zh and notes_zh not in ["无", ""]
     if has_notes:
-        lines.append("## 📌 当日备注 Notes")
-        lines.append(f"{'**' + notes_zh + '**' if zh_first else '*' + notes_zh + '*'}")
-        if notes.get("en"):
-            lines.append(f"*{notes['en']}*")
-        lines.append("")
+        lines.append("<div style='margin:14px 0;padding:10px 14px;background:#f4ede0;border-radius:4px;'>")
+        lines.append(f"<div style='font-size:10px;letter-spacing:3px;color:#a89888;margin-bottom:4px;'>NOTES</div>")
+        if zh_first:
+            lines.append(f"<div style='font-size:13px;color:#5a5048;line-height:1.6;'>{notes_zh}</div>")
+            if notes.get("en"):
+                lines.append(f"<div style='font-size:10px;color:#a89888;font-style:italic;margin-top:3px;'>{notes['en']}</div>")
+        else:
+            if notes.get("en"):
+                lines.append(f"<div style='font-size:13px;color:#5a5048;line-height:1.6;'>{notes['en']}</div>")
+            lines.append(f"<div style='font-size:10px;color:#a89888;font-style:italic;margin-top:3px;'>{notes_zh}</div>")
+        lines.append("</div>")
 
     # 时令建议
     if tips:
-        lines.append("## 🌿 时令饮食建议 Seasonal Tips")
+        lines.append("<div style='margin:14px 0;padding:10px 14px;background:#eef0e8;border-radius:4px;'>")
+        lines.append(f"<div style='font-size:10px;letter-spacing:3px;color:#889078;margin-bottom:4px;'>SEASONAL TIPS</div>")
         for tip in tips:
             tip_zh = tip.get("zh", "")
             tip_en = tip.get("en", "")
             if zh_first:
-                lines.append(f"- {tip_zh}")
+                lines.append(f"<div style='font-size:12px;color:#5a5a48;line-height:1.7;'>· {tip_zh}</div>")
                 if tip_en:
-                    lines.append(f"  *{tip_en}*")
+                    lines.append(f"<div style='font-size:10px;color:#9a9a88;font-style:italic;margin:1px 0 4px 14px;'>{tip_en}</div>")
             else:
                 if tip_en:
-                    lines.append(f"- {tip_en}")
-                lines.append(f"  *{tip_zh}*")
-        lines.append("")
+                    lines.append(f"<div style='font-size:12px;color:#5a5a48;line-height:1.7;'>· {tip_en}</div>")
+                lines.append(f"<div style='font-size:10px;color:#9a9a88;font-style:italic;margin:1px 0 4px 14px;'>{tip_zh}</div>")
+        lines.append("</div>")
 
     # 页脚
-    lines.append("---")
-    lines.append("📱 由家庭菜单管家自动推送 | Auto-pushed by Family Menu Manager")
+    lines.append("<div style='text-align:center;padding:10px 0 0;border-top:1px solid #e8e0d4;margin-top:14px;'>")
+    lines.append("<div style='font-size:10px;color:#b8a898;letter-spacing:2px;'>家庭菜单管家 · AUTO-PUSHED</div>")
+    lines.append("</div>")
+
+    lines.append("</div>")
 
     return "\n".join(lines)
 
