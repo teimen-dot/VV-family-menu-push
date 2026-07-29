@@ -59,20 +59,20 @@
     {
       "day": 3,
       "breakfast": {
-        "zh": "南瓜山药小米粥 ＋ 原味蒸鸡蛋 / 煮鸡蛋 ＋ 香港红薯 ＋ 苹果",
-        "en": "Pumpkin, Yam & Millet Porridge + Steamed / Boiled Egg + Hong Kong Sweet Potato + Apple"
+        "zh": "南瓜山药小米粥 ＋ 鱼子酱溏心蛋 ＋ 香港红薯 ＋ 苹果",
+        "en": "Pumpkin, Yam & Millet Porridge + Soft-Boiled Egg with Caviar + Hong Kong Sweet Potato + Apple"
       },
       "lunch": {
-        "zh": "16谷米饭 / 16谷粗粮饭 ＋ 番茄土豆牛肉片 ＋ 温拌白萝卜丝 ＋ 枸杞叶淮山肉丸豆腐滚汤",
-        "en": "16-Grain Rice + Tomato, Potato & Sliced Beef + Warm Tossed Shredded White Radish + Goji Leaf, Yam, Meatball & Tofu Soup"
+        "zh": "16谷粗粮饭（加新鲜莲子粒） ＋ 肥牛金针菇卷 ＋ 温拌白萝卜丝 ＋ 紫菜虾米豆腐汤",
+        "en": "16-Grain Rice (with Fresh Lotus Seeds) + Beef & Enoki Mushroom Rolls + Warm Tossed Shredded White Radish + Seaweed & Dried Shrimp Tofu Soup"
       },
       "afternoon_snack": {
         "zh": "无糖酸奶（生冷） ＋ 麦冬大麦茶",
         "en": "Sugar-free Yogurt (Cold) + Ophiopogon & Barley Tea"
       },
       "dinner": {
-        "zh": "二米饭 ＋ 葱香鸡腿肉 ＋ 灼西兰花 / 清炒西兰花 ＋ 味噌汤",
-        "en": "Two-Grain Rice (Rice & Millet) + Scallion Chicken Thigh + Blanched / Stir-fried Broccoli + Miso Soup"
+        "zh": "小米二米饭 ＋ 葱香鸡腿肉 ＋ 灼西兰花 / 清炒西兰花 ＋ 白萝卜炖鸡汤",
+        "en": "Two-Grain Rice (Rice & Millet) + Scallion Chicken Thigh + Blanched / Stir-fried Broccoli + White Radish Chicken Soup"
       },
       "late_night": {
         "zh": "无需安排",
