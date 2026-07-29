@@ -3,7 +3,7 @@
     "version": "2.0",
     "last_updated": "2026-07-29",
     "description": "家庭菜单管家 - 菜谱数据库 v2.0。结构化字段支持 AI 配餐。",
-    "total_dishes": 164
+    "total_dishes": 178
   },
   "categories": [
     {
@@ -4524,7 +4524,7 @@
     },
     {
       "id": "dish_0147",
-      "name_cn": "凉拌豆腐牛油果",
+      "name_cn": "酱油凉拌豆腐牛油果",
       "name_en": "Chilled Tofu and Avocado Salad",
       "category_id": "cold_dish",
       "meal_tags": [
@@ -4536,15 +4536,17 @@
       "protein_types": [
         "tofu"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "牛油果"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "light",
       "cooking_methods": [
         "cold_mix"
       ],
-      "can_serve_warm": false,
+      "can_serve_warm": true,
       "custom_tags": [],
       "needs_review": false
     },
@@ -4580,6 +4582,7 @@
       "name_en": "Chilled Shredded Chicken with Avocado",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4587,8 +4590,10 @@
       "protein_types": [
         "chicken"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "牛油果"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
@@ -4621,7 +4626,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4633,6 +4638,7 @@
       "name_en": "Pan-Fried Tofu Cubes",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4646,7 +4652,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "pan_fried"
+        "pan_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4696,7 +4702,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4708,18 +4714,24 @@
       "name_en": "Chicken Soup with Matsutake, Bamboo Fungus and Mixed Mushrooms",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
+        "lunch",
         "dinner"
       ],
       "banquet": true,
       "protein_types": [
         "chicken"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "松茸",
+        "竹荪"
+      ],
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
+        "boil",
         "stew"
       ],
       "can_serve_warm": false,
@@ -4747,7 +4759,7 @@
       "meal_components": [],
       "taste": "spicy",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4759,6 +4771,7 @@
       "name_en": "Seaweed, Dried Shrimp and Tofu Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4766,13 +4779,16 @@
       "protein_types": [
         "tofu"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "紫菜"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "boil"
+        "boil",
+        "stew"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4790,6 +4806,7 @@
       ],
       "banquet": false,
       "protein_types": [
+        "chicken",
         "tofu"
       ],
       "vegetables": [
@@ -4802,13 +4819,13 @@
       "cooking_methods": [
         "cold_mix"
       ],
-      "can_serve_warm": false,
+      "can_serve_warm": true,
       "custom_tags": [],
       "needs_review": false
     },
     {
       "id": "dish_0158",
-      "name_cn": "红烧豆腐包",
+      "name_cn": "红烧豆腐煲",
       "name_en": "Braised Tofu Parcels",
       "category_id": "protein_main",
       "meal_tags": [
@@ -4823,9 +4840,9 @@
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
-      "taste": "normal",
+      "taste": "spicy",
       "cooking_methods": [
-        "simmer"
+        "boil"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4863,6 +4880,7 @@
       "name_en": "Tofu and Green Vegetable Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4890,6 +4908,7 @@
       "name_en": "Braised Tofu with Chinese Cabbage",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4898,9 +4917,10 @@
         "tofu"
       ],
       "vegetables": [
-        "白菜"
+        "白菜",
+        "小白菜"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "light",
@@ -4926,9 +4946,11 @@
         "egg"
       ],
       "vegetables": [
-        "西兰花"
+        "西兰花",
+        "番茄",
+        "西红柿"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 3,
       "carb_type": null,
       "meal_components": [],
       "taste": "light",
@@ -4953,13 +4975,16 @@
       "protein_types": [
         "pork"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "菌菇",
+        "蘑菇"
+      ],
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -4971,6 +4996,7 @@
       "name_en": "Chicken Soup with White Radish",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4978,12 +5004,15 @@
       "protein_types": [
         "chicken"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "白萝卜"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
+        "boil",
         "stew"
       ],
       "can_serve_warm": false,
@@ -5010,7 +5039,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5022,6 +5051,7 @@
       "name_en": "Soy-Marinated Green Shiso Leaves",
       "category_id": "vegetable_mushroom",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5054,9 +5084,10 @@
       "banquet": true,
       "protein_types": [],
       "vegetables": [
-        "茴香"
+        "茴香",
+        "蘑菇"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
@@ -5079,13 +5110,21 @@
       ],
       "banquet": false,
       "protein_types": [
-        "shrimp"
+        "shrimp",
+        "egg",
+        "tofu"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "胡萝卜",
+        "菠菜",
+        "豆皮",
+        "西葫芦"
+      ],
+      "vegetable_count": 4,
       "carb_type": "noodle",
       "meal_components": [
         "protein",
+        "vegetable",
         "carb"
       ],
       "taste": "normal",
@@ -5095,6 +5134,378 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": true
+    },
+    {
+      "id": "dish_0169",
+      "name_cn": "麻辣凉拌藕片",
+      "name_en": "Spicy and Numbing Lotus Root Salad",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "莲藕"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0170",
+      "name_cn": "酸辣娃娃菜",
+      "name_en": "Hot and Sour Baby Chinese Cabbage",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "娃娃菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0171",
+      "name_cn": "芦笋拌水煮蛋",
+      "name_en": "Chilled Asparagus with Boiled Eggs",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [
+        "芦笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0172",
+      "name_cn": "青椒辣炒蟹味菇",
+      "name_en": "Spicy Stir-Fried Shimeji Mushrooms with Green Peppers",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "青椒",
+        "蟹味菇"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0173",
+      "name_cn": "牛油果洋葱酱三文鱼籽",
+      "name_en": "Avocado with Onion Dressing and Salmon Roe",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0174",
+      "name_cn": "山药疙瘩汤",
+      "name_en": "Chinese Yam Dough-Drop Soup",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [
+        "番茄"
+      ],
+      "vegetable_count": 1,
+      "carb_type": "other",
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0175",
+      "name_cn": "杂蔬虾仁藜麦炒饭",
+      "name_en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "egg"
+      ],
+      "vegetables": [
+        "西兰花"
+      ],
+      "vegetable_count": 1,
+      "carb_type": "rice",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0176",
+      "name_cn": "牛油果虾仁鸡蛋能量碗",
+      "name_en": "Avocado, Shrimp and Egg Power Bowl",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "egg"
+      ],
+      "vegetables": [
+        "西兰花",
+        "小番茄"
+      ],
+      "vegetable_count": 2,
+      "carb_type": "other",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0177",
+      "name_cn": "姜葱三文鱼焖饭",
+      "name_en": "Ginger and Scallion Salmon Rice",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "rice",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "simmer"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0178",
+      "name_cn": "虾仁火腿蔬菜汤面",
+      "name_en": "Noodle Soup with Shrimp, Ham and Vegetables",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "pork"
+      ],
+      "vegetables": [
+        "青菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": "noodle",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "boil"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0179",
+      "name_cn": "葱丝蒸鲍鱼",
+      "name_en": "Steamed Abalone with Shredded Scallions",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0180",
+      "name_cn": "啫啫花螺",
+      "name_en": "Sizzling Clay Pot Spotted Babylon Snails",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "simmer"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0181",
+      "name_cn": "肥牛金针菇卷",
+      "name_en": "Beef Rolls with Enoki Mushrooms",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [
+        "金针菇"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "simmer"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0182",
+      "name_cn": "火腿蓝莓蔬菜沙拉",
+      "name_en": "Mixed Green Salad with Ham and Blueberries",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "pork"
+      ],
+      "vegetables": [
+        "生菜",
+        "小番茄"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
     }
   ],
   "custom_tags_def": [
