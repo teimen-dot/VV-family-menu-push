@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-家庭菜单管家 - 本地菜品管理器
+家庭菜单管家 - 本地菜品管理器 v2.0
 启动后在浏览器中可视化上传菜品照片、编辑/添加/删除菜品。
-浏览器自动裁剪统一尺寸，零手动操作。
+支持结构化字段：分类、餐别标签、家宴、蛋白质类型、蔬菜、主食类型等。
 
 用法: python photo_manager.py
 然后浏览器自动打开 http://localhost:8080
@@ -25,7 +25,7 @@ PORT = 8080
 
 
 def slugify(en_name):
-    """英文名转文件名 slug: 'Pan-fried Wagyu Beef' -> 'pan_fried_wagyu_beef'"""
+    """英文名转文件名 slug"""
     slug = en_name.lower().strip()
     slug = re.sub(r"[^a-z0-9\s]", "", slug)
     slug = re.sub(r"[\s]+", "_", slug)
@@ -34,60 +34,16 @@ def slugify(en_name):
 
 
 def load_dish_pool():
-    """加载 dish_pool.json"""
     with open(DISH_POOL_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_dish_pool(pool):
-    """保存 dish_pool.json"""
     with open(DISH_POOL_FILE, "w", encoding="utf-8") as f:
         json.dump(pool, f, ensure_ascii=False, indent=2)
 
 
-def get_all_dishes():
-    """从 dish_pool.json 提取所有菜品，返回 [{zh, en, category, category_label}]"""
-    pool = load_dish_pool()
-    dishes = []
-
-    # 分类菜品
-    for cat_key, cat_data in pool.get("categories", {}).items():
-        label = cat_data.get("label", cat_key)
-        for dish in cat_data.get("dishes", []):
-            dishes.append({
-                "zh": dish.get("zh", ""),
-                "en": dish.get("en", ""),
-                "category": cat_key,
-                "category_label": label,
-            })
-
-    # 轮换池菜品
-    for pool_key, pool_data in pool.get("rotation_pools", {}).items():
-        label = pool_data.get("description", pool_key)
-        for item in pool_data.get("items", []):
-            dishes.append({
-                "zh": item.get("zh", ""),
-                "en": item.get("en", ""),
-                "category": pool_key,
-                "category_label": label,
-            })
-
-    return dishes
-
-
-def get_categories():
-    """获取所有分类列表（用于添加菜品下拉框）"""
-    pool = load_dish_pool()
-    cats = []
-    for cat_key, cat_data in pool.get("categories", {}).items():
-        cats.append({"key": cat_key, "label": cat_data.get("label", cat_key), "type": "category"})
-    for pool_key, pool_data in pool.get("rotation_pools", {}).items():
-        cats.append({"key": pool_key, "label": pool_data.get("description", pool_key), "type": "rotation_pool"})
-    return cats
-
-
 def load_manifest():
-    """加载照片映射"""
     if os.path.exists(MANIFEST_FILE):
         with open(MANIFEST_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -95,16 +51,136 @@ def load_manifest():
 
 
 def save_manifest(manifest):
-    """保存照片映射"""
     with open(MANIFEST_FILE, "w", encoding="utf-8") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2)
 
 
 def ensure_dirs():
-    """确保目录和文件存在"""
     os.makedirs(PHOTOS_DIR, exist_ok=True)
     if not os.path.exists(MANIFEST_FILE):
         save_manifest({})
+
+
+def generate_dish_id(pool):
+    max_num = 0
+    for d in pool.get("dishes", []):
+        did = d.get("id", "")
+        if did.startswith("dish_"):
+            try:
+                num = int(did[5:])
+                if num > max_num:
+                    max_num = num
+            except ValueError:
+                pass
+    return f"dish_{max_num + 1:04d}"
+
+
+def get_all_dishes():
+    """返回所有菜品（普通菜品 + 轮换池），含照片信息"""
+    pool = load_dish_pool()
+    manifest = load_manifest()
+    categories = {c["id"]: c for c in pool.get("categories", [])}
+
+    result = []
+
+    # 普通菜品
+    for dish in pool.get("dishes", []):
+        name_cn = dish.get("name_cn", "")
+        cat_id = dish.get("category_id", "")
+        cat = categories.get(cat_id, {})
+
+        has_photo = name_cn in manifest
+        photo_file = manifest.get(name_cn, {}).get("file", "") if has_photo else ""
+
+        result.append({
+            "id": dish.get("id", ""),
+            "name_cn": name_cn,
+            "name_en": dish.get("name_en", ""),
+            "category_id": cat_id,
+            "category_label": cat.get("label_cn", cat_id),
+            "meal_tags": dish.get("meal_tags", []),
+            "banquet": dish.get("banquet", False),
+            "protein_types": dish.get("protein_types", []),
+            "vegetables": dish.get("vegetables", []),
+            "vegetable_count": dish.get("vegetable_count", 0),
+            "carb_type": dish.get("carb_type"),
+            "meal_components": dish.get("meal_components", []),
+            "taste": dish.get("taste", "normal"),
+            "cooking_methods": dish.get("cooking_methods", []),
+            "can_serve_warm": dish.get("can_serve_warm", False),
+            "custom_tags": dish.get("custom_tags", []),
+            "needs_review": dish.get("needs_review", False),
+            "is_rotation": False,
+            "rotation_pool": None,
+            "has_photo": has_photo,
+            "photo_file": photo_file,
+            "slug": slugify(dish.get("name_en", "")),
+        })
+
+    # 轮换池菜品
+    for pool_key, pool_data in pool.get("rotation_pools", {}).items():
+        for item in pool_data.get("items", []):
+            zh = item.get("zh", "")
+            en = item.get("en", "")
+            has_photo = zh in manifest
+            photo_file = manifest.get(zh, {}).get("file", "") if has_photo else ""
+
+            result.append({
+                "id": None,
+                "name_cn": zh,
+                "name_en": en,
+                "category_id": f"rotation_{pool_key}",
+                "category_label": pool_data.get("description", pool_key),
+                "meal_tags": [],
+                "banquet": False,
+                "protein_types": [],
+                "vegetables": [],
+                "vegetable_count": 0,
+                "carb_type": None,
+                "meal_components": [],
+                "taste": "normal",
+                "cooking_methods": [],
+                "can_serve_warm": False,
+                "custom_tags": [],
+                "needs_review": False,
+                "is_rotation": True,
+                "rotation_pool": pool_key,
+                "has_photo": has_photo,
+                "photo_file": photo_file,
+                "slug": slugify(en),
+            })
+
+    return result
+
+
+def get_categories():
+    """返回所有分类（含轮换池）"""
+    pool = load_dish_pool()
+    cats = []
+    for c in pool.get("categories", []):
+        cats.append({
+            "id": c["id"],
+            "label_cn": c.get("label_cn", c["id"]),
+            "label_en": c.get("label_en", ""),
+            "order": c.get("order", 0),
+            "active": c.get("active", True),
+            "type": "category",
+            "dish_count": sum(1 for d in pool.get("dishes", []) if d.get("category_id") == c["id"]),
+        })
+    cats.sort(key=lambda c: c["order"])
+
+    for pool_key, pool_data in pool.get("rotation_pools", {}).items():
+        cats.append({
+            "id": f"rotation_{pool_key}",
+            "label_cn": pool_data.get("description", pool_key),
+            "label_en": "",
+            "order": 999,
+            "active": True,
+            "type": "rotation_pool",
+            "dish_count": len(pool_data.get("items", [])),
+        })
+
+    return cats
 
 
 # ========== HTML 界面 ==========
@@ -113,7 +189,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>菜品管理器</title>
+<title>菜品管理器 v2.0</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -142,7 +218,7 @@ body {
 }
 .header h1 { font-size: 22px; font-weight: 700; }
 .header h1 .emoji { margin-right: 8px; }
-.header-actions { display: flex; align-items: center; gap: 12px; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .stats {
   font-size: 14px;
   color: #6e6e73;
@@ -164,6 +240,18 @@ body {
   transition: background 0.15s;
 }
 .btn-add:hover { background: #2db84e; }
+.btn-secondary {
+  background: #fff;
+  color: #1d1d1f;
+  border: 1.5px solid #d0d0d5;
+  padding: 7px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-secondary:hover { border-color: #007aff; color: #007aff; }
 .search-box {
   max-width: 1200px;
   margin: 20px auto 0;
@@ -181,11 +269,19 @@ body {
 .search-box input:focus { border-color: #007aff; }
 .filter-bar {
   max-width: 1200px;
-  margin: 12px auto 0;
+  margin: 10px auto 0;
   padding: 0 30px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+.filter-bar .filter-label {
+  font-size: 12px;
+  color: #8e8e93;
+  font-weight: 600;
+  margin-right: 4px;
+  white-space: nowrap;
 }
 .filter-btn {
   padding: 5px 14px;
@@ -230,7 +326,8 @@ body {
 .dish-card.has-photo { border-color: #34c759; }
 .dish-photo-area {
   width: 100%;
-  height: 150px;
+  aspect-ratio: 1 / 1;
+  height: auto;
   background: #f0f0f5;
   display: flex;
   align-items: center;
@@ -264,6 +361,24 @@ body {
 }
 .dish-zh { font-size: 14px; font-weight: 600; line-height: 1.3; }
 .dish-en { font-size: 12px; color: #8e8e93; margin-top: 2px; line-height: 1.3; }
+.card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.badge-category { background: #e8f0ff; color: #007aff; }
+.badge-meal { background: #fff3e0; color: #f97316; }
+.badge-banquet { background: #fce4ec; color: #e91e63; }
+.badge-review { background: #fff8e1; color: #ff9800; }
+.badge-rotation { background: #f3e5f5; color: #9c27b0; }
 .card-actions {
   display: flex;
   gap: 0;
@@ -279,7 +394,7 @@ body {
   transition: background 0.15s;
   background: #f8f8fa;
 }
-.card-actions button:first-child { border-right: 1px solid #e8e8ed; }
+.card-actions button:not(:last-child) { border-right: 1px solid #e8e8ed; }
 .card-actions .btn-upload { color: #007aff; }
 .card-actions .btn-upload:hover { background: #e8f0ff; }
 .card-actions .btn-upload.uploading { background: #ffd60a; color: #1d1d1f; pointer-events: none; }
@@ -306,14 +421,17 @@ body {
   padding: 28px;
   width: 90%;
   max-width: 420px;
+  max-height: 85vh;
+  overflow-y: auto;
   box-shadow: 0 8px 32px rgba(0,0,0,0.15);
 }
+.modal-large { max-width: 540px; }
 .modal h3 {
   font-size: 18px;
   margin-bottom: 18px;
   font-weight: 700;
 }
-.modal label {
+.modal label, .modal .form-label {
   display: block;
   font-size: 13px;
   font-weight: 600;
@@ -321,8 +439,8 @@ body {
   margin-bottom: 4px;
   margin-top: 14px;
 }
-.modal label:first-of-type { margin-top: 0; }
-.modal input, .modal select {
+.modal label:first-of-type, .modal .form-section:first-child .form-label { margin-top: 0; }
+.modal input[type="text"], .modal select {
   width: 100%;
   padding: 10px 14px;
   font-size: 15px;
@@ -331,7 +449,12 @@ body {
   outline: none;
   transition: border-color 0.2s;
 }
-.modal input:focus, .modal select:focus { border-color: #007aff; }
+.modal input[type="text"]:focus, .modal select:focus { border-color: #007aff; }
+.modal input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
 .modal-actions {
   display: flex;
   gap: 10px;
@@ -350,6 +473,167 @@ body {
 .btn-save:hover { background: #0066d6; }
 .btn-cancel { background: #f0f0f5; color: #6e6e73; }
 .btn-cancel:hover { background: #e0e0e5; }
+
+/* Form sections */
+.form-section { margin-bottom: 16px; }
+.section-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #8e8e93;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.section-title.collapsible {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: #f0f0f5;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+.section-title.collapsible:hover { background: #e8e8ed; color: #007aff; }
+.checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #1d1d1f;
+}
+.tag-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border: 2px solid #e0e0e0;
+  border-radius: 10px;
+  min-height: 42px;
+  align-items: center;
+}
+.tag-input-container:focus-within { border-color: #007aff; }
+.tag-chip {
+  background: #e8f0ff;
+  color: #007aff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.tag-remove {
+  cursor: pointer;
+  font-weight: 700;
+  opacity: 0.7;
+  font-size: 15px;
+  line-height: 1;
+}
+.tag-remove:hover { opacity: 1; }
+.tag-input {
+  border: none;
+  outline: none;
+  flex: 1;
+  min-width: 100px;
+  font-size: 14px;
+  background: transparent;
+}
+.modal-note {
+  font-size: 13px;
+  color: #8e8e93;
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  background: #f0f0f5;
+  border-radius: 8px;
+}
+
+/* Manager modals */
+.manager-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #e8e8ed;
+  flex-wrap: wrap;
+}
+.manager-item input[type="text"] {
+  flex: 1;
+  min-width: 120px;
+  padding: 6px 10px;
+  font-size: 14px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  outline: none;
+}
+.manager-item input[type="text"]:focus { border-color: #007aff; }
+.manager-item input[type="text"]:disabled {
+  background: #f0f0f5;
+  color: #8e8e93;
+}
+.mgr-btn {
+  padding: 4px 10px;
+  border: 1.5px solid #d0d0d5;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  color: #1d1d1f;
+}
+.mgr-btn:hover { border-color: #007aff; color: #007aff; }
+.mgr-toggle {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mgr-toggle.active { background: #34c759; color: #fff; }
+.mgr-toggle.inactive { background: #e0e0e5; color: #8e8e93; }
+.mgr-delete {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 6px;
+  background: #ffeeed;
+  color: #ff3b30;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mgr-delete:hover { background: #ff3b30; color: #fff; }
+.mgr-info {
+  font-size: 12px;
+  color: #8e8e93;
+  white-space: nowrap;
+}
+.mgr-count {
+  font-size: 12px;
+  color: #8e8e93;
+  white-space: nowrap;
+}
+.mgr-add-btn {
+  margin-top: 10px;
+  padding: 6px 16px;
+  background: #e8f0ff;
+  color: #007aff;
+  border: 1.5px solid #007aff;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mgr-add-btn:hover { background: #007aff; color: #fff; }
 
 /* Toast */
 .toast {
@@ -386,16 +670,19 @@ body {
     <h1><span class="emoji">🍳</span>菜品管理器</h1>
     <div class="header-actions">
       <div class="stats" id="stats">加载中...</div>
+      <button class="btn-secondary" onclick="openCategoryManager()">管理分类</button>
+      <button class="btn-secondary" onclick="openTagManager()">管理标签</button>
       <button class="btn-add" onclick="openAddModal()">+ 添加菜品</button>
     </div>
   </div>
 </div>
 
 <div class="search-box">
-  <input type="text" id="searchInput" placeholder="搜索菜名（中英文均可）..." oninput="filterDishes()">
+  <input type="text" id="searchInput" placeholder="搜索菜名、分类、食材、蔬菜、标签..." oninput="render()">
 </div>
 
-<div class="filter-bar" id="filterBar"></div>
+<div class="filter-bar" id="mealFilterBar"></div>
+<div class="filter-bar" id="categoryFilterBar"></div>
 
 <div class="container" id="container">
   <div class="empty-msg">正在加载菜品数据...</div>
@@ -403,15 +690,108 @@ body {
 
 <!-- Edit Modal -->
 <div class="modal-overlay" id="editModal">
-  <div class="modal">
+  <div class="modal modal-large">
     <h3>编辑菜品</h3>
-    <label>中文名</label>
-    <input type="text" id="editZh" placeholder="中文名">
-    <label>英文名</label>
-    <input type="text" id="editEn" placeholder="英文名">
+
+    <div class="form-section">
+      <div class="section-title">基础信息</div>
+      <label>中文名</label>
+      <input type="text" id="editZh" placeholder="中文名">
+      <label>英文名</label>
+      <input type="text" id="editEn" placeholder="英文名">
+      <label>分类</label>
+      <select id="editCategory" onchange="onCategoryChange()"></select>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">适合餐别</div>
+      <div class="checkbox-group">
+        <label class="checkbox-label"><input type="checkbox" id="editBreakfast"> 早餐</label>
+        <label class="checkbox-label"><input type="checkbox" id="editLunch"> 午餐</label>
+        <label class="checkbox-label"><input type="checkbox" id="editDinner"> 晚餐</label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">特殊标签</div>
+      <label class="checkbox-label"><input type="checkbox" id="editBanquet"> 家宴推荐</label>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title">自定义标签</div>
+      <div class="tag-input-container" id="editCustomTags"></div>
+    </div>
+
+    <div class="form-section">
+      <div class="section-title collapsible" id="advancedTitle" onclick="toggleAdvanced()">更多信息 / AI 配餐信息 ▼</div>
+      <div id="advancedSection" style="display:none;">
+
+        <label>主要蛋白质</label>
+        <div class="checkbox-group" id="editProteinTypes"></div>
+
+        <label>包含蔬菜</label>
+        <div class="tag-input-container" id="editVegetables"></div>
+
+        <div id="carbTypeSection" style="display:none;">
+          <label>主食类型</label>
+          <select id="editCarbType">
+            <option value="">请选择</option>
+            <option value="rice">米饭</option>
+            <option value="porridge">粥</option>
+            <option value="noodle">面</option>
+            <option value="dim_sum">包点 / 饺子</option>
+            <option value="coarse_grain">粗粮</option>
+            <option value="tuber">薯类</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+
+        <div id="mealComponentsSection" style="display:none;">
+          <label>这道菜已经包含</label>
+          <div class="checkbox-group" id="editMealComponents">
+            <label class="checkbox-label"><input type="checkbox" value="protein"> 蛋白质</label>
+            <label class="checkbox-label"><input type="checkbox" value="vegetable"> 蔬菜</label>
+            <label class="checkbox-label"><input type="checkbox" value="carb"> 主食 / 碳水</label>
+          </div>
+        </div>
+
+        <label>口味</label>
+        <select id="editTaste">
+          <option value="light">清淡</option>
+          <option value="normal">正常</option>
+          <option value="rich">浓味</option>
+          <option value="spicy">辣</option>
+        </select>
+
+        <label>烹饪方式（可多选）</label>
+        <div class="checkbox-group" id="editCookingMethods"></div>
+
+        <div id="canServeWarmSection" style="display:none;">
+          <label class="checkbox-label"><input type="checkbox" id="editCanServeWarm"> 可改造成温热版本</label>
+        </div>
+
+      </div>
+    </div>
+
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('editModal')">取消</button>
       <button class="btn-save" onclick="saveEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Rotation Modal -->
+<div class="modal-overlay" id="editRotationModal">
+  <div class="modal">
+    <h3>编辑轮换池菜品</h3>
+    <div class="modal-note">轮换池组件，仅支持修改名称</div>
+    <label>中文名</label>
+    <input type="text" id="editRotZh" placeholder="中文名">
+    <label>英文名</label>
+    <input type="text" id="editRotEn" placeholder="英文名">
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('editRotationModal')">取消</button>
+      <button class="btn-save" onclick="saveEditRotation()">保存</button>
     </div>
   </div>
 </div>
@@ -420,12 +800,19 @@ body {
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <h3>添加菜品</h3>
-    <label>分类</label>
-    <select id="addCategory"></select>
     <label>中文名</label>
     <input type="text" id="addZh" placeholder="中文名">
     <label>英文名</label>
     <input type="text" id="addEn" placeholder="英文名">
+    <label>分类</label>
+    <select id="addCategory"></select>
+    <label>适合餐别</label>
+    <div class="checkbox-group">
+      <label class="checkbox-label"><input type="checkbox" id="addBreakfast"> 早餐</label>
+      <label class="checkbox-label"><input type="checkbox" id="addLunch"> 午餐</label>
+      <label class="checkbox-label"><input type="checkbox" id="addDinner"> 晚餐</label>
+    </div>
+    <label class="checkbox-label" style="margin-top: 14px;"><input type="checkbox" id="addBanquet"> 家宴推荐</label>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('addModal')">取消</button>
       <button class="btn-save" onclick="saveAdd()">添加</button>
@@ -433,79 +820,165 @@ body {
   </div>
 </div>
 
+<!-- Category Manager Modal -->
+<div class="modal-overlay" id="categoryModal">
+  <div class="modal modal-large">
+    <h3>管理分类</h3>
+    <div id="categoryList"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('categoryModal')">取消</button>
+      <button class="btn-save" onclick="saveCategories()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tag Manager Modal -->
+<div class="modal-overlay" id="tagModal">
+  <div class="modal modal-large">
+    <h3>管理标签</h3>
+    <div class="form-section">
+      <div class="section-title">系统标签（不可删除）</div>
+      <div id="systemTagList"></div>
+    </div>
+    <div class="form-section">
+      <div class="section-title">自定义标签</div>
+      <div id="customTagList"></div>
+      <button class="mgr-add-btn" onclick="addCustomTagRow()">+ 添加自定义标签</button>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('tagModal')">取消</button>
+      <button class="btn-save" onclick="saveTags()">保存</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
+// ========== 常量 ==========
+const PROTEIN_TYPES = {
+  fish: '鱼', shrimp: '虾', other_seafood: '其他海鲜',
+  beef: '牛肉', pork: '猪肉', chicken: '鸡肉',
+  egg: '鸡蛋', tofu: '豆制品', other: '其他', none: '无'
+};
+const COOKING_METHODS = {
+  steam: '蒸', boil: '煮', stir_fry: '炒', stew: '炖',
+  braise: '焖', pan_fry: '煎', roast: '烤', cold_mix: '凉拌', other: '其他'
+};
+const MEAL_TAG_LABELS = {
+  breakfast: '早餐', lunch: '午餐', dinner: '晚餐'
+};
+const SYSTEM_TAGS = [
+  { id: 'breakfast', label_cn: '早餐' },
+  { id: 'lunch', label_cn: '午餐' },
+  { id: 'dinner', label_cn: '晚餐' },
+  { id: 'banquet', label_cn: '家宴推荐' }
+];
+
+// ========== 状态 ==========
 let allDishes = [];
 let allCategories = [];
-let currentFilter = 'all';
-let editingDish = null; // {category, old_zh}
+let allCustomTags = [];
+let currentMealFilter = 'all';
+let currentCategoryFilter = 'all';
+let editingDish = null;
+let editingRotation = null;
 
+// ========== 初始化 ==========
 async function loadDishes() {
-  const resp = await fetch('/api/dishes');
-  allDishes = await resp.json();
-
-  const catResp = await fetch('/api/categories');
-  allCategories = await catResp.json();
-
-  renderFilters();
-  renderAddCategories();
-  render();
+  try {
+    const [dishResp, catResp, tagResp] = await Promise.all([
+      fetch('/api/dishes'), fetch('/api/categories'), fetch('/api/custom_tags')
+    ]);
+    allDishes = await dishResp.json();
+    allCategories = await catResp.json();
+    allCustomTags = await tagResp.json();
+    renderFilters();
+    renderAddCategories();
+    render();
+  } catch(e) {
+    console.error('Load error:', e);
+    showToast('加载失败: ' + e.message, 'error');
+  }
 }
 
-function renderAddCategories() {
-  const sel = document.getElementById('addCategory');
-  sel.innerHTML = allCategories.map(c =>
-    `<option value="${c.key}">${c.label}</option>`
-  ).join('');
-}
-
+// ========== 筛选 ==========
 function renderFilters() {
-  const cats = {};
-  allDishes.forEach(d => {
-    if (!cats[d.category_label]) cats[d.category_label] = d.category;
+  const mealBar = document.getElementById('mealFilterBar');
+  mealBar.innerHTML = '<span class="filter-label">餐别：</span>' +
+    ['all','breakfast','lunch','dinner','banquet'].map(m => {
+      const labels = { all: '全部', breakfast: '早餐', lunch: '午餐', dinner: '晚餐', banquet: '家宴' };
+      const active = currentMealFilter === m ? 'active' : '';
+      return '<button class="filter-btn ' + active + '" onclick="setMealFilter(\'' + m + '\')">' + labels[m] + '</button>';
+    }).join('');
+
+  const catBar = document.getElementById('categoryFilterBar');
+  let html = '<span class="filter-label">分类：</span>';
+  html += '<button class="filter-btn ' + (currentCategoryFilter === 'all' ? 'active' : '') + '" onclick="setCategoryFilter(\'all\')">全部分类</button>';
+  allCategories.forEach(c => {
+    const active = currentCategoryFilter === c.id ? 'active' : '';
+    html += '<button class="filter-btn ' + active + '" onclick="setCategoryFilter(\'' + escAttr(c.id) + '\')">' + escHtml(c.label_cn) + '</button>';
   });
-  const bar = document.getElementById('filterBar');
-  let html = `<button class="filter-btn active" onclick="setFilter('all', this)">全部</button>`;
-  Object.entries(cats).forEach(([label, key]) => {
-    html += `<button class="filter-btn" onclick="setFilter('${key}', this)">${label}</button>`;
-  });
-  bar.innerHTML = html;
+  catBar.innerHTML = html;
 }
 
-function setFilter(cat, btn) {
-  currentFilter = cat;
-  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+function setMealFilter(m) {
+  currentMealFilter = m;
+  renderFilters();
   render();
 }
 
-function filterDishes() { render(); }
+function setCategoryFilter(c) {
+  currentCategoryFilter = c;
+  renderFilters();
+  render();
+}
 
+// ========== 搜索 ==========
+function getSearchableText(d) {
+  const parts = [
+    d.name_cn, d.name_en, d.category_label,
+    (d.meal_tags || []).map(t => MEAL_TAG_LABELS[t] || t).join(' '),
+    (d.protein_types || []).map(t => PROTEIN_TYPES[t] || t).join(' '),
+    (d.vegetables || []).join(' '),
+    (d.custom_tags || []).join(' '),
+    d.banquet ? '家宴' : ''
+  ];
+  return parts.join(' ').toLowerCase();
+}
+
+// ========== 渲染 ==========
 function render() {
   const search = document.getElementById('searchInput').value.toLowerCase().trim();
   const container = document.getElementById('container');
 
   const grouped = {};
-  let totalCount = 0, photoCount = 0;
+  let totalCount = 0;
 
-  allDishes.forEach(d => {
-    if (currentFilter !== 'all' && d.category !== currentFilter) return;
-    if (search) {
-      const text = (d.zh + ' ' + d.en).toLowerCase();
-      if (!text.includes(search)) return;
+  allDishes.forEach((d, idx) => {
+    // Meal filter
+    if (currentMealFilter !== 'all') {
+      if (currentMealFilter === 'banquet') {
+        if (!d.banquet) return;
+      } else {
+        if (!(d.meal_tags || []).includes(currentMealFilter)) return;
+      }
     }
+    // Category filter
+    if (currentCategoryFilter !== 'all' && d.category_id !== currentCategoryFilter) return;
+    // Search
+    if (search && !getSearchableText(d).includes(search)) return;
+
     if (!grouped[d.category_label]) grouped[d.category_label] = [];
-    grouped[d.category_label].push(d);
+    grouped[d.category_label].push({ dish: d, idx: idx });
     totalCount++;
-    if (d.has_photo) photoCount++;
   });
 
-  // Update stats (all dishes, not filtered)
+  // Stats
   const totalAll = allDishes.length;
   const photoAll = allDishes.filter(d => d.has_photo).length;
   document.getElementById('stats').innerHTML =
-    `<span class="done">${photoAll}</span> / ${totalAll} 道菜已上传`;
+    '<span class="done">' + photoAll + '</span> / ' + totalAll + ' 道菜已上传';
 
   if (totalCount === 0) {
     container.innerHTML = '<div class="empty-msg">没有匹配的菜品</div>';
@@ -513,280 +986,578 @@ function render() {
   }
 
   let html = '';
-  Object.entries(grouped).forEach(([label, dishes]) => {
-    html += `<div class="category-section">`;
-    html += `<div class="category-title">${label}（${dishes.length}）</div>`;
-    html += `<div class="dish-grid">`;
-    dishes.forEach(d => {
-      const photoHtml = d.has_photo
-        ? `<img src="/photos/${d.photo_file}?t=${d._t || Date.now()}" alt="${escAttr(d.zh)}">
-           <div class="has-photo-badge">已上传</div>`
-        : `<div class="photo-placeholder">🍽️</div>`;
-      html += `
-        <div class="dish-card ${d.has_photo ? 'has-photo' : ''}" data-zh="${escAttr(d.zh)}" data-slug="${d.slug}" data-category="${escAttr(d.category)}" data-en="${escAttr(d.en)}">
-          <div class="dish-photo-area" onclick="triggerUpload(this)" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(event,this)" ondrop="onDrop(event,this)">
-            ${photoHtml}
-          </div>
-          <div class="dish-info">
-            <div class="dish-zh">${escHtml(d.zh)}</div>
-            <div class="dish-en">${escHtml(d.en)}</div>
-          </div>
-          <div class="card-actions">
-            <button class="btn-upload" onclick="event.stopPropagation();triggerUpload(this.closest('.dish-card').querySelector('.dish-photo-area'))">
-              ${d.has_photo ? '更换' : '上传'}
-            </button>
-            <button class="btn-edit" onclick="event.stopPropagation();openEditModal(this.closest('.dish-card'))">编辑</button>
-            <button class="btn-delete" onclick="event.stopPropagation();deleteDish(this.closest('.dish-card'))">删除</button>
-          </div>
-        </div>`;
+  Object.entries(grouped).forEach(([label, items]) => {
+    html += '<div class="category-section">';
+    html += '<div class="category-title">' + escHtml(label) + '（' + items.length + '）</div>';
+    html += '<div class="dish-grid">';
+    items.forEach(({ dish, idx }) => {
+      html += renderDishCard(dish, idx);
     });
-    html += `</div></div>`;
+    html += '</div></div>';
   });
 
   container.innerHTML = html;
 }
 
-function escAttr(s) { return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
-function escHtml(s) { return String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function renderDishCard(d, idx) {
+  const photoHtml = d.has_photo
+    ? '<img src="/photos/' + escAttr(d.photo_file) + '?t=' + (d._t || Date.now()) + '" alt="' + escAttr(d.name_cn) + '">' +
+      '<div class="has-photo-badge">已上传</div>'
+    : '<div class="photo-placeholder">🍽️</div>';
 
-// ===== Photo Upload =====
+  let badges = '';
+  badges += '<span class="badge badge-category">' + escHtml(d.category_label) + '</span>';
+  if (d.meal_tags && d.meal_tags.length > 0) {
+    const mealLabels = d.meal_tags.map(t => MEAL_TAG_LABELS[t] || t).join(' · ');
+    badges += '<span class="badge badge-meal">' + escHtml(mealLabels) + '</span>';
+  }
+  if (d.banquet) badges += '<span class="badge badge-banquet">家宴</span>';
+  if (d.needs_review) badges += '<span class="badge badge-review">待审核</span>';
+  if (d.is_rotation) badges += '<span class="badge badge-rotation">轮换</span>';
+
+  return '<div class="dish-card ' + (d.has_photo ? 'has-photo' : '') + '" data-idx="' + idx + '" data-slug="' + escAttr(d.slug) + '" data-name-cn="' + escAttr(d.name_cn) + '">' +
+    '<div class="dish-photo-area" onclick="triggerUpload(this)" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(event,this)" ondrop="onDrop(event,this)">' +
+      photoHtml +
+    '</div>' +
+    '<div class="dish-info">' +
+      '<div class="dish-zh">' + escHtml(d.name_cn) + '</div>' +
+      '<div class="dish-en">' + escHtml(d.name_en) + '</div>' +
+      '<div class="card-badges">' + badges + '</div>' +
+    '</div>' +
+    '<div class="card-actions">' +
+      '<button class="btn-upload" onclick="event.stopPropagation();triggerUpload(this.closest(\'.dish-card\').querySelector(\'.dish-photo-area\'))">' +
+        (d.has_photo ? '更换' : '上传') +
+      '</button>' +
+      '<button class="btn-edit" onclick="event.stopPropagation();openEditByIndex(' + idx + ')">编辑</button>' +
+      '<button class="btn-delete" onclick="event.stopPropagation();deleteByIndex(' + idx + ')">删除</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function renderAddCategories() {
+  const sel = document.getElementById('addCategory');
+  sel.innerHTML = allCategories
+    .filter(c => c.type === 'category' && c.active)
+    .map(c => '<option value="' + escAttr(c.id) + '">' + escHtml(c.label_cn) + '</option>')
+    .join('');
+}
+
+// ========== 编辑菜品 ==========
+function openEditByIndex(idx) {
+  const d = allDishes[idx];
+  if (!d) return;
+  if (d.is_rotation) {
+    openEditRotationModal(d);
+  } else {
+    openEditModal(d);
+  }
+}
+
+function openEditModal(d) {
+  editingDish = d;
+  editingRotation = null;
+
+  document.getElementById('editZh').value = d.name_cn;
+  document.getElementById('editEn').value = d.name_en;
+
+  const catSelect = document.getElementById('editCategory');
+  catSelect.innerHTML = allCategories
+    .filter(c => c.type === 'category')
+    .map(c => '<option value="' + escAttr(c.id) + '"' + (c.id === d.category_id ? ' selected' : '') + '>' + escHtml(c.label_cn) + '</option>')
+    .join('');
+
+  document.getElementById('editBreakfast').checked = (d.meal_tags || []).includes('breakfast');
+  document.getElementById('editLunch').checked = (d.meal_tags || []).includes('lunch');
+  document.getElementById('editDinner').checked = (d.meal_tags || []).includes('dinner');
+  document.getElementById('editBanquet').checked = d.banquet;
+
+  initTagInput('editCustomTags', d.custom_tags || [], '输入标签后按回车添加');
+
+  initCheckboxGroup('editProteinTypes', PROTEIN_TYPES, d.protein_types || []);
+  initTagInput('editVegetables', d.vegetables || [], '输入蔬菜名后按回车添加');
+  document.getElementById('editCarbType').value = d.carb_type || '';
+  setCheckboxGroup('editMealComponents', d.meal_components || []);
+  document.getElementById('editTaste').value = d.taste || 'normal';
+  initCheckboxGroup('editCookingMethods', COOKING_METHODS, d.cooking_methods || []);
+  document.getElementById('editCanServeWarm').checked = d.can_serve_warm;
+
+  onCategoryChange();
+  document.getElementById('editModal').classList.add('show');
+}
+
+function openEditRotationModal(d) {
+  editingDish = null;
+  editingRotation = d;
+  document.getElementById('editRotZh').value = d.name_cn;
+  document.getElementById('editRotEn').value = d.name_en;
+  document.getElementById('editRotationModal').classList.add('show');
+}
+
+function onCategoryChange() {
+  const catId = document.getElementById('editCategory').value;
+  document.getElementById('carbTypeSection').style.display = (catId === 'staple_carb') ? 'block' : 'none';
+  document.getElementById('mealComponentsSection').style.display = (catId === 'one_pot_meal') ? 'block' : 'none';
+  document.getElementById('canServeWarmSection').style.display = (catId === 'cold_dish') ? 'block' : 'none';
+}
+
+function toggleAdvanced() {
+  const section = document.getElementById('advancedSection');
+  const title = document.getElementById('advancedTitle');
+  if (section.style.display === 'none') {
+    section.style.display = 'block';
+    title.innerHTML = '更多信息 / AI 配餐信息 ▲';
+  } else {
+    section.style.display = 'none';
+    title.innerHTML = '更多信息 / AI 配餐信息 ▼';
+  }
+}
+
+async function saveEdit() {
+  const newNameCn = document.getElementById('editZh').value.trim();
+  const newNameEn = document.getElementById('editEn').value.trim();
+  if (!newNameCn || !newNameEn) { showToast('中英文名都不能为空', 'error'); return; }
+
+  const mealTags = [];
+  if (document.getElementById('editBreakfast').checked) mealTags.push('breakfast');
+  if (document.getElementById('editLunch').checked) mealTags.push('lunch');
+  if (document.getElementById('editDinner').checked) mealTags.push('dinner');
+
+  const data = {
+    id: editingDish.id,
+    old_name_cn: editingDish.name_cn,
+    name_cn: newNameCn,
+    name_en: newNameEn,
+    category_id: document.getElementById('editCategory').value,
+    meal_tags: mealTags,
+    banquet: document.getElementById('editBanquet').checked,
+    protein_types: getCheckboxValues('editProteinTypes'),
+    vegetables: getTagValues('editVegetables'),
+    carb_type: document.getElementById('editCarbType').value || null,
+    meal_components: getCheckboxValues('editMealComponents'),
+    taste: document.getElementById('editTaste').value,
+    cooking_methods: getCheckboxValues('editCookingMethods'),
+    can_serve_warm: document.getElementById('editCanServeWarm').checked,
+    custom_tags: getTagValues('editCustomTags'),
+  };
+
+  try {
+    const resp = await fetch('/api/edit_dish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    const result = await resp.json();
+    if (result.success) {
+      // Update local
+      editingDish.name_cn = newNameCn;
+      editingDish.name_en = newNameEn;
+      editingDish.category_id = data.category_id;
+      editingDish.meal_tags = mealTags;
+      editingDish.banquet = data.banquet;
+      editingDish.protein_types = data.protein_types;
+      editingDish.vegetables = data.vegetables;
+      editingDish.vegetable_count = data.vegetables.length;
+      editingDish.carb_type = data.carb_type;
+      editingDish.meal_components = data.meal_components;
+      editingDish.taste = data.taste;
+      editingDish.cooking_methods = data.cooking_methods;
+      editingDish.can_serve_warm = data.can_serve_warm;
+      editingDish.custom_tags = data.custom_tags;
+      editingDish.slug = result.new_slug || slugify(newNameEn);
+      const cat = allCategories.find(c => c.id === data.category_id);
+      editingDish.category_label = cat ? cat.label_cn : data.category_id;
+      if (result.has_photo) {
+        editingDish.has_photo = true;
+        editingDish.photo_file = result.photo_file;
+        editingDish._t = Date.now();
+      }
+      closeModal('editModal');
+      render();
+      renderFilters();
+      showToast('已更新：「' + newNameCn + '」', 'success');
+    } else {
+      throw new Error(result.error || '更新失败');
+    }
+  } catch(err) {
+    showToast('更新失败: ' + err.message, 'error');
+  }
+}
+
+async function saveEditRotation() {
+  const newZh = document.getElementById('editRotZh').value.trim();
+  const newEn = document.getElementById('editRotEn').value.trim();
+  if (!newZh || !newEn) { showToast('中英文名都不能为空', 'error'); return; }
+
+  try {
+    const resp = await fetch('/api/edit_dish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: null,
+        rotation_pool: editingRotation.rotation_pool,
+        old_name_cn: editingRotation.name_cn,
+        name_cn: newZh, name_en: newEn
+      })
+    });
+    const result = await resp.json();
+    if (result.success) {
+      editingRotation.name_cn = newZh;
+      editingRotation.name_en = newEn;
+      editingRotation.slug = result.new_slug || slugify(newEn);
+      closeModal('editRotationModal');
+      render();
+      showToast('已更新：「' + newZh + '」', 'success');
+    } else {
+      throw new Error(result.error || '更新失败');
+    }
+  } catch(err) {
+    showToast('更新失败: ' + err.message, 'error');
+  }
+}
+
+// ========== 添加菜品 ==========
+function openAddModal() {
+  document.getElementById('addZh').value = '';
+  document.getElementById('addEn').value = '';
+  document.getElementById('addBreakfast').checked = false;
+  document.getElementById('addLunch').checked = false;
+  document.getElementById('addDinner').checked = false;
+  document.getElementById('addBanquet').checked = false;
+  document.getElementById('addModal').classList.add('show');
+  document.getElementById('addZh').focus();
+}
+
+async function saveAdd() {
+  const nameCn = document.getElementById('addZh').value.trim();
+  const nameEn = document.getElementById('addEn').value.trim();
+  const categoryId = document.getElementById('addCategory').value;
+  if (!nameCn || !nameEn) { showToast('中英文名都不能为空', 'error'); return; }
+
+  const mealTags = [];
+  if (document.getElementById('addBreakfast').checked) mealTags.push('breakfast');
+  if (document.getElementById('addLunch').checked) mealTags.push('lunch');
+  if (document.getElementById('addDinner').checked) mealTags.push('dinner');
+
+  try {
+    const resp = await fetch('/api/add_dish', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name_cn: nameCn, name_en: nameEn, category_id: categoryId,
+        meal_tags: mealTags,
+        banquet: document.getElementById('addBanquet').checked
+      })
+    });
+    const result = await resp.json();
+    if (result.success) {
+      const cat = allCategories.find(c => c.id === categoryId);
+      allDishes.push({
+        id: result.id, name_cn: nameCn, name_en: nameEn,
+        category_id: categoryId, category_label: cat ? cat.label_cn : categoryId,
+        meal_tags: mealTags,
+        banquet: document.getElementById('addBanquet').checked,
+        protein_types: [], vegetables: [], vegetable_count: 0,
+        carb_type: null, meal_components: [], taste: 'normal',
+        cooking_methods: [], can_serve_warm: false, custom_tags: [],
+        needs_review: false, is_rotation: false, rotation_pool: null,
+        has_photo: false, photo_file: '', slug: result.slug
+      });
+      closeModal('addModal');
+      render();
+      renderFilters();
+      showToast('已添加：「' + nameCn + '」', 'success');
+    } else {
+      throw new Error(result.error || '添加失败');
+    }
+  } catch(err) {
+    showToast('添加失败: ' + err.message, 'error');
+  }
+}
+
+// ========== 删除菜品 ==========
+function deleteByIndex(idx) {
+  const d = allDishes[idx];
+  if (!d) return;
+  if (!confirm('确定删除「' + d.name_cn + '」吗？\n如果有照片，照片也会一起删除。')) return;
+
+  const body = d.is_rotation
+    ? { id: null, rotation_pool: d.rotation_pool, name_cn: d.name_cn }
+    : { id: d.id, rotation_pool: null, name_cn: d.name_cn };
+
+  fetch('/api/delete_dish', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(r => r.json()).then(result => {
+    if (result.success) {
+      allDishes.splice(idx, 1);
+      render();
+      renderFilters();
+      showToast('已删除：「' + d.name_cn + '」', 'success');
+    } else {
+      showToast('删除失败: ' + (result.error || ''), 'error');
+    }
+  }).catch(err => showToast('删除失败: ' + err.message, 'error'));
+}
+
+// ========== 照片上传 ==========
 function triggerUpload(photoArea) {
   const card = photoArea.closest('.dish-card');
+  const idx = parseInt(card.dataset.idx);
+  const d = allDishes[idx];
+  if (!d) return;
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
-  input.onchange = (e) => {
-    if (e.target.files[0]) handleFile(e.target.files[0], card, photoArea);
-  };
+  input.onchange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0], card, photoArea, d); };
   input.click();
 }
 
-function onDragOver(e, area) {
-  e.preventDefault();
-  area.closest('.dish-card').classList.add('dragover');
-}
-function onDragLeave(e, area) {
-  e.preventDefault();
-  area.closest('.dish-card').classList.remove('dragover');
-}
+function onDragOver(e, area) { e.preventDefault(); area.closest('.dish-card').classList.add('dragover'); }
+function onDragLeave(e, area) { e.preventDefault(); area.closest('.dish-card').classList.remove('dragover'); }
 function onDrop(e, area) {
   e.preventDefault();
   area.closest('.dish-card').classList.remove('dragover');
   const card = area.closest('.dish-card');
-  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0], card, area);
+  const idx = parseInt(card.dataset.idx);
+  const d = allDishes[idx];
+  if (d && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0], card, area, d);
 }
 
-function handleFile(file, card, photoArea) {
-  if (!file.type.startsWith('image/')) {
-    showToast('请选择图片文件', 'error');
-    return;
-  }
-
+function handleFile(file, card, photoArea, d) {
+  if (!file.type.startsWith('image/')) { showToast('请选择图片文件', 'error'); return; }
   const btn = card.querySelector('.btn-upload');
   btn.classList.add('uploading');
   btn.textContent = '处理中...';
-
   const reader = new FileReader();
   reader.onload = (e) => {
     const img = new Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      canvas.width = 400;
-      canvas.height = 300;
+      canvas.width = 400; canvas.height = 400;
       const ctx = canvas.getContext('2d');
-
-      const scale = Math.max(400 / img.width, 300 / img.height);
-      const sw = img.width * scale;
-      const sh = img.height * scale;
-      const sx = (sw - 400) / 2;
-      const sy = (sh - 300) / 2;
-
+      const scale = Math.max(400 / img.width, 400 / img.height);
+      const sw = img.width * scale, sh = img.height * scale;
+      const sx = (sw - 400) / 2, sy = (sh - 400) / 2;
       ctx.drawImage(img, -sx, -sy, sw, sh);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
       const base64 = dataUrl.split(',')[1];
-
-      uploadPhoto(card.dataset.slug, card.dataset.zh, base64, card, photoArea, btn);
+      uploadPhoto(d.slug, d.name_cn, base64, card, photoArea, btn, d);
     };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
 }
 
-async function uploadPhoto(slug, zhName, base64, card, photoArea, btn) {
+async function uploadPhoto(slug, zhName, base64, card, photoArea, btn, d) {
   try {
     const resp = await fetch('/api/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ slug, zh_name: zhName, image_base64: base64 })
     });
     const result = await resp.json();
-
     if (result.success) {
-      const dish = allDishes.find(d => d.zh === zhName);
-      if (dish) {
-        dish.has_photo = true;
-        dish.photo_file = result.file;
-        dish._t = Date.now();
-      }
+      d.has_photo = true;
+      d.photo_file = result.file;
+      d._t = Date.now();
       card.classList.add('has-photo');
-      photoArea.innerHTML =
-        `<img src="/photos/${result.file}?t=${Date.now()}" alt="${escAttr(zhName)}">
-         <div class="has-photo-badge">已上传</div>`;
+      photoArea.innerHTML = '<img src="/photos/' + result.file + '?t=' + Date.now() + '" alt="' + escAttr(zhName) + '"><div class="has-photo-badge">已上传</div>';
       btn.classList.remove('uploading');
       btn.textContent = '更换';
-      const photoAll = allDishes.filter(d => d.has_photo).length;
-      document.getElementById('stats').innerHTML =
-        `<span class="done">${photoAll}</span> / ${allDishes.length} 道菜已上传`;
-      showToast(`「${zhName}」照片上传成功`, 'success');
+      const photoAll = allDishes.filter(x => x.has_photo).length;
+      document.getElementById('stats').innerHTML = '<span class="done">' + photoAll + '</span> / ' + allDishes.length + ' 道菜已上传';
+      showToast('「' + zhName + '」照片上传成功', 'success');
     } else {
       throw new Error(result.error || '上传失败');
     }
-  } catch (err) {
+  } catch(err) {
     btn.classList.remove('uploading');
     btn.textContent = '重试';
     showToast('上传失败: ' + err.message, 'error');
   }
 }
 
-// ===== Edit Dish =====
-function openEditModal(card) {
-  editingDish = {
-    category: card.dataset.category,
-    old_zh: card.dataset.zh,
+// ========== Tag Input ==========
+function initTagInput(containerId, values, placeholder) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  container.className = 'tag-input-container';
+  values.forEach(v => container.appendChild(createTagChip(v)));
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tag-input';
+  input.placeholder = placeholder || '输入后按回车添加';
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = input.value.trim();
+      if (val) { container.insertBefore(createTagChip(val), input); input.value = ''; }
+    } else if (e.key === 'Backspace' && !input.value) {
+      const chips = container.querySelectorAll('.tag-chip');
+      if (chips.length > 0) chips[chips.length - 1].remove();
+    }
   };
-  // Find current dish data
-  const dish = allDishes.find(d => d.zh === card.dataset.zh && d.category === card.dataset.category);
-  document.getElementById('editZh').value = dish ? dish.zh : card.dataset.zh;
-  document.getElementById('editEn').value = dish ? dish.en : card.dataset.en;
-  document.getElementById('editModal').classList.add('show');
-  document.getElementById('editZh').focus();
+  container.appendChild(input);
 }
 
-async function saveEdit() {
-  const newZh = document.getElementById('editZh').value.trim();
-  const newEn = document.getElementById('editEn').value.trim();
+function createTagChip(value) {
+  const chip = document.createElement('span');
+  chip.className = 'tag-chip';
+  chip.dataset.value = value;
+  chip.innerHTML = escHtml(value) + ' <span class="tag-remove" onclick="this.parentElement.remove()">&times;</span>';
+  return chip;
+}
 
-  if (!newZh || !newEn) {
-    showToast('中英文名都不能为空', 'error');
+function getTagValues(containerId) {
+  return Array.from(document.getElementById(containerId).querySelectorAll('.tag-chip')).map(c => c.dataset.value);
+}
+
+// ========== Checkbox Group ==========
+function initCheckboxGroup(containerId, options, selectedValues) {
+  const container = document.getElementById(containerId);
+  container.className = 'checkbox-group';
+  container.innerHTML = Object.entries(options).map(([value, label]) => {
+    const checked = selectedValues.includes(value) ? 'checked' : '';
+    return '<label class="checkbox-label"><input type="checkbox" value="' + value + '" ' + checked + '> ' + label + '</label>';
+  }).join('');
+}
+
+function setCheckboxGroup(containerId, selectedValues) {
+  const container = document.getElementById(containerId);
+  container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = selectedValues.includes(cb.value);
+  });
+}
+
+function getCheckboxValues(containerId) {
+  return Array.from(document.getElementById(containerId).querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+}
+
+// ========== 分类管理 ==========
+function openCategoryManager() {
+  const list = document.getElementById('categoryList');
+  const cats = allCategories.filter(c => c.type === 'category');
+  list.innerHTML = cats.map((c, i) => {
+    return '<div class="manager-item" data-id="' + escAttr(c.id) + '">' +
+      '<input type="text" class="mgr-cn" value="' + escAttr(c.label_cn) + '" placeholder="中文名">' +
+      '<input type="text" class="mgr-en" value="' + escAttr(c.label_en) + '" placeholder="英文名">' +
+      '<button class="mgr-btn" onclick="moveCategory(' + i + ', -1)">&uarr;</button>' +
+      '<button class="mgr-btn" onclick="moveCategory(' + i + ', 1)">&darr;</button>' +
+      '<button class="mgr-toggle ' + (c.active ? 'active' : 'inactive') + '" onclick="toggleCategoryActive(' + i + ')">' + (c.active ? '启用' : '停用') + '</button>' +
+      '<button class="mgr-delete" onclick="deleteCategory(' + i + ')">删除</button>' +
+      '<span class="mgr-count">' + (c.dish_count || 0) + ' 道菜</span>' +
+    '</div>';
+  }).join('');
+  document.getElementById('categoryModal').classList.add('show');
+}
+
+function moveCategory(index, direction) {
+  const cats = allCategories.filter(c => c.type === 'category');
+  const newIndex = index + direction;
+  if (newIndex < 0 || newIndex >= cats.length) return;
+  const tempOrder = cats[index].order;
+  cats[index].order = cats[newIndex].order;
+  cats[newIndex].order = tempOrder;
+  allCategories.sort((a, b) => (a.order || 0) - (b.order || 0));
+  openCategoryManager();
+}
+
+function toggleCategoryActive(index) {
+  const cats = allCategories.filter(c => c.type === 'category');
+  cats[index].active = !cats[index].active;
+  openCategoryManager();
+}
+
+function deleteCategory(index) {
+  const cats = allCategories.filter(c => c.type === 'category');
+  const cat = cats[index];
+  if (cat.dish_count > 0) {
+    showToast('该分类下还有 ' + cat.dish_count + ' 道菜，请先移动菜品后再删除。', 'error');
     return;
   }
+  if (!confirm('确定删除分类「' + cat.label_cn + '」吗？')) return;
+  const idx = allCategories.indexOf(cat);
+  allCategories.splice(idx, 1);
+  openCategoryManager();
+}
 
+async function saveCategories() {
+  const items = document.querySelectorAll('#categoryList .manager-item');
+  const categories = [];
+  items.forEach((item, i) => {
+    categories.push({
+      id: item.dataset.id,
+      label_cn: item.querySelector('.mgr-cn').value.trim(),
+      label_en: item.querySelector('.mgr-en').value.trim(),
+      order: i + 1,
+      active: item.querySelector('.mgr-toggle').classList.contains('active')
+    });
+  });
   try {
-    const resp = await fetch('/api/edit_dish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        category: editingDish.category,
-        old_zh: editingDish.old_zh,
-        new_zh: newZh,
-        new_en: newEn,
-      })
+    const resp = await fetch('/api/save_categories', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ categories })
     });
     const result = await resp.json();
-
     if (result.success) {
-      // Update local data
-      const dish = allDishes.find(d => d.zh === editingDish.old_zh && d.category === editingDish.category);
-      if (dish) {
-        dish.zh = newZh;
-        dish.en = newEn;
-        dish.slug = result.new_slug || slugify(newEn);
-        if (result.has_photo) {
-          dish.has_photo = true;
-          dish.photo_file = result.photo_file;
-          dish._t = Date.now();
-        }
-      }
-      closeModal('editModal');
-      render();
-      renderFilters();
-      showToast(`已更新：「${newZh}」`, 'success');
+      await loadDishes();
+      closeModal('categoryModal');
+      showToast('分类设置已保存', 'success');
     } else {
-      throw new Error(result.error || '更新失败');
+      throw new Error(result.error || '保存失败');
     }
-  } catch (err) {
-    showToast('更新失败: ' + err.message, 'error');
+  } catch(err) {
+    showToast('保存失败: ' + err.message, 'error');
   }
 }
 
-// ===== Add Dish =====
-function openAddModal() {
-  document.getElementById('addZh').value = '';
-  document.getElementById('addEn').value = '';
-  document.getElementById('addModal').classList.add('show');
-  document.getElementById('addZh').focus();
+// ========== 标签管理 ==========
+function openTagManager() {
+  const systemList = document.getElementById('systemTagList');
+  systemList.innerHTML = SYSTEM_TAGS.map(t =>
+    '<div class="manager-item"><input type="text" value="' + escAttr(t.label_cn) + '" disabled><span class="mgr-info">系统标签 · 不可删除</span></div>'
+  ).join('');
+
+  const customList = document.getElementById('customTagList');
+  customList.innerHTML = (allCustomTags || []).map((t, i) => {
+    const label = typeof t === 'string' ? t : (t.label || '');
+    return '<div class="manager-item"><input type="text" class="mgr-tag-name" value="' + escAttr(label) + '" placeholder="标签名"><button class="mgr-delete" onclick="this.parentElement.remove()">删除</button></div>';
+  }).join('');
+
+  document.getElementById('tagModal').classList.add('show');
 }
 
-async function saveAdd() {
-  const category = document.getElementById('addCategory').value;
-  const zh = document.getElementById('addZh').value.trim();
-  const en = document.getElementById('addEn').value.trim();
+function addCustomTagRow() {
+  const list = document.getElementById('customTagList');
+  const div = document.createElement('div');
+  div.className = 'manager-item';
+  div.innerHTML = '<input type="text" class="mgr-tag-name" value="" placeholder="标签名"><button class="mgr-delete" onclick="this.parentElement.remove()">删除</button>';
+  list.appendChild(div);
+  div.querySelector('.mgr-tag-name').focus();
+}
 
-  if (!zh || !en) {
-    showToast('中英文名都不能为空', 'error');
-    return;
-  }
-
+async function saveTags() {
+  const items = document.querySelectorAll('#customTagList .manager-item');
+  const customTags = [];
+  items.forEach(item => {
+    const name = item.querySelector('.mgr-tag-name').value.trim();
+    if (name) customTags.push({ label: name });
+  });
   try {
-    const resp = await fetch('/api/add_dish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, zh, en })
+    const resp = await fetch('/api/save_custom_tags', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ custom_tags: customTags })
     });
     const result = await resp.json();
-
     if (result.success) {
-      // Add to local data
-      const catInfo = allCategories.find(c => c.key === category);
-      allDishes.push({
-        zh, en,
-        category,
-        category_label: catInfo ? catInfo.label : category,
-        slug: result.slug,
-        has_photo: false,
-        photo_file: '',
-      });
-      closeModal('addModal');
-      render();
-      renderFilters();
-      showToast(`已添加：「${zh}」`, 'success');
+      allCustomTags = customTags;
+      closeModal('tagModal');
+      showToast('标签设置已保存', 'success');
     } else {
-      throw new Error(result.error || '添加失败');
+      throw new Error(result.error || '保存失败');
     }
-  } catch (err) {
-    showToast('添加失败: ' + err.message, 'error');
+  } catch(err) {
+    showToast('保存失败: ' + err.message, 'error');
   }
 }
 
-// ===== Delete Dish =====
-async function deleteDish(card) {
-  const zh = card.dataset.zh;
-  const category = card.dataset.category;
-
-  if (!confirm(`确定删除「${zh}」吗？\n如果有照片，照片也会一起删除。`)) return;
-
-  try {
-    const resp = await fetch('/api/delete_dish', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, zh })
-    });
-    const result = await resp.json();
-
-    if (result.success) {
-      allDishes = allDishes.filter(d => !(d.zh === zh && d.category === category));
-      render();
-      renderFilters();
-      showToast(`已删除：「${zh}」`, 'success');
-    } else {
-      throw new Error(result.error || '删除失败');
-    }
-  } catch (err) {
-    showToast('删除失败: ' + err.message, 'error');
-  }
-}
-
-// ===== Utils =====
+// ========== 工具函数 ==========
 function slugify(en) {
   let s = en.toLowerCase().trim();
   s = s.replace(/[^a-z0-9\s]/g, '');
@@ -795,14 +1566,14 @@ function slugify(en) {
   return s || 'unnamed';
 }
 
-function closeModal(id) {
-  document.getElementById(id).classList.remove('show');
-}
+function escAttr(s) { return String(s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escHtml(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    closeModal('editModal');
-    closeModal('addModal');
+    ['editModal','editRotationModal','addModal','categoryModal','tagModal'].forEach(id => closeModal(id));
   }
 });
 
@@ -826,7 +1597,7 @@ loadDishes();
 # ========== HTTP 服务器 ==========
 class PhotoManagerHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        pass  # 静默日志
+        pass
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -838,6 +1609,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._serve_dishes()
         elif path == "/api/categories":
             self._serve_categories()
+        elif path == "/api/custom_tags":
+            self._serve_custom_tags()
         elif path.startswith("/photos/"):
             self._serve_photo(path)
         else:
@@ -853,6 +1626,10 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._handle_add_dish()
         elif parsed.path == "/api/delete_dish":
             self._handle_delete_dish()
+        elif parsed.path == "/api/save_categories":
+            self._handle_save_categories()
+        elif parsed.path == "/api/save_custom_tags":
+            self._handle_save_custom_tags()
         else:
             self._json_response(404, {"error": "Not found"})
 
@@ -864,37 +1641,23 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
 
     def _serve_dishes(self):
         dishes = get_all_dishes()
-        manifest = load_manifest()
-
-        result = []
-        for d in dishes:
-            slug = slugify(d["en"])
-            zh = d["zh"]
-            has_photo = zh in manifest
-            result.append({
-                "zh": zh,
-                "en": d["en"],
-                "category": d["category"],
-                "category_label": d["category_label"],
-                "slug": slug,
-                "has_photo": has_photo,
-                "photo_file": manifest.get(zh, {}).get("file", "") if has_photo else "",
-            })
-
-        self._json_response(200, result)
+        self._json_response(200, dishes)
 
     def _serve_categories(self):
         self._json_response(200, get_categories())
 
+    def _serve_custom_tags(self):
+        pool = load_dish_pool()
+        tags = pool.get("custom_tags_def", [])
+        self._json_response(200, tags)
+
     def _serve_photo(self, path):
         filename = os.path.basename(path)
         filepath = os.path.join(PHOTOS_DIR, filename)
-
         if not os.path.exists(filepath):
             self.send_response(404)
             self.end_headers()
             return
-
         self.send_response(200)
         self.send_header("Content-Type", "image/jpeg")
         self.send_header("Cache-Control", "no-cache")
@@ -903,7 +1666,6 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self.wfile.write(f.read())
 
     def _read_body(self):
-        """读取 POST body 并解析 JSON"""
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
         return json.loads(body.decode("utf-8"))
@@ -944,59 +1706,96 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
     def _handle_edit_dish(self):
         try:
             data = self._read_body()
-            category = data.get("category", "")
-            old_zh = data.get("old_zh", "")
-            new_zh = data.get("new_zh", "").strip()
-            new_en = data.get("new_en", "").strip()
-
-            if not category or not old_zh or not new_zh or not new_en:
-                self._json_response(400, {"success": False, "error": "缺少参数"})
-                return
+            dish_id = data.get("id", "")
+            rotation_pool = data.get("rotation_pool", "")
 
             pool = load_dish_pool()
 
-            # 找到菜品所在的数组
-            dish_array, is_rotation = self._find_dish_array(pool, category)
-            if dish_array is None:
-                self._json_response(400, {"success": False, "error": f"分类不存在: {category}"})
-                return
+            if dish_id:
+                # 普通菜品 - 按 ID 查找
+                dish = None
+                for d in pool.get("dishes", []):
+                    if d.get("id") == dish_id:
+                        dish = d
+                        break
 
-            # 找到菜品并更新
-            found = False
-            for item in dish_array:
-                if item.get("zh") == old_zh:
-                    item["zh"] = new_zh
-                    item["en"] = new_en
-                    found = True
-                    break
+                if not dish:
+                    self._json_response(404, {"success": False, "error": f"菜品不存在: {dish_id}"})
+                    return
 
-            if not found:
-                self._json_response(404, {"success": False, "error": f"菜品不存在: {old_zh}"})
-                return
+                old_name = dish.get("name_cn", "")
 
-            save_dish_pool(pool)
+                # 更新所有字段
+                dish["name_cn"] = data.get("name_cn", "").strip()
+                dish["name_en"] = data.get("name_en", "").strip()
+                dish["category_id"] = data.get("category_id", "")
+                dish["meal_tags"] = data.get("meal_tags", [])
+                dish["banquet"] = data.get("banquet", False)
+                dish["protein_types"] = data.get("protein_types", [])
+                dish["vegetables"] = data.get("vegetables", [])
+                dish["vegetable_count"] = len(dish["vegetables"])
+                dish["carb_type"] = data.get("carb_type")
+                dish["meal_components"] = data.get("meal_components", [])
+                dish["taste"] = data.get("taste", "normal")
+                dish["cooking_methods"] = data.get("cooking_methods", [])
+                dish["can_serve_warm"] = data.get("can_serve_warm", False)
+                dish["custom_tags"] = data.get("custom_tags", [])
 
-            # 同步 photo_manifest：如果菜名变了，更新 manifest key
-            manifest = load_manifest()
-            has_photo = False
-            photo_file = ""
-            if old_zh != new_zh and old_zh in manifest:
-                manifest[new_zh] = manifest.pop(old_zh)
-                save_manifest(manifest)
-                has_photo = True
-                photo_file = manifest[new_zh].get("file", "")
-            elif new_zh in manifest:
-                has_photo = True
-                photo_file = manifest[new_zh].get("file", "")
+                save_dish_pool(pool)
 
-            new_slug = slugify(new_en)
-            print(f"  [OK] 编辑菜品: {old_zh} -> {new_zh} / {new_en}")
-            self._json_response(200, {
-                "success": True,
-                "new_slug": new_slug,
-                "has_photo": has_photo,
-                "photo_file": photo_file,
-            })
+                # 同步 photo_manifest
+                manifest = load_manifest()
+                has_photo = False
+                photo_file = ""
+                if old_name != dish["name_cn"] and old_name in manifest:
+                    manifest[dish["name_cn"]] = manifest.pop(old_name)
+                    save_manifest(manifest)
+                    has_photo = True
+                    photo_file = manifest[dish["name_cn"]].get("file", "")
+                elif dish["name_cn"] in manifest:
+                    has_photo = True
+                    photo_file = manifest[dish["name_cn"]].get("file", "")
+
+                new_slug = slugify(dish["name_en"])
+                print(f"  [OK] 编辑菜品: {old_name} -> {dish['name_cn']}")
+                self._json_response(200, {
+                    "success": True,
+                    "new_slug": new_slug,
+                    "has_photo": has_photo,
+                    "photo_file": photo_file,
+                })
+
+            elif rotation_pool:
+                # 轮换池菜品 - 按旧名查找
+                old_name_cn = data.get("old_name_cn", "")
+                items = pool.get("rotation_pools", {}).get(rotation_pool, {}).get("items", [])
+                found = False
+                for item in items:
+                    if item.get("zh") == old_name_cn:
+                        new_zh = data.get("name_cn", "").strip()
+                        new_en = data.get("name_en", "").strip()
+                        old_zh = item.get("zh", "")
+                        item["zh"] = new_zh
+                        item["en"] = new_en
+                        found = True
+
+                        manifest = load_manifest()
+                        if old_zh != new_zh and old_zh in manifest:
+                            manifest[new_zh] = manifest.pop(old_zh)
+                            save_manifest(manifest)
+                        break
+
+                if not found:
+                    self._json_response(404, {"success": False, "error": f"轮换池菜品不存在: {old_name_cn}"})
+                    return
+
+                save_dish_pool(pool)
+                new_slug = slugify(data.get("name_en", ""))
+                print(f"  [OK] 编辑轮换池菜品: {old_name_cn} -> {data.get('name_cn')}")
+                self._json_response(200, {"success": True, "new_slug": new_slug})
+
+            else:
+                self._json_response(400, {"success": False, "error": "缺少 id 或 rotation_pool"})
 
         except Exception as e:
             print(f"  [ERROR] 编辑失败: {e}")
@@ -1005,38 +1804,52 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
     def _handle_add_dish(self):
         try:
             data = self._read_body()
-            category = data.get("category", "")
-            zh = data.get("zh", "").strip()
-            en = data.get("en", "").strip()
+            name_cn = data.get("name_cn", "").strip()
+            name_en = data.get("name_en", "").strip()
+            category_id = data.get("category_id", "")
+            meal_tags = data.get("meal_tags", [])
+            banquet = data.get("banquet", False)
 
-            if not category or not zh or not en:
+            if not name_cn or not name_en or not category_id:
                 self._json_response(400, {"success": False, "error": "缺少参数"})
                 return
 
             pool = load_dish_pool()
 
-            dish_array, is_rotation = self._find_dish_array(pool, category)
-            if dish_array is None:
-                self._json_response(400, {"success": False, "error": f"分类不存在: {category}"})
-                return
-
             # 检查重名
-            for item in dish_array:
-                if item.get("zh") == zh:
-                    self._json_response(400, {"success": False, "error": f"菜品已存在: {zh}"})
+            for d in pool.get("dishes", []):
+                if d.get("name_cn") == name_cn:
+                    self._json_response(400, {"success": False, "error": f"菜品已存在: {name_cn}"})
                     return
 
-            # 创建新菜品
-            new_dish = {"zh": zh, "en": en, "ingredients": [], "tags": []}
-            if is_rotation and category == "porridge":
-                new_dish["has_yam"] = False
-            dish_array.append(new_dish)
+            new_id = generate_dish_id(pool)
 
+            new_dish = {
+                "id": new_id,
+                "name_cn": name_cn,
+                "name_en": name_en,
+                "category_id": category_id,
+                "meal_tags": meal_tags,
+                "banquet": banquet,
+                "protein_types": [],
+                "vegetables": [],
+                "vegetable_count": 0,
+                "carb_type": None,
+                "meal_components": [],
+                "taste": "normal",
+                "cooking_methods": [],
+                "can_serve_warm": False,
+                "custom_tags": [],
+                "needs_review": False,
+                "ingredients": [],
+            }
+
+            pool["dishes"].append(new_dish)
             save_dish_pool(pool)
 
-            new_slug = slugify(en)
-            print(f"  [OK] 添加菜品: {zh} / {en} -> {category}")
-            self._json_response(200, {"success": True, "slug": new_slug})
+            new_slug = slugify(name_en)
+            print(f"  [OK] 添加菜品: {name_cn} / {name_en} -> {category_id}")
+            self._json_response(200, {"success": True, "slug": new_slug, "id": new_id})
 
         except Exception as e:
             print(f"  [ERROR] 添加失败: {e}")
@@ -1045,64 +1858,107 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
     def _handle_delete_dish(self):
         try:
             data = self._read_body()
-            category = data.get("category", "")
-            zh = data.get("zh", "")
-
-            if not category or not zh:
-                self._json_response(400, {"success": False, "error": "缺少参数"})
-                return
+            dish_id = data.get("id", "")
+            rotation_pool = data.get("rotation_pool", "")
+            name_cn = data.get("name_cn", "")
 
             pool = load_dish_pool()
 
-            dish_array, is_rotation = self._find_dish_array(pool, category)
-            if dish_array is None:
-                self._json_response(400, {"success": False, "error": f"分类不存在: {category}"})
-                return
+            if dish_id:
+                found = False
+                for i, d in enumerate(pool.get("dishes", [])):
+                    if d.get("id") == dish_id:
+                        name_cn = d.get("name_cn", "")
+                        pool["dishes"].pop(i)
+                        found = True
+                        break
 
-            # 找到并删除菜品
-            found = False
-            for i, item in enumerate(dish_array):
-                if item.get("zh") == zh:
-                    dish_array.pop(i)
-                    found = True
-                    break
+                if not found:
+                    self._json_response(404, {"success": False, "error": f"菜品不存在: {dish_id}"})
+                    return
 
-            if not found:
-                self._json_response(404, {"success": False, "error": f"菜品不存在: {zh}"})
-                return
+                save_dish_pool(pool)
 
-            save_dish_pool(pool)
+                # 删除照片
+                manifest = load_manifest()
+                if name_cn in manifest:
+                    photo_file = manifest[name_cn].get("file", "")
+                    if photo_file:
+                        photo_path = os.path.join(PHOTOS_DIR, photo_file)
+                        if os.path.exists(photo_path):
+                            os.remove(photo_path)
+                    del manifest[name_cn]
+                    save_manifest(manifest)
 
-            # 删除照片（如果有）
-            manifest = load_manifest()
-            if zh in manifest:
-                photo_file = manifest[zh].get("file", "")
-                if photo_file:
-                    photo_path = os.path.join(PHOTOS_DIR, photo_file)
-                    if os.path.exists(photo_path):
-                        os.remove(photo_path)
-                del manifest[zh]
-                save_manifest(manifest)
+                print(f"  [OK] 删除菜品: {name_cn}")
+                self._json_response(200, {"success": True})
 
-            print(f"  [OK] 删除菜品: {zh} <- {category}")
-            self._json_response(200, {"success": True})
+            elif rotation_pool:
+                items = pool.get("rotation_pools", {}).get(rotation_pool, {}).get("items", [])
+                found = False
+                for i, item in enumerate(items):
+                    if item.get("zh") == name_cn:
+                        items.pop(i)
+                        found = True
+                        break
+
+                if not found:
+                    self._json_response(404, {"success": False, "error": f"轮换池菜品不存在: {name_cn}"})
+                    return
+
+                save_dish_pool(pool)
+
+                manifest = load_manifest()
+                if name_cn in manifest:
+                    photo_file = manifest[name_cn].get("file", "")
+                    if photo_file:
+                        photo_path = os.path.join(PHOTOS_DIR, photo_file)
+                        if os.path.exists(photo_path):
+                            os.remove(photo_path)
+                    del manifest[name_cn]
+                    save_manifest(manifest)
+
+                print(f"  [OK] 删除轮换池菜品: {name_cn}")
+                self._json_response(200, {"success": True})
+
+            else:
+                self._json_response(400, {"success": False, "error": "缺少 id 或 rotation_pool"})
 
         except Exception as e:
             print(f"  [ERROR] 删除失败: {e}")
             self._json_response(500, {"success": False, "error": str(e)})
 
-    def _find_dish_array(self, pool, category):
-        """
-        根据分类 key 找到菜品数组。
-        返回 (array, is_rotation) 或 (None, False)。
-        """
-        # 先在 categories 中找
-        if category in pool.get("categories", {}):
-            return pool["categories"][category].get("dishes", []), False
-        # 再在 rotation_pools 中找
-        if category in pool.get("rotation_pools", {}):
-            return pool["rotation_pools"][category].get("items", []), True
-        return None, False
+    def _handle_save_categories(self):
+        try:
+            data = self._read_body()
+            categories = data.get("categories", [])
+
+            pool = load_dish_pool()
+            pool["categories"] = categories
+            save_dish_pool(pool)
+
+            print(f"  [OK] 保存分类设置 ({len(categories)} 个分类)")
+            self._json_response(200, {"success": True})
+
+        except Exception as e:
+            print(f"  [ERROR] 保存分类失败: {e}")
+            self._json_response(500, {"success": False, "error": str(e)})
+
+    def _handle_save_custom_tags(self):
+        try:
+            data = self._read_body()
+            custom_tags = data.get("custom_tags", [])
+
+            pool = load_dish_pool()
+            pool["custom_tags_def"] = custom_tags
+            save_dish_pool(pool)
+
+            print(f"  [OK] 保存自定义标签 ({len(custom_tags)} 个)")
+            self._json_response(200, {"success": True})
+
+        except Exception as e:
+            print(f"  [ERROR] 保存标签失败: {e}")
+            self._json_response(500, {"success": False, "error": str(e)})
 
     def _json_response(self, code, data):
         self.send_response(code)
@@ -1124,7 +1980,7 @@ def main():
     photo_count = len(manifest)
 
     print("=" * 55)
-    print("  🍳 菜品管理器（照片 + 编辑 + 添加 + 删除）")
+    print("  🍳 菜品管理器 v2.0（结构化字段 + 分类/标签管理）")
     print("=" * 55)
     print(f"  菜品总数: {len(dishes)} 道")
     print(f"  已传照片: {photo_count} 道")

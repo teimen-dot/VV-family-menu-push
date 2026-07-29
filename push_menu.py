@@ -43,30 +43,35 @@ def load_photo_manifest():
         return {}
 
 
-def find_meal_photo(zh_meal_str, manifest, github_raw_base):
+def find_meal_photos(zh_meal_str, manifest, github_raw_base):
     """
-    方案B：从一餐的菜品字符串中找到第一个有照片的菜品，返回图片HTML。
-    匹配逻辑：先全名匹配，再用 " / " 前的部分匹配。
+    从一餐的菜品字符串中找到所有有照片的菜品，返回图片 HTML 列表。
+    匹配逻辑：先全名匹配，再用 " / " 前的部分匹配；去重避免同一张照片重复出现。
     """
     if not manifest:
-        return None
+        return []
 
+    photos = []
+    seen_files = set()
     dishes = zh_meal_str.split(" ＋ ")
     for dish in dishes:
         dish = dish.strip()
-        # 全名匹配
-        if dish in manifest:
-            photo_file = manifest[dish].get("file", "")
-            if photo_file:
-                return f"<img src='{github_raw_base}/photos/{photo_file}' width='300'>"
+        candidates = [dish]
         # " / " 前的部分匹配（如 "清炒豆苗 / 豆苗菜" → "清炒豆苗"）
         if " / " in dish:
-            short_name = dish.split(" / ")[0].strip()
-            if short_name in manifest:
-                photo_file = manifest[short_name].get("file", "")
-                if photo_file:
-                    return f"<img src='{github_raw_base}/photos/{photo_file}' width='300'>"
-    return None
+            candidates.append(dish.split(" / ")[0].strip())
+
+        for candidate in candidates:
+            if candidate in manifest:
+                photo_file = manifest[candidate].get("file", "")
+                if photo_file and photo_file not in seen_files:
+                    photos.append(
+                        f"<img src='{github_raw_base}/photos/{photo_file}' width='160' "
+                        f"style='border-radius:8px;object-fit:cover;aspect-ratio:1/1;'>"
+                    )
+                    seen_files.add(photo_file)
+                    break
+    return photos
 
 
 def calculate_day_number(cycle_start_str, total_days):
@@ -129,6 +134,16 @@ def format_menu_message(menu_entry, day_number, tips, config, manifest):
         if not zh or zh == "无需安排":
             lines.append("无需安排 | No arrangement needed")
         else:
+            # 收集一餐中所有有照片的菜品，横向排列在文字上方
+            photo_htmls = find_meal_photos(zh, manifest, github_raw_base)
+            if photo_htmls:
+                lines.append(
+                    "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;'>"
+                )
+                for ph in photo_htmls:
+                    lines.append(ph)
+                lines.append("</div>")
+
             if zh_first:
                 lines.append(f"**{zh}**")
                 if en:
@@ -137,12 +152,6 @@ def format_menu_message(menu_entry, day_number, tips, config, manifest):
                 if en:
                     lines.append(f"**{en}**")
                 lines.append(f"*{zh}*")
-
-            # 方案B：每餐主菜配 1 张照片（第一个有照片的菜品）
-            photo_html = find_meal_photo(zh, manifest, github_raw_base)
-            if photo_html:
-                lines.append("")
-                lines.append(photo_html)
 
         # 餐次间分隔线
         lines.append("")

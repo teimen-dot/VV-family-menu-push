@@ -1,9 +1,3703 @@
 {
   "meta": {
-    "version": "1.0",
-    "last_updated": "2026-07-28",
-    "description": "家庭菜单管家 - 菜谱数据库。数据来源：Excel原有菜单 + 用户图片收藏。"
+    "version": "2.0",
+    "last_updated": "2026-07-29",
+    "description": "家庭菜单管家 - 菜谱数据库 v2.0。结构化字段支持 AI 配餐。"
   },
+  "categories": [
+    {
+      "id": "protein_main",
+      "label_cn": "蛋白质 / 主菜",
+      "label_en": "Protein / Main",
+      "order": 1,
+      "active": true
+    },
+    {
+      "id": "egg_tofu",
+      "label_cn": "蛋类 / 豆制品",
+      "label_en": "Egg / Tofu",
+      "order": 2,
+      "active": true
+    },
+    {
+      "id": "vegetable_mushroom",
+      "label_cn": "蔬菜 / 菌菇",
+      "label_en": "Vegetable / Mushroom",
+      "order": 3,
+      "active": true
+    },
+    {
+      "id": "soup",
+      "label_cn": "汤 / 羹",
+      "label_en": "Soup",
+      "order": 4,
+      "active": true
+    },
+    {
+      "id": "staple_carb",
+      "label_cn": "主食 / 碳水",
+      "label_en": "Staple / Carb",
+      "order": 5,
+      "active": true
+    },
+    {
+      "id": "cold_dish",
+      "label_cn": "冷菜 / 凉拌",
+      "label_en": "Cold Dish",
+      "order": 6,
+      "active": true
+    },
+    {
+      "id": "one_pot_meal",
+      "label_cn": "一餐型料理",
+      "label_en": "One-Pot Meal",
+      "order": 7,
+      "active": true
+    },
+    {
+      "id": "fruit_snack",
+      "label_cn": "水果 / 加餐 / 下午茶",
+      "label_en": "Fruit / Snack",
+      "order": 8,
+      "active": true
+    }
+  ],
+  "dishes": [
+    {
+      "id": "dish_0001",
+      "name_cn": "黑鱼子酱配嫩豆腐",
+      "name_en": "Black Caviar with Silken Tofu",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish",
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [
+        "高端",
+        "早餐推荐"
+      ],
+      "needs_review": false,
+      "ingredients": [
+        "黑鱼子酱",
+        "嫩豆腐"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0002",
+      "name_cn": "三文鱼籽配嫩豆腐",
+      "name_en": "Salmon Roe with Silken Tofu",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast",
+        "lunch"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish",
+        "other_seafood",
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "三文鱼籽",
+        "嫩豆腐"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0003",
+      "name_cn": "三文鱼籽+黑鱼子酱配嫩豆腐",
+      "name_en": "Salmon Roe & Black Caviar with Silken Tofu",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish",
+        "tofu",
+        "caviar"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "三文鱼籽",
+        "黑鱼子酱",
+        "嫩豆腐"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0004",
+      "name_cn": "薄切牛肉片",
+      "name_en": "Thinly Sliced Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0005",
+      "name_cn": "牛肉粒",
+      "name_en": "Diced Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0006",
+      "name_cn": "葱香鸡丝",
+      "name_en": "Scallion Shredded Chicken",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0007",
+      "name_cn": "蛋炒虾仁",
+      "name_en": "Shrimp stir-fried with eggs",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "old_tags": [],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0008",
+      "name_cn": "鱼子酱溏心蛋",
+      "name_en": "Soft-Boiled Egg with Caviar",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish",
+        "egg",
+        "caviar"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "old_tags": [],
+      "old_category": "protein_breakfast"
+    },
+    {
+      "id": "dish_0009",
+      "name_cn": "香煎澳洲和牛片",
+      "name_en": "Pan-fried Australian Wagyu Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "和牛"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0010",
+      "name_cn": "薄切牛肉片/牛肉粒",
+      "name_en": "Thinly Sliced Beef / Diced Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0011",
+      "name_cn": "芦笋牛肉卷",
+      "name_en": "Asparagus Beef Rolls",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [
+        "芦笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉",
+        "芦笋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0012",
+      "name_cn": "金蒜牛肉粒",
+      "name_en": "Golden Garlic Diced Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉",
+        "蒜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0013",
+      "name_cn": "芦笋炒牛肉",
+      "name_en": "Asparagus Stir-fried Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [
+        "芦笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉",
+        "芦笋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0014",
+      "name_cn": "煎牛排",
+      "name_en": "Pan-seared Steak",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛排"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0015",
+      "name_cn": "家常水煮牛肉",
+      "name_en": "Home-style Boiled Beef",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "boiled"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉",
+        "蔬菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0016",
+      "name_cn": "葱烧牛肉",
+      "name_en": "Braised Beef with Scallions",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0017",
+      "name_cn": "鲜牛肉炒芹菜",
+      "name_en": "Fresh Beef Stir-fried Celery",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "beef"
+      ],
+      "vegetables": [
+        "芹菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛肉",
+        "芹菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0018",
+      "name_cn": "排骨焖土豆",
+      "name_en": "Braised Pork Ribs with Potatoes",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "pork"
+      ],
+      "vegetables": [
+        "土豆"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stewed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "排骨",
+        "土豆"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0019",
+      "name_cn": "腐竹蒸排骨",
+      "name_en": "Steamed Pork Ribs with Tofu Skin",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "pork"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steamed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "排骨",
+        "腐竹"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0020",
+      "name_cn": "鲜松茸清炖去皮鸡肉",
+      "name_en": "Clear Stewed Skinless Chicken with Fresh Matsutake",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stewed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉",
+        "松茸"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0021",
+      "name_cn": "红烧鸡肉",
+      "name_en": "Braised Chicken",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "rich",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0022",
+      "name_cn": "红椒鸡丁西葫芦",
+      "name_en": "Diced Chicken with Zucchini & Red Pepper",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉",
+        "西葫芦",
+        "红椒"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0023",
+      "name_cn": "葱姜生抽鸡丁",
+      "name_en": "Scallion Ginger Soy Diced Chicken",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉",
+        "葱",
+        "姜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0024",
+      "name_cn": "葱香鸡腿肉",
+      "name_en": "Scallion Chicken Thigh",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡腿肉",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0025",
+      "name_cn": "葱烧鸡",
+      "name_en": "Braised Chicken with Scallions",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0026",
+      "name_cn": "柠檬煎鸡腿肉",
+      "name_en": "Pan-fried Chicken Thigh with Lemon",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡腿肉",
+        "柠檬"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0027",
+      "name_cn": "姜葱炒鸡",
+      "name_en": "Ginger & Scallion Stir-fried Chicken",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鸡肉",
+        "姜",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0028",
+      "name_cn": "清蒸银鳕鱼",
+      "name_en": "Steamed Cod",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "steamed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "银鳕鱼"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0029",
+      "name_cn": "清蒸新鲜鱼片",
+      "name_en": "Steamed Fresh Fish Fillet",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "steamed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鱼"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0030",
+      "name_cn": "清蒸带子",
+      "name_en": "Steamed Scallops",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "steamed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "带子"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0031",
+      "name_cn": "香煎带子",
+      "name_en": "Pan-seared Scallops",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "带子"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0032",
+      "name_cn": "金银蒜焗黑虎虾",
+      "name_en": "Garlic Baked Black Tiger Shrimp",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "黑虎虾",
+        "蒜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0033",
+      "name_cn": "蒜香虾",
+      "name_en": "Garlic Shrimp",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "虾",
+        "蒜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0034",
+      "name_cn": "蒜香黄油虾",
+      "name_en": "Garlic Butter Shrimp",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "虾",
+        "蒜",
+        "黄油"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0035",
+      "name_cn": "蒜香口蘑虾",
+      "name_en": "Garlic & Mushroom Shrimp",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp"
+      ],
+      "vegetables": [
+        "口蘑"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "虾",
+        "口蘑",
+        "蒜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0036",
+      "name_cn": "彩椒虾滑盅",
+      "name_en": "Colorful Pepper Shrimp Paste Casserole",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "虾滑",
+        "彩椒"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0037",
+      "name_cn": "葱油鱼",
+      "name_en": "Scallion Oil Fish",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "鱼",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0038",
+      "name_cn": "肉末空心菜",
+      "name_en": "Minced Meat Water Spinach",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "空心菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "肉末",
+        "空心菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0039",
+      "name_cn": "麻婆豆腐",
+      "name_en": "Mapo Tofu",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "豆腐",
+        "肉末"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0040",
+      "name_cn": "盐烤青花鱼饭",
+      "name_en": "Salt-grilled Mackerel Rice",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "roasted"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "青花鱼",
+        "米饭"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0041",
+      "name_cn": "香煎银鳕鱼",
+      "name_en": "fried silver cod",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "old_tags": [],
+      "old_category": "protein_lunch_dinner"
+    },
+    {
+      "id": "dish_0042",
+      "name_cn": "清炒豆苗",
+      "name_en": "Stir-fried Pea Shoots",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "豆苗"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "豆苗"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0043",
+      "name_cn": "温拌莴笋丝",
+      "name_en": "Warm Tossed Shredded Celtuce",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "莴笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "warm_tossed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "莴笋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0044",
+      "name_cn": "温拌莴笋片",
+      "name_en": "Warm Tossed Sliced Celtuce",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "莴笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "warm_tossed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "莴笋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0045",
+      "name_cn": "灼西兰花",
+      "name_en": "Blanched Broccoli",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "西兰花"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "blanched"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "西兰花"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0046",
+      "name_cn": "清炒西兰花",
+      "name_en": "Stir-fried Broccoli",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "西兰花"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "西兰花"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0047",
+      "name_cn": "白灼芦笋",
+      "name_en": "Blanched Asparagus",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "芦笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "blanched"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "芦笋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0048",
+      "name_cn": "清炒芦笋",
+      "name_en": "Stir-fried Asparagus",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "芦笋"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "芦笋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0049",
+      "name_cn": "温拌白萝卜丝",
+      "name_en": "Warm Tossed Shredded White Radish",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "白萝卜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "warm_tossed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "白萝卜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0050",
+      "name_cn": "清炒空心菜",
+      "name_en": "Stir-fried Water Spinach",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "空心菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "空心菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0051",
+      "name_cn": "蒜蓉空心菜",
+      "name_en": "Garlic Water Spinach",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "空心菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "空心菜",
+        "蒜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0052",
+      "name_cn": "蒜蓉红苋菜",
+      "name_en": "Garlic Red Amaranth",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "红苋菜",
+        "苋菜"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "红苋菜",
+        "蒜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0053",
+      "name_cn": "温拌云南小瓜丝",
+      "name_en": "Warm Tossed Shredded Zucchini",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "云南小瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "warm_tossed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "云南小瓜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0054",
+      "name_cn": "沙拉菜",
+      "name_en": "Salad Greens",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "沙拉菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mixed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": true,
+      "ingredients": [
+        "沙拉菜"
+      ],
+      "old_tags": [
+        "需改造温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0055",
+      "name_cn": "清炒小白菜",
+      "name_en": "Stir-fried Bok Choy",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "小白菜",
+        "白菜"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "小白菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0056",
+      "name_cn": "枸杞芽炒口蘑",
+      "name_en": "Goji Berry Shoots Stir-fried Mushrooms",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "枸杞芽",
+        "口蘑"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "枸杞芽",
+        "口蘑"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0057",
+      "name_cn": "葱油云南小瓜",
+      "name_en": "Scallion Oil Zucchini",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "云南小瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "云南小瓜",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0058",
+      "name_cn": "小炒西兰花",
+      "name_en": "Stir-fried Broccoli",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "西兰花"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "西兰花"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0059",
+      "name_cn": "炒蟹味菇",
+      "name_en": "Stir-fried Brown Crab Mushroom",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "seafood"
+      ],
+      "vegetables": [
+        "蟹味菇"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "蟹味菇"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0060",
+      "name_cn": "碧翠揽芳华",
+      "name_en": "Emerald Beauty Platter",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "时蔬"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0061",
+      "name_cn": "开胃萝卜丝",
+      "name_en": "Appetizer Shredded Radish",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "白萝卜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "白萝卜"
+      ],
+      "old_tags": [
+        "需改造温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0062",
+      "name_cn": "XO酱爆炒芥蓝",
+      "name_en": "XO Sauce Stir-fried Chinese Kale",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "芥蓝"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "rich",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "芥蓝",
+        "XO酱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0063",
+      "name_cn": "炒冬瓜片",
+      "name_en": "Stir-fried Winter Melon Slices",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "冬瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "冬瓜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0064",
+      "name_cn": "芦笋百合",
+      "name_en": "Asparagus & Lily Bulb",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "芦笋",
+        "百合"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "芦笋",
+        "百合"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0065",
+      "name_cn": "洋葱炒鸡蛋",
+      "name_en": "Onion & Egg Stir-fry",
+      "category_id": "egg_tofu",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [
+        "洋葱"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "洋葱",
+        "鸡蛋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0066",
+      "name_cn": "清炒藕片",
+      "name_en": "Stir-fried Lotus Root Slices",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "莲藕"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "莲藕"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0067",
+      "name_cn": "手撕茄子",
+      "name_en": "Hand-torn Eggplant",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "茄子"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "茄子"
+      ],
+      "old_tags": [
+        "需改造温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0068",
+      "name_cn": "葱油拌舞茸（温热版）",
+      "name_en": "Scallion Oil Maitake (Warm Version)",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "舞茸"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "舞茸",
+        "葱"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0069",
+      "name_cn": "烤口蘑",
+      "name_en": "Roasted button mushrooms",
+      "category_id": "vegetable_mushroom",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "口蘑"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "roasted"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "old_tags": [],
+      "old_category": "vegetable"
+    },
+    {
+      "id": "dish_0070",
+      "name_cn": "丝瓜鸡蛋汤",
+      "name_en": "Luffa Egg Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [
+        "丝瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "丝瓜",
+        "鸡蛋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0071",
+      "name_cn": "丝瓜豆腐汤",
+      "name_en": "Luffa Tofu Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [
+        "丝瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "丝瓜",
+        "豆腐"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0072",
+      "name_cn": "番茄菌菇小白菜汤",
+      "name_en": "Tomato, Mushroom & Bok Choy Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "小白菜",
+        "番茄",
+        "白菜"
+      ],
+      "vegetable_count": 3,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "番茄",
+        "菌菇",
+        "小白菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0073",
+      "name_cn": "番茄菌菇豆腐汤",
+      "name_en": "Tomato, Mushroom & Tofu Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [
+        "番茄"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "番茄",
+        "菌菇",
+        "豆腐"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0074",
+      "name_cn": "火腿松茸豆腐汤",
+      "name_en": "Ham, Matsutake & Tofu Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "火腿",
+        "松茸",
+        "豆腐"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0075",
+      "name_cn": "枸杞叶淮山肉丸豆腐滚汤",
+      "name_en": "Goji Leaf, Yam, Meatball & Tofu Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [
+        "淮山"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "枸杞叶",
+        "淮山",
+        "肉丸",
+        "豆腐"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0076",
+      "name_cn": "莲藕鸡汤芹菜松茸",
+      "name_en": "Lotus Root Chicken Soup with Celery & Matsutake",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [
+        "莲藕",
+        "芹菜"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "莲藕",
+        "鸡肉",
+        "芹菜",
+        "松茸"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0077",
+      "name_cn": "味噌汤",
+      "name_en": "Miso Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "味噌"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0078",
+      "name_cn": "小白菜松茸豆腐汤",
+      "name_en": "Bok Choy, Matsutake & Tofu Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [
+        "小白菜",
+        "白菜"
+      ],
+      "vegetable_count": 2,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "小白菜",
+        "松茸",
+        "豆腐"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0079",
+      "name_cn": "丝瓜蛤蜊汤",
+      "name_en": "Luffa & Clam Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "丝瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "丝瓜",
+        "蛤蜊"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0080",
+      "name_cn": "西葫芦松茸肉丸汤",
+      "name_en": "Zucchini, Matsutake & Meatball Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "西葫芦",
+        "松茸",
+        "肉丸"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0081",
+      "name_cn": "西葫芦淮山豆腐松茸汤",
+      "name_en": "Zucchini, Yam, Tofu & Matsutake Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [
+        "淮山"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "西葫芦",
+        "淮山",
+        "豆腐",
+        "松茸"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0082",
+      "name_cn": "小瓜肉丸汤",
+      "name_en": "Zucchini Meatball Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "云南小瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "云南小瓜",
+        "肉丸"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0083",
+      "name_cn": "松茸鸡汤",
+      "name_en": "Matsutake Chicken Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "chicken"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "松茸",
+        "鸡肉"
+      ],
+      "old_tags": [
+        "温热",
+        "高端"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0084",
+      "name_cn": "皮蛋苋菜汤",
+      "name_en": "Century Egg & Amaranth Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [
+        "苋菜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "皮蛋",
+        "苋菜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0085",
+      "name_cn": "丝瓜汤",
+      "name_en": "Luffa Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "丝瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "丝瓜"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0086",
+      "name_cn": "枸杞叶生滚汤",
+      "name_en": "Goji Leaf Fresh Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "枸杞叶"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0087",
+      "name_cn": "紫菜蛋花汤",
+      "name_en": "Seaweed Egg Drop Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "egg"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "紫菜",
+        "鸡蛋"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0088",
+      "name_cn": "南瓜豆腐煲",
+      "name_en": "Pumpkin & Tofu Clay Pot",
+      "category_id": "soup",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "tofu"
+      ],
+      "vegetables": [
+        "南瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "南瓜",
+        "豆腐"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "soup"
+    },
+    {
+      "id": "dish_0089",
+      "name_cn": "16谷米饭/16谷粗粮饭",
+      "name_en": "16-Grain Rice",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "16谷米"
+      ],
+      "old_tags": [
+        "粗粮"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0090",
+      "name_cn": "16谷粗粮饭（加新鲜莲子粒）",
+      "name_en": "16-Grain Rice (with Fresh Lotus Seeds)",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "16谷米",
+        "莲子"
+      ],
+      "old_tags": [
+        "粗粮"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0091",
+      "name_cn": "白米混少量16谷饭",
+      "name_en": "White Rice mixed with 16-Grain Rice",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "白米",
+        "16谷米"
+      ],
+      "old_tags": [
+        "粗粮"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0092",
+      "name_cn": "三色藜麦饭",
+      "name_en": "Tri-color Quinoa Rice",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "藜麦",
+        "白米"
+      ],
+      "old_tags": [
+        "粗粮"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0093",
+      "name_cn": "二米饭",
+      "name_en": "Two-Grain Rice (Rice & Millet)",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "白米",
+        "小米"
+      ],
+      "old_tags": [
+        "粗粮"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0094",
+      "name_cn": "纯白米饭",
+      "name_en": "White Rice",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "rice",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "白米"
+      ],
+      "old_tags": [],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0095",
+      "name_cn": "香港红薯",
+      "name_en": "Hong Kong Sweet Potato",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "红薯"
+      ],
+      "vegetable_count": 1,
+      "carb_type": "tuber",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "红薯"
+      ],
+      "old_tags": [
+        "粗粮"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0096",
+      "name_cn": "茴香蚕豆打卤面",
+      "name_en": "Fennel & Fava Bean Noodles with Gravy",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "茴香",
+        "蚕豆"
+      ],
+      "vegetable_count": 2,
+      "carb_type": "noodle",
+      "meal_components": [
+        "vegetable",
+        "carb"
+      ],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "面条",
+        "茴香",
+        "蚕豆"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0097",
+      "name_cn": "饭菜一锅蒸",
+      "name_en": "One-Pot Steamed Rice & Dishes",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "rice",
+      "meal_components": [
+        "carb"
+      ],
+      "taste": "normal",
+      "cooking_methods": [
+        "steamed"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "米饭",
+        "蔬菜",
+        "肉"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0098",
+      "name_cn": "小软面包",
+      "name_en": "Soft Bread Roll",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "noodle",
+      "meal_components": [
+        "carb"
+      ],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "面包"
+      ],
+      "old_tags": [],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0099",
+      "name_cn": "小饭团",
+      "name_en": "Small Rice Balls",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "dim_sum",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "米饭"
+      ],
+      "old_tags": [],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0100",
+      "name_cn": "鱼籽寿司卷",
+      "name_en": "Salmon Roe Sushi Roll",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "fish"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "dim_sum",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "old_tags": [],
+      "old_category": "staple"
+    },
+    {
+      "id": "dish_0101",
+      "name_cn": "香蕉",
+      "name_en": "Banana",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "香蕉"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0102",
+      "name_cn": "苹果",
+      "name_en": "Apple",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "苹果"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0103",
+      "name_cn": "奇异果",
+      "name_en": "Kiwi",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "奇异果"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0104",
+      "name_cn": "车厘子",
+      "name_en": "Cherries",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": true,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "车厘子"
+      ],
+      "old_tags": [
+        "高端"
+      ],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0105",
+      "name_cn": "橙子",
+      "name_en": "Orange",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "橙子"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0106",
+      "name_cn": "橘子",
+      "name_en": "Mandarin Orange",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "橘子"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0107",
+      "name_cn": "水蜜桃",
+      "name_en": "Peach",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "水蜜桃"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0108",
+      "name_cn": "蓝莓+黑莓",
+      "name_en": "Blueberries & Blackberries",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "蓝莓",
+        "黑莓"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0109",
+      "name_cn": "熟核桃仁",
+      "name_en": "Roasted Walnuts",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "核桃"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0110",
+      "name_cn": "黑巧克力",
+      "name_en": "Dark Chocolate",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "巧克力"
+      ],
+      "old_tags": [],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0111",
+      "name_cn": "麦冬大麦茶",
+      "name_en": "Ophiopogon & Barley Tea",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "麦冬",
+        "大麦"
+      ],
+      "old_tags": [
+        "温热"
+      ],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0112",
+      "name_cn": "无糖酸奶",
+      "name_en": "Sugar-free Yogurt",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "afternoon_snack"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "酸奶"
+      ],
+      "old_tags": [
+        "生冷",
+        "需注意"
+      ],
+      "old_category": "fruit_snack"
+    },
+    {
+      "id": "dish_0113",
+      "name_cn": "牛油果土豆沙拉→温热牛油果土豆泥",
+      "name_en": "Avocado Potato Salad → Warm Avocado Potato Mash",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "土豆"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mixed"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "牛油果",
+        "土豆"
+      ],
+      "old_tags": [
+        "需改造",
+        "需改造"
+      ],
+      "old_category": "cold_dish_reform"
+    },
+    {
+      "id": "dish_0114",
+      "name_cn": "捞汁秋葵→温热捞汁秋葵",
+      "name_en": "Marinated Okra → Warm Marinated Okra",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "秋葵"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": true,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "秋葵"
+      ],
+      "old_tags": [
+        "需改造",
+        "需改造"
+      ],
+      "old_category": "cold_dish_reform"
+    },
+    {
+      "id": "dish_0115",
+      "name_cn": "日式番茄浸→烤番茄/番茄烩菜",
+      "name_en": "Japanese Tomato Soak → Roasted Tomato / Tomato Stew",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [
+        "番茄"
+      ],
+      "vegetable_count": 1,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "roasted"
+      ],
+      "can_serve_warm": true,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [
+        "番茄"
+      ],
+      "old_tags": [
+        "需改造",
+        "需改造"
+      ],
+      "old_category": "cold_dish_reform"
+    }
+  ],
+  "custom_tags_def": [
+    {
+      "label": "老板喜欢"
+    },
+    {
+      "label": "快速菜"
+    },
+    {
+      "label": "Toby喜欢"
+    }
+  ],
   "rotation_pools": {
     "porridge": {
       "description": "粥底轮换池（仅限以下10款，不额外添加）",
@@ -78,12 +3772,8 @@
           "en": "Fried Egg"
         },
         {
-          "zh": "辣酱煎蛋",
+          "zh": "红油辣椒蛋",
           "en": "Chili Sauce Fried Egg"
-        },
-        {
-          "zh": "红油煎蛋",
-          "en": "Chili Oil Fried Egg"
         },
         {
           "zh": "松茸蒸蛋",
@@ -136,1272 +3826,6 @@
         {
           "zh": "丝瓜焖荷包蛋",
           "en": "Luffa & Poached Egg Stew"
-        }
-      ]
-    }
-  },
-  "categories": {
-    "protein_breakfast": {
-      "label": "早餐蛋白质",
-      "dishes": [
-        {
-          "zh": "黑鱼子酱配嫩豆腐",
-          "en": "Black Caviar with Silken Tofu",
-          "ingredients": [
-            "黑鱼子酱",
-            "嫩豆腐"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "三文鱼籽配嫩豆腐",
-          "en": "Salmon Roe with Silken Tofu",
-          "ingredients": [
-            "三文鱼籽",
-            "嫩豆腐"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "三文鱼籽+黑鱼子酱配嫩豆腐",
-          "en": "Salmon Roe & Black Caviar with Silken Tofu",
-          "ingredients": [
-            "三文鱼籽",
-            "黑鱼子酱",
-            "嫩豆腐"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "薄切牛肉片",
-          "en": "Thinly Sliced Beef",
-          "ingredients": [
-            "牛肉"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "牛肉粒",
-          "en": "Diced Beef",
-          "ingredients": [
-            "牛肉"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "葱香鸡丝",
-          "en": "Scallion Shredded Chicken",
-          "ingredients": [
-            "鸡肉",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ]
-        }
-      ]
-    },
-    "protein_lunch_dinner": {
-      "label": "午晚餐主荤/蛋白质",
-      "dishes": [
-        {
-          "zh": "香煎澳洲和牛片",
-          "en": "Pan-fried Australian Wagyu Beef",
-          "ingredients": [
-            "和牛"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "薄切牛肉片/牛肉粒",
-          "en": "Thinly Sliced Beef / Diced Beef",
-          "ingredients": [
-            "牛肉"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "番茄土豆牛肉片",
-          "en": "Tomato, Potato & Sliced Beef",
-          "ingredients": [
-            "牛肉",
-            "番茄",
-            "土豆"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "芦笋牛肉卷",
-          "en": "Asparagus Beef Rolls",
-          "ingredients": [
-            "牛肉",
-            "芦笋"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "金蒜牛肉粒",
-          "en": "Golden Garlic Diced Beef",
-          "ingredients": [
-            "牛肉",
-            "蒜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "芦笋炒牛肉",
-          "en": "Asparagus Stir-fried Beef",
-          "ingredients": [
-            "牛肉",
-            "芦笋"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "煎牛排",
-          "en": "Pan-seared Steak",
-          "ingredients": [
-            "牛排"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "家常水煮牛肉",
-          "en": "Home-style Boiled Beef",
-          "ingredients": [
-            "牛肉",
-            "蔬菜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "葱烧牛肉",
-          "en": "Braised Beef with Scallions",
-          "ingredients": [
-            "牛肉",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "鲜牛肉炒芹菜",
-          "en": "Fresh Beef Stir-fried Celery",
-          "ingredients": [
-            "牛肉",
-            "芹菜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "排骨焖土豆",
-          "en": "Braised Pork Ribs with Potatoes",
-          "ingredients": [
-            "排骨",
-            "土豆"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "腐竹蒸排骨",
-          "en": "Steamed Pork Ribs with Tofu Skin",
-          "ingredients": [
-            "排骨",
-            "腐竹"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "鲜松茸清炖去皮鸡肉",
-          "en": "Clear Stewed Skinless Chicken with Fresh Matsutake",
-          "ingredients": [
-            "鸡肉",
-            "松茸"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "红烧鸡肉",
-          "en": "Braised Chicken",
-          "ingredients": [
-            "鸡肉"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "红椒鸡丁西葫芦",
-          "en": "Diced Chicken with Zucchini & Red Pepper",
-          "ingredients": [
-            "鸡肉",
-            "西葫芦",
-            "红椒"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "葱姜生抽鸡丁",
-          "en": "Scallion Ginger Soy Diced Chicken",
-          "ingredients": [
-            "鸡肉",
-            "葱",
-            "姜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "葱香鸡腿肉",
-          "en": "Scallion Chicken Thigh",
-          "ingredients": [
-            "鸡腿肉",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "葱烧鸡",
-          "en": "Braised Chicken with Scallions",
-          "ingredients": [
-            "鸡肉",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "柠檬煎鸡腿肉",
-          "en": "Pan-fried Chicken Thigh with Lemon",
-          "ingredients": [
-            "鸡腿肉",
-            "柠檬"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "姜葱炒鸡",
-          "en": "Ginger & Scallion Stir-fried Chicken",
-          "ingredients": [
-            "鸡肉",
-            "姜",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "清蒸银鳕鱼",
-          "en": "Steamed Cod",
-          "ingredients": [
-            "银鳕鱼"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "清蒸新鲜鱼片",
-          "en": "Steamed Fresh Fish Fillet",
-          "ingredients": [
-            "鱼"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "清蒸带子",
-          "en": "Steamed Scallops",
-          "ingredients": [
-            "带子"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "香煎带子",
-          "en": "Pan-seared Scallops",
-          "ingredients": [
-            "带子"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "金银蒜焗黑虎虾",
-          "en": "Garlic Baked Black Tiger Shrimp",
-          "ingredients": [
-            "黑虎虾",
-            "蒜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "蒜香虾",
-          "en": "Garlic Shrimp",
-          "ingredients": [
-            "虾",
-            "蒜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "蒜香黄油虾",
-          "en": "Garlic Butter Shrimp",
-          "ingredients": [
-            "虾",
-            "蒜",
-            "黄油"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "蒜香口蘑虾",
-          "en": "Garlic & Mushroom Shrimp",
-          "ingredients": [
-            "虾",
-            "口蘑",
-            "蒜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "彩椒虾滑盅",
-          "en": "Colorful Pepper Shrimp Paste Casserole",
-          "ingredients": [
-            "虾滑",
-            "彩椒"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "葱油鱼",
-          "en": "Scallion Oil Fish",
-          "ingredients": [
-            "鱼",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "肉末空心菜",
-          "en": "Minced Meat Water Spinach",
-          "ingredients": [
-            "肉末",
-            "空心菜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "麻婆豆腐",
-          "en": "Mapo Tofu",
-          "ingredients": [
-            "豆腐",
-            "肉末"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "盐烤青花鱼饭",
-          "en": "Salt-grilled Mackerel Rice",
-          "ingredients": [
-            "青花鱼",
-            "米饭"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片",
-          "meal": "lunch_dinner"
-        }
-      ]
-    },
-    "vegetable": {
-      "label": "蔬菜/蛋类",
-      "dishes": [
-        {
-          "zh": "清炒豆苗",
-          "en": "Stir-fried Pea Shoots",
-          "ingredients": [
-            "豆苗"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "温拌莴笋丝",
-          "en": "Warm Tossed Shredded Celtuce",
-          "ingredients": [
-            "莴笋"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "温拌莴笋片",
-          "en": "Warm Tossed Sliced Celtuce",
-          "ingredients": [
-            "莴笋"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "灼西兰花",
-          "en": "Blanched Broccoli",
-          "ingredients": [
-            "西兰花"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "清炒西兰花",
-          "en": "Stir-fried Broccoli",
-          "ingredients": [
-            "西兰花"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "白灼芦笋",
-          "en": "Blanched Asparagus",
-          "ingredients": [
-            "芦笋"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "清炒芦笋",
-          "en": "Stir-fried Asparagus",
-          "ingredients": [
-            "芦笋"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "温拌白萝卜丝",
-          "en": "Warm Tossed Shredded White Radish",
-          "ingredients": [
-            "白萝卜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "清炒空心菜",
-          "en": "Stir-fried Water Spinach",
-          "ingredients": [
-            "空心菜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "蒜蓉空心菜",
-          "en": "Garlic Water Spinach",
-          "ingredients": [
-            "空心菜",
-            "蒜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "蒜蓉红苋菜",
-          "en": "Garlic Red Amaranth",
-          "ingredients": [
-            "红苋菜",
-            "蒜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "温拌云南小瓜丝",
-          "en": "Warm Tossed Shredded Zucchini",
-          "ingredients": [
-            "云南小瓜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "沙拉菜",
-          "en": "Salad Greens",
-          "ingredients": [
-            "沙拉菜"
-          ],
-          "tags": [
-            "需改造温热"
-          ]
-        },
-        {
-          "zh": "清炒小白菜",
-          "en": "Stir-fried Bok Choy",
-          "ingredients": [
-            "小白菜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "枸杞芽炒口蘑",
-          "en": "Goji Berry Shoots Stir-fried Mushrooms",
-          "ingredients": [
-            "枸杞芽",
-            "口蘑"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "葱油云南小瓜",
-          "en": "Scallion Oil Zucchini",
-          "ingredients": [
-            "云南小瓜",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "小炒西兰花",
-          "en": "Stir-fried Broccoli",
-          "ingredients": [
-            "西兰花"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "炒蟹味菇",
-          "en": "Stir-fried Brown Crab Mushroom",
-          "ingredients": [
-            "蟹味菇"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "碧翠揽芳华",
-          "en": "Emerald Beauty Platter",
-          "ingredients": [
-            "时蔬"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "开胃萝卜丝",
-          "en": "Appetizer Shredded Radish",
-          "ingredients": [
-            "白萝卜"
-          ],
-          "tags": [
-            "需改造温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "XO酱爆炒芥蓝",
-          "en": "XO Sauce Stir-fried Chinese Kale",
-          "ingredients": [
-            "芥蓝",
-            "XO酱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "炒冬瓜片",
-          "en": "Stir-fried Winter Melon Slices",
-          "ingredients": [
-            "冬瓜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "芦笋百合",
-          "en": "Asparagus & Lily Bulb",
-          "ingredients": [
-            "芦笋",
-            "百合"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "洋葱炒鸡蛋",
-          "en": "Onion & Egg Stir-fry",
-          "ingredients": [
-            "洋葱",
-            "鸡蛋"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "清炒藕片",
-          "en": "Stir-fried Lotus Root Slices",
-          "ingredients": [
-            "莲藕"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "手撕茄子",
-          "en": "Hand-torn Eggplant",
-          "ingredients": [
-            "茄子"
-          ],
-          "tags": [
-            "需改造温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "葱油拌舞茸（温热版）",
-          "en": "Scallion Oil Maitake (Warm Version)",
-          "ingredients": [
-            "舞茸",
-            "葱"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片",
-          "note": "原凉拌改温热"
-        }
-      ]
-    },
-    "soup": {
-      "label": "汤类",
-      "dishes": [
-        {
-          "zh": "丝瓜鸡蛋汤",
-          "en": "Luffa Egg Soup",
-          "ingredients": [
-            "丝瓜",
-            "鸡蛋"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "丝瓜豆腐汤",
-          "en": "Luffa Tofu Soup",
-          "ingredients": [
-            "丝瓜",
-            "豆腐"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "番茄菌菇小白菜汤",
-          "en": "Tomato, Mushroom & Bok Choy Soup",
-          "ingredients": [
-            "番茄",
-            "菌菇",
-            "小白菜"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "番茄菌菇豆腐汤",
-          "en": "Tomato, Mushroom & Tofu Soup",
-          "ingredients": [
-            "番茄",
-            "菌菇",
-            "豆腐"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "火腿松茸豆腐汤",
-          "en": "Ham, Matsutake & Tofu Soup",
-          "ingredients": [
-            "火腿",
-            "松茸",
-            "豆腐"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "枸杞叶淮山肉丸豆腐滚汤",
-          "en": "Goji Leaf, Yam, Meatball & Tofu Soup",
-          "ingredients": [
-            "枸杞叶",
-            "淮山",
-            "肉丸",
-            "豆腐"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "莲藕鸡汤芹菜松茸",
-          "en": "Lotus Root Chicken Soup with Celery & Matsutake",
-          "ingredients": [
-            "莲藕",
-            "鸡肉",
-            "芹菜",
-            "松茸"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "味噌汤",
-          "en": "Miso Soup",
-          "ingredients": [
-            "味噌"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "小白菜松茸豆腐汤",
-          "en": "Bok Choy, Matsutake & Tofu Soup",
-          "ingredients": [
-            "小白菜",
-            "松茸",
-            "豆腐"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ]
-        },
-        {
-          "zh": "丝瓜蛤蜊汤",
-          "en": "Luffa & Clam Soup",
-          "ingredients": [
-            "丝瓜",
-            "蛤蜊"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "西葫芦松茸肉丸汤",
-          "en": "Zucchini, Matsutake & Meatball Soup",
-          "ingredients": [
-            "西葫芦",
-            "松茸",
-            "肉丸"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "西葫芦淮山豆腐松茸汤",
-          "en": "Zucchini, Yam, Tofu & Matsutake Soup",
-          "ingredients": [
-            "西葫芦",
-            "淮山",
-            "豆腐",
-            "松茸"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "小瓜肉丸汤",
-          "en": "Zucchini Meatball Soup",
-          "ingredients": [
-            "云南小瓜",
-            "肉丸"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "松茸鸡汤",
-          "en": "Matsutake Chicken Soup",
-          "ingredients": [
-            "松茸",
-            "鸡肉"
-          ],
-          "tags": [
-            "温热",
-            "高端"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "皮蛋苋菜汤",
-          "en": "Century Egg & Amaranth Soup",
-          "ingredients": [
-            "皮蛋",
-            "苋菜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "丝瓜汤",
-          "en": "Luffa Soup",
-          "ingredients": [
-            "丝瓜"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "枸杞叶生滚汤",
-          "en": "Goji Leaf Fresh Soup",
-          "ingredients": [
-            "枸杞叶"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "紫菜蛋花汤",
-          "en": "Seaweed Egg Drop Soup",
-          "ingredients": [
-            "紫菜",
-            "鸡蛋"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "南瓜豆腐煲",
-          "en": "Pumpkin & Tofu Clay Pot",
-          "ingredients": [
-            "南瓜",
-            "豆腐"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        }
-      ]
-    },
-    "staple": {
-      "label": "主食/碳水",
-      "dishes": [
-        {
-          "zh": "16谷米饭/16谷粗粮饭",
-          "en": "16-Grain Rice",
-          "ingredients": [
-            "16谷米"
-          ],
-          "tags": [
-            "粗粮"
-          ]
-        },
-        {
-          "zh": "16谷粗粮饭（加新鲜莲子粒）",
-          "en": "16-Grain Rice (with Fresh Lotus Seeds)",
-          "ingredients": [
-            "16谷米",
-            "莲子"
-          ],
-          "tags": [
-            "粗粮"
-          ]
-        },
-        {
-          "zh": "白米混少量16谷饭",
-          "en": "White Rice mixed with 16-Grain Rice",
-          "ingredients": [
-            "白米",
-            "16谷米"
-          ],
-          "tags": [
-            "粗粮"
-          ]
-        },
-        {
-          "zh": "三色藜麦饭",
-          "en": "Tri-color Quinoa Rice",
-          "ingredients": [
-            "藜麦",
-            "白米"
-          ],
-          "tags": [
-            "粗粮"
-          ]
-        },
-        {
-          "zh": "二米饭",
-          "en": "Two-Grain Rice (Rice & Millet)",
-          "ingredients": [
-            "白米",
-            "小米"
-          ],
-          "tags": [
-            "粗粮"
-          ]
-        },
-        {
-          "zh": "纯白米饭",
-          "en": "White Rice",
-          "ingredients": [
-            "白米"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "香港红薯",
-          "en": "Hong Kong Sweet Potato",
-          "ingredients": [
-            "红薯"
-          ],
-          "tags": [
-            "粗粮"
-          ]
-        },
-        {
-          "zh": "茴香蚕豆打卤面",
-          "en": "Fennel & Fava Bean Noodles with Gravy",
-          "ingredients": [
-            "面条",
-            "茴香",
-            "蚕豆"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "饭菜一锅蒸",
-          "en": "One-Pot Steamed Rice & Dishes",
-          "ingredients": [
-            "米饭",
-            "蔬菜",
-            "肉"
-          ],
-          "tags": [
-            "温热"
-          ],
-          "source": "图片"
-        },
-        {
-          "zh": "小软面包",
-          "en": "Soft Bread Roll",
-          "ingredients": [
-            "面包"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "小饭团",
-          "en": "Small Rice Balls",
-          "ingredients": [
-            "米饭"
-          ],
-          "tags": []
-        }
-      ]
-    },
-    "fruit_snack": {
-      "label": "水果/加餐/下午茶",
-      "dishes": [
-        {
-          "zh": "香蕉",
-          "en": "Banana",
-          "ingredients": [
-            "香蕉"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "苹果",
-          "en": "Apple",
-          "ingredients": [
-            "苹果"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "奇异果",
-          "en": "Kiwi",
-          "ingredients": [
-            "奇异果"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "车厘子",
-          "en": "Cherries",
-          "ingredients": [
-            "车厘子"
-          ],
-          "tags": [
-            "高端"
-          ]
-        },
-        {
-          "zh": "橙子",
-          "en": "Orange",
-          "ingredients": [
-            "橙子"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "橘子",
-          "en": "Mandarin Orange",
-          "ingredients": [
-            "橘子"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "水蜜桃",
-          "en": "Peach",
-          "ingredients": [
-            "水蜜桃"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "蓝莓+黑莓",
-          "en": "Blueberries & Blackberries",
-          "ingredients": [
-            "蓝莓",
-            "黑莓"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "熟核桃仁",
-          "en": "Roasted Walnuts",
-          "ingredients": [
-            "核桃"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "黑巧克力",
-          "en": "Dark Chocolate",
-          "ingredients": [
-            "巧克力"
-          ],
-          "tags": []
-        },
-        {
-          "zh": "麦冬大麦茶",
-          "en": "Ophiopogon & Barley Tea",
-          "ingredients": [
-            "麦冬",
-            "大麦"
-          ],
-          "tags": [
-            "温热"
-          ]
-        },
-        {
-          "zh": "无糖酸奶",
-          "en": "Sugar-free Yogurt",
-          "ingredients": [
-            "酸奶"
-          ],
-          "tags": [
-            "生冷",
-            "需注意"
-          ],
-          "note": "属于生冷，温热饮食需注意"
-        }
-      ]
-    },
-    "cold_dish_reform": {
-      "label": "冷菜类（需改造为温热版本后使用）",
-      "dishes": [
-        {
-          "zh": "牛油果土豆沙拉→温热牛油果土豆泥",
-          "en": "Avocado Potato Salad → Warm Avocado Potato Mash",
-          "ingredients": [
-            "牛油果",
-            "土豆"
-          ],
-          "tags": [
-            "需改造"
-          ],
-          "source": "图片",
-          "reform": "改为温热土豆泥"
-        },
-        {
-          "zh": "捞汁秋葵→温热捞汁秋葵",
-          "en": "Marinated Okra → Warm Marinated Okra",
-          "ingredients": [
-            "秋葵"
-          ],
-          "tags": [
-            "需改造"
-          ],
-          "source": "图片",
-          "reform": "温热上桌"
-        },
-        {
-          "zh": "日式番茄浸→烤番茄/番茄烩菜",
-          "en": "Japanese Tomato Soak → Roasted Tomato / Tomato Stew",
-          "ingredients": [
-            "番茄"
-          ],
-          "tags": [
-            "需改造"
-          ],
-          "source": "图片",
-          "reform": "改为烤制或烩菜"
         }
       ]
     }
