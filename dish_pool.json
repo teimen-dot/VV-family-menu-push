@@ -3,7 +3,7 @@
     "version": "2.0",
     "last_updated": "2026-07-29",
     "description": "家庭菜单管家 - 菜谱数据库 v2.0。结构化字段支持 AI 配餐。",
-    "total_dishes": 178
+    "total_dishes": 187
   },
   "categories": [
     {
@@ -5166,6 +5166,7 @@
       "name_en": "Hot and Sour Baby Chinese Cabbage",
       "category_id": "vegetable_mushroom",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5179,7 +5180,7 @@
       "meal_components": [],
       "taste": "spicy",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5191,6 +5192,7 @@
       "name_en": "Chilled Asparagus with Boiled Eggs",
       "category_id": "vegetable_mushroom",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5218,6 +5220,7 @@
       "name_en": "Spicy Stir-Fried Shimeji Mushrooms with Green Peppers",
       "category_id": "vegetable_mushroom",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5232,7 +5235,7 @@
       "meal_components": [],
       "taste": "spicy",
       "cooking_methods": [
-        "stir_fried"
+        "stir_fry"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5252,8 +5255,10 @@
       "protein_types": [
         "other_seafood"
       ],
-      "vegetables": [],
-      "vegetable_count": 0,
+      "vegetables": [
+        "牛油果"
+      ],
+      "vegetable_count": 1,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
@@ -5270,6 +5275,7 @@
       "name_en": "Chinese Yam Dough-Drop Soup",
       "category_id": "staple_carb",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5278,9 +5284,11 @@
         "egg"
       ],
       "vegetables": [
-        "番茄"
+        "番茄",
+        "淮山",
+        "山药"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 3,
       "carb_type": "other",
       "meal_components": [],
       "taste": "light",
@@ -5297,34 +5305,7 @@
       "name_en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables",
       "category_id": "staple_carb",
       "meal_tags": [
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [
-        "shrimp",
-        "egg"
-      ],
-      "vegetables": [
-        "西兰花"
-      ],
-      "vegetable_count": 1,
-      "carb_type": "rice",
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [
-        "stir_fried"
-      ],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false
-    },
-    {
-      "id": "dish_0176",
-      "name_cn": "牛油果虾仁鸡蛋能量碗",
-      "name_en": "Avocado, Shrimp and Egg Power Bowl",
-      "category_id": "staple_carb",
-      "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5335,9 +5316,44 @@
       ],
       "vegetables": [
         "西兰花",
-        "小番茄"
+        "杂蔬"
       ],
       "vegetable_count": 2,
+      "carb_type": "rice",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "stir_fry"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [
+        "杂蔬",
+        "藜麦",
+        "炒饭"
+      ],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0176",
+      "name_cn": "牛油果虾仁鸡蛋能量碗",
+      "name_en": "Avocado, Shrimp and Egg Power Bowl",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "egg"
+      ],
+      "vegetables": [
+        "西兰花",
+        "小番茄",
+        "牛油果"
+      ],
+      "vegetable_count": 3,
       "carb_type": "other",
       "meal_components": [],
       "taste": "normal",
@@ -5352,14 +5368,16 @@
       "id": "dish_0177",
       "name_cn": "姜葱三文鱼焖饭",
       "name_en": "Ginger and Scallion Salmon Rice",
-      "category_id": "staple_carb",
+      "category_id": "one_pot_meal",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
       "banquet": false,
       "protein_types": [
-        "fish"
+        "fish",
+        "other_seafood"
       ],
       "vegetables": [],
       "vegetable_count": 0,
@@ -5367,7 +5385,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "simmer"
+        "braise"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5377,8 +5395,9 @@
       "id": "dish_0178",
       "name_cn": "虾仁火腿蔬菜汤面",
       "name_en": "Noodle Soup with Shrimp, Ham and Vegetables",
-      "category_id": "staple_carb",
+      "category_id": "one_pot_meal",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5388,9 +5407,10 @@
         "pork"
       ],
       "vegetables": [
-        "青菜"
+        "青菜",
+        "菠菜"
       ],
-      "vegetable_count": 1,
+      "vegetable_count": 2,
       "carb_type": "noodle",
       "meal_components": [],
       "taste": "normal",
@@ -5398,7 +5418,9 @@
         "boil"
       ],
       "can_serve_warm": false,
-      "custom_tags": [],
+      "custom_tags": [
+        "火腿"
+      ],
       "needs_review": false
     },
     {
@@ -5410,7 +5432,7 @@
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "other_seafood"
       ],
@@ -5435,7 +5457,7 @@
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "other_seafood"
       ],
@@ -5445,7 +5467,7 @@
       "meal_components": [],
       "taste": "spicy",
       "cooking_methods": [
-        "simmer"
+        "steam"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5460,7 +5482,7 @@
         "lunch",
         "dinner"
       ],
-      "banquet": false,
+      "banquet": true,
       "protein_types": [
         "beef"
       ],
@@ -5472,7 +5494,7 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "simmer"
+        "boil"
       ],
       "can_serve_warm": false,
       "custom_tags": [],
@@ -5494,12 +5516,255 @@
       ],
       "vegetables": [
         "生菜",
-        "小番茄"
+        "小番茄",
+        "火腿"
+      ],
+      "vegetable_count": 3,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [
+        "沙拉"
+      ],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0183",
+      "name_cn": "牛油果滑蛋虾仁鱼籽吐司",
+      "name_en": "Avocado Toast with Scrambled Eggs, Shrimp and Caviar",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "egg",
+        "caviar"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "other"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0184",
+      "name_cn": "江西炒米粉",
+      "name_en": "Jiangxi-Style Stir-Fried Rice Noodles",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "pork",
+        "egg"
+      ],
+      "vegetables": [
+        "青菜",
+        "豆芽"
+      ],
+      "vegetable_count": 2,
+      "carb_type": "noodle",
+      "meal_components": [],
+      "taste": "spicy",
+      "cooking_methods": [
+        "stir_fried"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0185",
+      "name_cn": "清蒸帝王蟹",
+      "name_en": "Steamed King Crab",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0186",
+      "name_cn": "清蒸皮皮虾",
+      "name_en": "Steamed Mantis Shrimp",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0187",
+      "name_cn": "海胆鱼籽生蚝拼盘",
+      "name_en": "Oysters with Sea Urchin, Salmon Roe and Caviar",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "cold_mix"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0188",
+      "name_cn": "寿司拼盘",
+      "name_en": "Sushi Platter",
+      "category_id": "one_pot_meal",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish",
+        "shrimp",
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [
+        "protein",
+        "carb"
+      ],
+      "taste": "normal",
+      "cooking_methods": [
+        "other"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0189",
+      "name_cn": "刺身拼盘",
+      "name_en": "Sashimi Platter",
+      "category_id": "cold_dish",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "fish",
+        "shrimp",
+        "other_seafood"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "light",
+      "cooking_methods": [
+        "other"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0190",
+      "name_cn": "香草烤羊腿",
+      "name_en": "Herb-Roasted Leg of Lamb",
+      "category_id": "protein_main",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [
+        "other"
+      ],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "roast"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false
+    },
+    {
+      "id": "dish_0191",
+      "name_cn": "水果蔬菜拼盘",
+      "name_en": "Fruit and Green Salad Platter",
+      "category_id": "fruit_snack",
+      "meal_tags": [
+        "lunch",
+        "dinner"
+      ],
+      "banquet": true,
+      "protein_types": [],
+      "vegetables": [
+        "芝麻菜",
+        "混合生菜"
       ],
       "vegetable_count": 2,
       "carb_type": null,
       "meal_components": [],
-      "taste": "normal",
+      "taste": "light",
       "cooking_methods": [
         "cold_mix"
       ],
