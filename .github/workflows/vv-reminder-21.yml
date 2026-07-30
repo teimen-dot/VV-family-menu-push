@@ -1,0 +1,30 @@
+name: VV Reminder 21:00
+
+on:
+  schedule:
+    # UTC 13:00 = 北京时间/香港时间 21:00
+    - cron: '0 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Send VV reminder
+      env:
+        PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
+        PUSHPLUS_TOPIC: ${{ secrets.PUSHPLUS_TOPIC }}
+      run: |
+        if [ -z "$PUSHPLUS_TOPIC" ]; then
+          export PUSHPLUS_TOPIC="home-menu"
+        fi
+        python3 nanny_reminder.py --time 21:00

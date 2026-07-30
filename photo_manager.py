@@ -110,6 +110,9 @@ def get_all_dishes():
             "can_serve_warm": dish.get("can_serve_warm", False),
             "custom_tags": dish.get("custom_tags", []),
             "needs_review": dish.get("needs_review", False),
+            "quick_soup": dish.get("quick_soup", 0),
+            "slow_soup": dish.get("slow_soup", 0),
+            "manual_only_for_breakfast": dish.get("manual_only_for_breakfast", 0),
             "has_photo": has_photo,
             "photo_file": photo_file,
             "slug": slugify(dish.get("name_en", "")),
@@ -722,6 +725,13 @@ body {
           <label class="checkbox-label"><input type="checkbox" id="editCanServeWarm"> 可改造成温热版本</label>
         </div>
 
+        <label style="margin-top:14px;">V3 汤类标签 / Soup Tags</label>
+        <div class="checkbox-group">
+          <label class="checkbox-label"><input type="checkbox" id="editQuickSoup"> 快手汤 Quick Soup（午餐）</label>
+          <label class="checkbox-label"><input type="checkbox" id="editSlowSoup"> 慢火汤 Slow Soup（晚餐）</label>
+          <label class="checkbox-label"><input type="checkbox" id="editManualOnlyBreakfast"> 早餐手选 Manual Only（不自动推荐）</label>
+        </div>
+
       </div>
     </div>
 
@@ -749,6 +759,12 @@ body {
       <label class="checkbox-label"><input type="checkbox" id="addDinner"> 晚餐</label>
     </div>
     <label class="checkbox-label" style="margin-top: 14px;"><input type="checkbox" id="addBanquet"> 家宴推荐</label>
+    <label style="margin-top: 14px; display:block;">V3 汤类标签 / Soup Tags</label>
+    <div class="checkbox-group">
+      <label class="checkbox-label"><input type="checkbox" id="addQuickSoup"> 快手汤 Quick Soup</label>
+      <label class="checkbox-label"><input type="checkbox" id="addSlowSoup"> 慢火汤 Slow Soup</label>
+      <label class="checkbox-label"><input type="checkbox" id="addManualOnlyBreakfast"> 早餐手选 Manual Only</label>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal('addModal')">取消</button>
       <button class="btn-save" onclick="saveAdd()">添加</button>
@@ -947,6 +963,9 @@ function renderDishCard(d, idx) {
     badges += '<span class="badge badge-meal">' + escHtml(mealLabels) + '</span>';
   }
   if (d.banquet) badges += '<span class="badge badge-banquet">家宴</span>';
+  if (d.quick_soup) badges += '<span class="badge badge-review">快手汤</span>';
+  if (d.slow_soup) badges += '<span class="badge" style="background:#e8f5e9;color:#2e7d32">慢火汤</span>';
+  if (d.manual_only_for_breakfast) badges += '<span class="badge" style="background:#fff3e0;color:#e65100">早手选</span>';
   if (d.needs_review) badges += '<span class="badge badge-review">待审核</span>';
 
   return '<div class="dish-card ' + (d.has_photo ? 'has-photo' : '') + '" data-idx="' + idx + '" data-slug="' + escAttr(d.slug) + '" data-name-cn="' + escAttr(d.name_cn) + '">' +
@@ -1009,6 +1028,9 @@ function openEditModal(d) {
   document.getElementById('editTaste').value = d.taste || 'normal';
   initCheckboxGroup('editCookingMethods', COOKING_METHODS, d.cooking_methods || []);
   document.getElementById('editCanServeWarm').checked = d.can_serve_warm;
+  document.getElementById('editQuickSoup').checked = !!d.quick_soup;
+  document.getElementById('editSlowSoup').checked = !!d.slow_soup;
+  document.getElementById('editManualOnlyBreakfast').checked = !!d.manual_only_for_breakfast;
 
   onCategoryChange();
   document.getElementById('editModal').classList.add('show');
@@ -1059,6 +1081,9 @@ async function saveEdit() {
     cooking_methods: getCheckboxValues('editCookingMethods'),
     can_serve_warm: document.getElementById('editCanServeWarm').checked,
     custom_tags: getTagValues('editCustomTags'),
+    quick_soup: document.getElementById('editQuickSoup').checked ? 1 : 0,
+    slow_soup: document.getElementById('editSlowSoup').checked ? 1 : 0,
+    manual_only_for_breakfast: document.getElementById('editManualOnlyBreakfast').checked ? 1 : 0,
   };
 
   try {
@@ -1083,6 +1108,9 @@ async function saveEdit() {
       editingDish.cooking_methods = data.cooking_methods;
       editingDish.can_serve_warm = data.can_serve_warm;
       editingDish.custom_tags = data.custom_tags;
+      editingDish.quick_soup = data.quick_soup;
+      editingDish.slow_soup = data.slow_soup;
+      editingDish.manual_only_for_breakfast = data.manual_only_for_breakfast;
       editingDish.slug = result.new_slug || slugify(newNameEn);
       const cat = allCategories.find(c => c.id === data.category_id);
       editingDish.category_label = cat ? cat.label_cn : data.category_id;
@@ -1111,6 +1139,9 @@ function openAddModal() {
   document.getElementById('addLunch').checked = false;
   document.getElementById('addDinner').checked = false;
   document.getElementById('addBanquet').checked = false;
+  document.getElementById('addQuickSoup').checked = false;
+  document.getElementById('addSlowSoup').checked = false;
+  document.getElementById('addManualOnlyBreakfast').checked = false;
   document.getElementById('addModal').classList.add('show');
   document.getElementById('addZh').focus();
 }
@@ -1132,7 +1163,10 @@ async function saveAdd() {
       body: JSON.stringify({
         name_cn: nameCn, name_en: nameEn, category_id: categoryId,
         meal_tags: mealTags,
-        banquet: document.getElementById('addBanquet').checked
+        banquet: document.getElementById('addBanquet').checked,
+        quick_soup: document.getElementById('addQuickSoup').checked ? 1 : 0,
+        slow_soup: document.getElementById('addSlowSoup').checked ? 1 : 0,
+        manual_only_for_breakfast: document.getElementById('addManualOnlyBreakfast').checked ? 1 : 0,
       })
     });
     const result = await resp.json();
@@ -1147,6 +1181,9 @@ async function saveAdd() {
         carb_type: null, meal_components: [], taste: 'normal',
         cooking_methods: [], can_serve_warm: false, custom_tags: [],
         needs_review: false,
+        quick_soup: document.getElementById('addQuickSoup').checked ? 1 : 0,
+        slow_soup: document.getElementById('addSlowSoup').checked ? 1 : 0,
+        manual_only_for_breakfast: document.getElementById('addManualOnlyBreakfast').checked ? 1 : 0,
         has_photo: false, photo_file: '', slug: result.slug
       });
       closeModal('addModal');
@@ -1652,6 +1689,9 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 dish["cooking_methods"] = data.get("cooking_methods", [])
                 dish["can_serve_warm"] = data.get("can_serve_warm", False)
                 dish["custom_tags"] = data.get("custom_tags", [])
+                dish["quick_soup"] = data.get("quick_soup", 0)
+                dish["slow_soup"] = data.get("slow_soup", 0)
+                dish["manual_only_for_breakfast"] = data.get("manual_only_for_breakfast", 0)
 
                 save_dish_pool(pool)
 
@@ -1725,6 +1765,9 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 "custom_tags": [],
                 "needs_review": False,
                 "ingredients": [],
+                "quick_soup": data.get("quick_soup", 0),
+                "slow_soup": data.get("slow_soup", 0),
+                "manual_only_for_breakfast": data.get("manual_only_for_breakfast", 0),
             }
 
             pool["dishes"].append(new_dish)

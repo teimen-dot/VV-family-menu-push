@@ -6703,6 +6703,27 @@
       "quick_soup": 0,
       "slow_soup": 0,
       "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0209",
+      "name_cn": "南瓜饼",
+      "name_en": "Pan-Fried Pumpkin Cakes",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": null,
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": []
     }
   ],
   "custom_tags_def": [
