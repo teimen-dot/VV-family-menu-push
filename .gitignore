@@ -5,3 +5,9 @@ __pycache__/
 *.bak.*
 server.log
 backups/
+*.db
+attachments/
+HANDOFF.md
+fix_data.py
+verify_fixes.py
+verify_new_features.py

@@ -107,10 +107,6 @@
     "file": "black_caviar_with_silken_tofu.jpg",
     "uploaded": "2026-07-29"
   },
-  "茶碗蒸": {
-    "file": "chawanmushi.jpg",
-    "uploaded": "2026-07-29"
-  },
   "芦笋牛肉卷": {
     "file": "asparagus_beef_rolls.jpg",
     "uploaded": "2026-07-29"
@@ -133,10 +129,6 @@
   },
   "鱼籽寿司卷": {
     "file": "salmon_roe_sushi_roll.jpg",
-    "uploaded": "2026-07-29"
-  },
-  "薄切牛肉片": {
-    "file": "thinly_sliced_beef.jpg",
     "uploaded": "2026-07-29"
   },
   "烤口蘑": {
@@ -347,14 +339,6 @@
     "file": "clear_stewed_skinless_chicken_with_fresh_matsutake.jpg",
     "uploaded": "2026-07-29"
   },
-  "红椒鸡丁西葫芦": {
-    "file": "diced_chicken_with_zucchini_red_pepper.jpg",
-    "uploaded": "2026-07-29"
-  },
-  "香煎澳洲和牛片": {
-    "file": "panfried_australian_wagyu_beef.jpg",
-    "uploaded": "2026-07-29"
-  },
   "葱姜生抽鸡丁": {
     "file": "scallion_ginger_soy_diced_chicken.jpg",
     "uploaded": "2026-07-29"
@@ -465,7 +449,7 @@
   },
   "白米混少量16谷饭": {
     "file": "white_rice_mixed_with_16grain_rice.jpg",
-    "uploaded": "2026-07-29"
+    "uploaded": "2026-07-30"
   },
   "三色藜麦饭": {
     "file": "tricolor_quinoa_rice.jpg",
@@ -473,7 +457,7 @@
   },
   "小米二米饭": {
     "file": "twograin_rice_rice_millet.jpg",
-    "uploaded": "2026-07-29"
+    "uploaded": "2026-07-30"
   },
   "纯白米饭": {
     "file": "white_rice.jpg",
@@ -481,10 +465,6 @@
   },
   "16谷粗粮饭（加新鲜莲子粒）": {
     "file": "16grain_rice_with_fresh_lotus_seeds.jpg",
-    "uploaded": "2026-07-29"
-  },
-  "香港红薯": {
-    "file": "hong_kong_sweet_potato.jpg",
     "uploaded": "2026-07-29"
   },
   "饭菜一锅蒸": {
@@ -790,5 +770,29 @@
   "钵钵鸡": {
     "file": "bobo_chicken.jpg",
     "uploaded": "2026-07-29"
+  },
+  "包子": {
+    "file": "bao_zi.jpg",
+    "uploaded": "2026-07-30"
+  },
+  "花卷": {
+    "file": "steamed_twisted_roll.jpg",
+    "uploaded": "2026-07-30"
+  },
+  "玉米": {
+    "file": "corn.jpg",
+    "uploaded": "2026-07-30"
+  },
+  "淮山 山药": {
+    "file": "chinese_yam.jpg",
+    "uploaded": "2026-07-30"
+  },
+  "红薯 番薯": {
+    "file": "sweet_potato.jpg",
+    "uploaded": "2026-07-30"
+  },
+  "日式饺子 煎饺": {
+    "file": "dumplings.jpg",
+    "uploaded": "2026-07-30"
   }
 }

@@ -144,7 +144,6 @@ def format_menu_message(menu_entry, day_number, tips, config, manifest):
     meals = [
         ("早", "Breakfast", "breakfast", "#c9a876"),
         ("午", "Lunch", "lunch", "#a89878"),
-        ("茶", "Afternoon Snack", "afternoon_snack", "#9a9080"),
         ("晚", "Dinner", "dinner", "#7a6a5a"),
     ]
 
@@ -223,7 +222,7 @@ def format_menu_message(menu_entry, day_number, tips, config, manifest):
 
     # 页脚
     lines.append("<div style='text-align:center;padding:10px 0 0;border-top:1px solid #e8e0d4;margin-top:14px;'>")
-    lines.append("<div style='font-size:10px;color:#b8a898;letter-spacing:2px;'>家庭菜单管家 · AUTO-PUSHED</div>")
+    lines.append("<div style='font-size:10px;color:#b8a898;letter-spacing:2px;'>家庭菜单管家 · VV CONFIRMED</div>")
     lines.append("</div>")
 
     lines.append("</div>")
@@ -310,6 +309,18 @@ def main():
         return
 
     menu_entry = menu_list[day_number - 1]
+
+    # V3: 检查菜单是否已由 VV 确认
+    # menu_data.json 中每条菜单可以设置 "confirmed": true 表示 VV 已确认
+    if menu_entry.get("confirmed") is False:
+        print(f"[SKIP] 第{day_number}天菜单尚未由 VV 确认，跳过推送")
+        print("  正式推送需要 VV 在 H5 页面点击 Confirm")
+        return
+
+    # V3: 检查是否已推送过
+    if menu_entry.get("pushed") is True:
+        print(f"[SKIP] 第{day_number}天菜单已推送过，跳过")
+        return
 
     # 4. 获取时令建议
     current_month = date.today().month

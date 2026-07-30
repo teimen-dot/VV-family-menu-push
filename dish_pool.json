@@ -70,11 +70,9 @@
       "name_en": "Black Caviar with Silken Tofu",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
+        "breakfast"
       ],
-      "banquet": true,
+      "banquet": false,
       "protein_types": [
         "other_seafood",
         "tofu"
@@ -101,7 +99,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0002",
@@ -109,11 +110,9 @@
       "name_en": "Salmon Roe with Silken Tofu",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
+        "breakfast"
       ],
-      "banquet": true,
+      "banquet": false,
       "protein_types": [
         "other_seafood",
         "tofu"
@@ -137,7 +136,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0003",
@@ -145,11 +147,9 @@
       "name_en": "Salmon Roe & Black Caviar with Silken Tofu",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
+        "breakfast"
       ],
-      "banquet": true,
+      "banquet": false,
       "protein_types": [
         "other_seafood",
         "tofu"
@@ -174,40 +174,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "protein_breakfast"
-    },
-    {
-      "id": "dish_0004",
-      "name_cn": "薄切牛肉片",
-      "name_en": "Thinly Sliced Beef",
-      "category_id": "protein_main",
-      "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
-      ],
-      "banquet": true,
-      "protein_types": [
-        "beef"
-      ],
-      "vegetables": [],
-      "vegetable_count": 0,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [
-        "pan_fry"
-      ],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "牛肉"
-      ],
-      "old_tags": [
-        "温热"
-      ],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0005",
@@ -240,7 +210,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0006",
@@ -274,7 +247,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0007",
@@ -283,8 +259,7 @@
       "category_id": "protein_main",
       "meal_tags": [
         "breakfast",
-        "lunch",
-        "dinner"
+        "lunch"
       ],
       "banquet": false,
       "protein_types": [
@@ -304,7 +279,10 @@
       "needs_review": false,
       "ingredients": [],
       "old_tags": [],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0008",
@@ -333,15 +311,17 @@
       "needs_review": false,
       "ingredients": [],
       "old_tags": [],
-      "old_category": "protein_breakfast"
+      "old_category": "protein_breakfast",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
-      "id": "dish_0009",
-      "name_cn": "香煎澳洲和牛片",
-      "name_en": "Pan-fried Australian Wagyu Beef",
+      "id": "dish_0010",
+      "name_cn": "薄切牛肉片/牛肉粒",
+      "name_en": "Thinly Sliced Beef / Diced Beef",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -355,39 +335,8 @@
       "meal_components": [],
       "taste": "normal",
       "cooking_methods": [
-        "pan_fry"
+        "stir_fry"
       ],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "和牛"
-      ],
-      "old_tags": [
-        "温热",
-        "高端"
-      ],
-      "old_category": "protein_lunch_dinner"
-    },
-    {
-      "id": "dish_0010",
-      "name_cn": "薄切牛肉片/牛肉粒",
-      "name_en": "Thinly Sliced Beef / Diced Beef",
-      "category_id": "protein_main",
-      "meal_tags": [
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [
-        "beef"
-      ],
-      "vegetables": [],
-      "vegetable_count": 0,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -397,7 +346,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0011",
@@ -405,6 +357,7 @@
       "name_en": "Asparagus Beef Rolls",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -419,7 +372,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -430,7 +385,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0012",
@@ -438,6 +396,7 @@
       "name_en": "Golden Garlic Diced Beef",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -450,7 +409,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -461,7 +422,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0013",
@@ -497,7 +461,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0014",
@@ -529,7 +496,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0015",
@@ -562,7 +532,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0016",
@@ -570,6 +543,7 @@
       "name_en": "Braised Beef with Scallions",
       "category_id": "protein_main",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -595,7 +569,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0017",
@@ -631,7 +608,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0018",
@@ -668,7 +648,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0019",
@@ -702,7 +685,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0020",
@@ -739,7 +725,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0021",
@@ -772,45 +761,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
-    },
-    {
-      "id": "dish_0022",
-      "name_cn": "红椒鸡丁西葫芦",
-      "name_en": "Diced Chicken with Zucchini & Red Pepper",
-      "category_id": "protein_main",
-      "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [
-        "chicken"
-      ],
-      "vegetables": [
-        "红椒",
-        "西葫芦"
-      ],
-      "vegetable_count": 2,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [
-        "stir_fry"
-      ],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "鸡肉",
-        "西葫芦",
-        "红椒"
-      ],
-      "old_tags": [
-        "温热"
-      ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0023",
@@ -845,7 +799,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0024",
@@ -878,7 +835,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0025",
@@ -898,7 +858,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -909,7 +871,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0026",
@@ -943,7 +908,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0027",
@@ -977,7 +945,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0028",
@@ -1011,7 +982,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0029",
@@ -1044,7 +1018,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0030",
@@ -1077,7 +1054,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0031",
@@ -1107,7 +1087,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0032",
@@ -1141,7 +1124,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0033",
@@ -1175,7 +1161,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0034",
@@ -1195,7 +1184,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1207,7 +1198,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0035",
@@ -1229,7 +1223,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1241,7 +1237,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0036",
@@ -1261,7 +1260,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1272,7 +1273,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0037",
@@ -1292,7 +1296,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1303,7 +1309,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0038",
@@ -1339,7 +1348,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0039",
@@ -1373,7 +1385,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0040",
@@ -1406,7 +1421,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0041",
@@ -1434,7 +1452,10 @@
       "needs_review": false,
       "ingredients": [],
       "old_tags": [],
-      "old_category": "protein_lunch_dinner"
+      "old_category": "protein_lunch_dinner",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0042",
@@ -1467,7 +1488,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0043",
@@ -1500,7 +1524,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0044",
@@ -1533,7 +1560,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0045",
@@ -1566,7 +1596,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0046",
@@ -1599,7 +1632,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0047",
@@ -1632,7 +1668,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0048",
@@ -1665,7 +1704,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0049",
@@ -1698,7 +1740,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0050",
@@ -1731,7 +1776,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0051",
@@ -1765,7 +1813,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0052",
@@ -1800,7 +1851,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0053",
@@ -1833,7 +1887,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0054",
@@ -1866,7 +1923,10 @@
       "old_tags": [
         "需改造温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0055",
@@ -1900,7 +1960,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0056",
@@ -1935,7 +1998,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0057",
@@ -1956,7 +2022,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -1967,7 +2035,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0058",
@@ -2000,7 +2071,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0059",
@@ -2034,7 +2108,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0060",
@@ -2065,7 +2142,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0061",
@@ -2098,7 +2178,10 @@
       "old_tags": [
         "需改造温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0062",
@@ -2132,7 +2215,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0063",
@@ -2165,7 +2251,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0064",
@@ -2202,7 +2291,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0066",
@@ -2235,7 +2327,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0067",
@@ -2268,7 +2363,10 @@
       "old_tags": [
         "需改造温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0068",
@@ -2302,7 +2400,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0069",
@@ -2331,7 +2432,10 @@
       "needs_review": false,
       "ingredients": [],
       "old_tags": [],
-      "old_category": "vegetable"
+      "old_category": "vegetable",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0070",
@@ -2368,7 +2472,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0071",
@@ -2376,7 +2483,6 @@
       "name_en": "Luffa Tofu Eggs Soup",
       "category_id": "soup",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2406,7 +2512,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0072",
@@ -2444,7 +2553,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0073",
@@ -2466,7 +2578,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2478,7 +2592,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0074",
@@ -2487,8 +2604,7 @@
       "category_id": "soup",
       "meal_tags": [
         "breakfast",
-        "lunch",
-        "dinner"
+        "lunch"
       ],
       "banquet": true,
       "protein_types": [
@@ -2516,7 +2632,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0075",
@@ -2556,7 +2675,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0076",
@@ -2598,7 +2720,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0077",
@@ -2616,7 +2741,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2626,7 +2753,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0078",
@@ -2649,7 +2779,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2662,7 +2794,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0079",
@@ -2699,7 +2834,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0080",
@@ -2722,7 +2860,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2734,7 +2874,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0081",
@@ -2756,7 +2899,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2769,7 +2914,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0082",
@@ -2803,7 +2951,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0083",
@@ -2841,7 +2992,10 @@
         "温热",
         "高端"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0084",
@@ -2849,6 +3003,7 @@
       "name_en": "Century Egg & Amaranth Soup",
       "category_id": "soup",
       "meal_tags": [
+        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2863,7 +3018,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2874,7 +3031,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0086",
@@ -2910,7 +3070,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0087",
@@ -2930,7 +3093,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -2941,7 +3106,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0088",
@@ -2949,7 +3117,6 @@
       "name_en": "Pumpkin & Tofu Clay Pot",
       "category_id": "soup",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2978,7 +3145,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "soup"
+      "old_category": "soup",
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0090",
@@ -2986,7 +3156,6 @@
       "name_en": "16-Grain Rice (with Fresh Lotus Seeds)",
       "category_id": "staple_carb",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -2997,7 +3166,9 @@
       "carb_type": "coarse_grain",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3008,7 +3179,10 @@
       "old_tags": [
         "粗粮"
       ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0091",
@@ -3016,7 +3190,6 @@
       "name_en": "White Rice mixed with 16-Grain Rice",
       "category_id": "staple_carb",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3040,7 +3213,10 @@
       "old_tags": [
         "粗粮"
       ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0092",
@@ -3048,7 +3224,6 @@
       "name_en": "Tri-color Quinoa Rice",
       "category_id": "staple_carb",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3059,7 +3234,9 @@
       "carb_type": "coarse_grain",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3070,7 +3247,10 @@
       "old_tags": [
         "粗粮"
       ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0093",
@@ -3078,7 +3258,6 @@
       "name_en": "Two-Grain Rice (Rice & Millet)",
       "category_id": "staple_carb",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3102,7 +3281,10 @@
       "old_tags": [
         "粗粮"
       ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0094",
@@ -3110,7 +3292,6 @@
       "name_en": "White Rice",
       "category_id": "staple_carb",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3121,7 +3302,9 @@
       "carb_type": "rice",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3129,41 +3312,10 @@
         "白米"
       ],
       "old_tags": [],
-      "old_category": "staple"
-    },
-    {
-      "id": "dish_0095",
-      "name_cn": "香港红薯",
-      "name_en": "Hong Kong Sweet Potato",
-      "category_id": "staple_carb",
-      "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [],
-      "vegetables": [
-        "红薯",
-        "粗粮"
-      ],
-      "vegetable_count": 2,
-      "carb_type": "coarse_grain",
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [
-        "boil"
-      ],
-      "can_serve_warm": false,
-      "custom_tags": [],
-      "needs_review": false,
-      "ingredients": [
-        "红薯"
-      ],
-      "old_tags": [
-        "粗粮"
-      ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0096",
@@ -3172,8 +3324,7 @@
       "category_id": "staple_carb",
       "meal_tags": [
         "breakfast",
-        "lunch",
-        "dinner"
+        "lunch"
       ],
       "banquet": false,
       "protein_types": [],
@@ -3188,7 +3339,10 @@
         "carb"
       ],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil",
+        "braise"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3200,7 +3354,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0097",
@@ -3208,7 +3365,6 @@
       "name_en": "One-Pot Steamed Rice & Dishes",
       "category_id": "one_pot_meal",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3235,13 +3391,16 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0098",
       "name_cn": "酸种面包",
       "name_en": "Sourdough Bread",
-      "category_id": "staple_carb",
+      "category_id": "fruit_snack",
       "meal_tags": [
         "breakfast",
         "lunch",
@@ -3268,7 +3427,11 @@
         "面包"
       ],
       "old_tags": [],
-      "old_category": "staple"
+      "old_category": "staple",
+      "breakfast_staple_type": "sourdough",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0099",
@@ -3297,7 +3460,10 @@
         "米饭"
       ],
       "old_tags": [],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0100",
@@ -3306,8 +3472,7 @@
       "category_id": "staple_carb",
       "meal_tags": [
         "breakfast",
-        "lunch",
-        "dinner"
+        "lunch"
       ],
       "banquet": false,
       "protein_types": [
@@ -3318,13 +3483,18 @@
       "carb_type": "dim_sum",
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
       "ingredients": [],
       "old_tags": [],
-      "old_category": "staple"
+      "old_category": "staple",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0101",
@@ -3342,7 +3512,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3350,7 +3522,10 @@
         "香蕉"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0102",
@@ -3368,7 +3543,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3376,7 +3553,10 @@
         "苹果"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0103",
@@ -3394,7 +3574,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3402,7 +3584,10 @@
         "奇异果"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0104",
@@ -3420,7 +3605,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3430,7 +3617,10 @@
       "old_tags": [
         "高端"
       ],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0105",
@@ -3448,7 +3638,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3456,7 +3648,10 @@
         "橙子"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0106",
@@ -3474,7 +3669,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3482,7 +3679,10 @@
         "橘子"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0107",
@@ -3500,7 +3700,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3508,7 +3710,10 @@
         "水蜜桃"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0108",
@@ -3526,7 +3731,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3535,7 +3742,10 @@
         "黑莓"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0109",
@@ -3553,7 +3763,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3563,7 +3775,10 @@
       "old_tags": [
         "温热"
       ],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0110",
@@ -3581,7 +3796,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
@@ -3589,7 +3806,10 @@
         "巧克力"
       ],
       "old_tags": [],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0112",
@@ -3607,7 +3827,9 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [
         "酸奶"
@@ -3620,7 +3842,10 @@
         "生冷",
         "需注意"
       ],
-      "old_category": "fruit_snack"
+      "old_category": "fruit_snack",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0113",
@@ -3656,7 +3881,10 @@
         "需改造",
         "需改造"
       ],
-      "old_category": "cold_dish_reform"
+      "old_category": "cold_dish_reform",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0114",
@@ -3690,7 +3918,10 @@
         "需改造",
         "需改造"
       ],
-      "old_category": "cold_dish_reform"
+      "old_category": "cold_dish_reform",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0115",
@@ -3723,7 +3954,10 @@
         "需改造",
         "需改造"
       ],
-      "old_category": "cold_dish_reform"
+      "old_category": "cold_dish_reform",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0116",
@@ -3731,7 +3965,6 @@
       "name_en": "Korean Pan-Fried Egg Tofu",
       "category_id": "egg_tofu",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3751,7 +3984,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0117",
@@ -3759,7 +3995,6 @@
       "name_en": "Chinese Cabbage and Tofu Soup",
       "category_id": "soup",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3779,7 +4014,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0118",
@@ -3787,7 +4025,6 @@
       "name_en": "Steamed Egg with Tofu",
       "category_id": "egg_tofu",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -3807,7 +4044,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0119",
@@ -3839,7 +4079,10 @@
         "快手汤"
       ],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0120",
@@ -3863,7 +4106,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0121",
@@ -3887,7 +4133,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0122",
@@ -3911,7 +4160,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0123",
@@ -3935,7 +4187,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0124",
@@ -3959,7 +4214,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0125",
@@ -3983,7 +4241,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0126",
@@ -4007,7 +4268,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0127",
@@ -4031,7 +4295,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0128",
@@ -4055,7 +4322,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0129",
@@ -4079,7 +4349,10 @@
       "custom_tags": [
         "粥底轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0130",
@@ -4100,12 +4373,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0131",
@@ -4126,12 +4404,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0132",
@@ -4152,12 +4435,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "pan_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0133",
@@ -4178,12 +4466,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0134",
@@ -4204,12 +4497,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0135",
@@ -4230,12 +4528,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0136",
@@ -4256,12 +4559,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0137",
@@ -4282,12 +4590,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0138",
@@ -4308,12 +4621,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0139",
@@ -4334,12 +4652,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0140",
@@ -4360,12 +4683,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "boil"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0141",
@@ -4386,12 +4714,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0142",
@@ -4412,38 +4745,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
-    },
-    {
-      "id": "dish_0143",
-      "name_cn": "茶碗蒸",
-      "name_en": "Chawanmushi",
-      "category_id": "egg_tofu",
-      "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
-      ],
-      "banquet": false,
-      "protein_types": [
-        "egg"
-      ],
-      "vegetables": [],
-      "vegetable_count": 0,
-      "carb_type": null,
-      "meal_components": [],
-      "taste": "normal",
-      "cooking_methods": [],
-      "can_serve_warm": true,
-      "custom_tags": [
-        "鸡蛋做法轮换"
-      ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0144",
@@ -4464,12 +4776,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0145",
@@ -4490,12 +4807,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stir_fry"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0146",
@@ -4516,12 +4838,17 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "stew"
+      ],
       "can_serve_warm": true,
       "custom_tags": [
         "鸡蛋做法轮换"
       ],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0147",
@@ -4529,7 +4856,6 @@
       "name_en": "Chilled Tofu and Avocado Salad",
       "category_id": "cold_dish",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4549,7 +4875,10 @@
       ],
       "can_serve_warm": true,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0148",
@@ -4557,9 +4886,7 @@
       "name_en": "Four-Flavour Tofu Salad",
       "category_id": "cold_dish",
       "meal_tags": [
-        "breakfast",
-        "lunch",
-        "dinner"
+        "breakfast"
       ],
       "banquet": false,
       "protein_types": [
@@ -4575,7 +4902,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0149",
@@ -4603,7 +4933,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0150",
@@ -4631,7 +4964,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0151",
@@ -4639,7 +4975,6 @@
       "name_en": "Pan-Fried Tofu Cubes",
       "category_id": "protein_main",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4657,7 +4992,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0152",
@@ -4682,7 +5020,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0153",
@@ -4707,7 +5048,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0154",
@@ -4737,7 +5081,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0155",
@@ -4764,7 +5111,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0156",
@@ -4773,8 +5123,7 @@
       "category_id": "soup",
       "meal_tags": [
         "breakfast",
-        "lunch",
-        "dinner"
+        "lunch"
       ],
       "banquet": false,
       "protein_types": [
@@ -4793,7 +5142,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0157",
@@ -4801,7 +5153,6 @@
       "name_en": "Silken Tofu with Shredded Chicken and Cucumber",
       "category_id": "cold_dish",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4822,7 +5173,10 @@
       ],
       "can_serve_warm": true,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0158",
@@ -4847,7 +5201,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0159",
@@ -4855,7 +5212,6 @@
       "name_en": "Japanese-Style Tofu Salad",
       "category_id": "cold_dish",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4873,7 +5229,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0160",
@@ -4881,7 +5240,6 @@
       "name_en": "Tofu and Green Vegetable Soup",
       "category_id": "soup",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -4901,7 +5259,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0161",
@@ -4930,7 +5291,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0162",
@@ -4960,7 +5324,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0163",
@@ -4989,7 +5356,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0164",
@@ -5018,7 +5388,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 1,
+      "manual_only_for_breakfast": 1
     },
     {
       "id": "dish_0165",
@@ -5044,7 +5417,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0166",
@@ -5070,7 +5446,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0167",
@@ -5097,7 +5476,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0168",
@@ -5134,7 +5516,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": true
+      "needs_review": true,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0169",
@@ -5159,7 +5544,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0170",
@@ -5185,7 +5573,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0171",
@@ -5213,7 +5604,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0172",
@@ -5240,7 +5634,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0173",
@@ -5268,7 +5665,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0174",
@@ -5277,8 +5677,7 @@
       "category_id": "staple_carb",
       "meal_tags": [
         "breakfast",
-        "lunch",
-        "dinner"
+        "lunch"
       ],
       "banquet": false,
       "protein_types": [
@@ -5298,15 +5697,17 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0175",
       "name_cn": "杂蔬虾仁藜麦炒饭",
       "name_en": "Quinoa Fried Rice with Shrimp and Mixed Vegetables",
-      "category_id": "staple_carb",
+      "category_id": "one_pot_meal",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5332,15 +5733,17 @@
         "藜麦",
         "炒饭"
       ],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0176",
       "name_cn": "牛油果虾仁鸡蛋能量碗",
       "name_en": "Avocado, Shrimp and Egg Power Bowl",
-      "category_id": "staple_carb",
+      "category_id": "one_pot_meal",
       "meal_tags": [
-        "breakfast",
         "lunch",
         "dinner"
       ],
@@ -5363,7 +5766,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0177",
@@ -5390,7 +5796,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0178",
@@ -5422,7 +5831,10 @@
       "custom_tags": [
         "火腿"
       ],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0179",
@@ -5447,7 +5859,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0180",
@@ -5472,7 +5887,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0181",
@@ -5499,7 +5917,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0182",
@@ -5531,7 +5952,10 @@
       "custom_tags": [
         "沙拉"
       ],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0183",
@@ -5558,7 +5982,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0184",
@@ -5588,7 +6015,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0185",
@@ -5613,7 +6043,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0186",
@@ -5638,7 +6071,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0187",
@@ -5663,7 +6099,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0188",
@@ -5695,7 +6134,10 @@
       "custom_tags": [
         "寿司"
       ],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0189",
@@ -5724,7 +6166,10 @@
       "custom_tags": [
         "刺身"
       ],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0190",
@@ -5749,7 +6194,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0191",
@@ -5775,7 +6223,10 @@
       ],
       "can_serve_warm": false,
       "custom_tags": [],
-      "needs_review": false
+      "needs_review": false,
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0192",
@@ -5794,11 +6245,16 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0193",
@@ -5817,11 +6273,16 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0194",
@@ -5840,11 +6301,16 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0195",
@@ -5871,7 +6337,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0196",
@@ -5886,11 +6355,16 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0197",
@@ -5917,7 +6391,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0198",
@@ -5943,7 +6420,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0199",
@@ -5969,7 +6449,10 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0200",
@@ -5984,13 +6467,18 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "raw"
+      ],
       "can_serve_warm": false,
       "custom_tags": [
         "甜品"
       ],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0201",
@@ -6009,11 +6497,16 @@
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "cold_mix"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     },
     {
       "id": "dish_0202",
@@ -6046,7 +6539,170 @@
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0203",
+      "name_cn": "包子",
+      "name_en": "Bao zi",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "dim_sum",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0204",
+      "name_cn": "花卷",
+      "name_en": "Steamed Twisted Roll",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "dim_sum",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "breakfast_staple_type": "huajuan",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0205",
+      "name_cn": "日式饺子 煎饺",
+      "name_en": "Dumplings",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "dim_sum",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "pan_fry"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "breakfast_staple_type": "jiaozi",
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0206",
+      "name_cn": "玉米",
+      "name_en": "Corn",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0207",
+      "name_cn": "淮山 山药",
+      "name_en": "Chinese Yam",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam",
+        "boil"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0208",
+      "name_cn": "红薯 番薯",
+      "name_en": "Sweet Potato",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam",
+        "boil"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     }
   ],
   "custom_tags_def": [
