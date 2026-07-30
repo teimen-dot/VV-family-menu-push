@@ -94,9 +94,13 @@ def init_db():
             name_en         TEXT,
             aliases         TEXT DEFAULT '[]',
             category        TEXT,
+            is_common       INTEGER DEFAULT 0,
             created_at      TEXT DEFAULT (datetime('now'))
         )
     """)
+
+    # V4 迁移：为已存在的 ingredients 表添加 is_common 列（幂等）
+    _safe_add_column(c, "ingredients", "is_common", "INTEGER DEFAULT 0")
 
     # ========== 4. dish_ingredients - 菜品-食材关联 ==========
     c.execute("""
@@ -134,7 +138,7 @@ def init_db():
         )
     """)
 
-    # ========== 7. inventory_items - 库存条目 ==========
+    # ========== 7. inventory_items - 库存条目（历史快照明细） ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS inventory_items (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,6 +150,33 @@ def init_db():
             FOREIGN KEY (ingredient_id) REFERENCES ingredients(ingredient_id)
         )
     """)
+
+    # ========== 7a. current_pantry - V4 当前持续库存（增量维护） ==========
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS current_pantry (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            location        TEXT NOT NULL,
+            ingredient_id   TEXT NOT NULL,
+            status          TEXT DEFAULT 'available',
+            is_active       INTEGER DEFAULT 1,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now')),
+            UNIQUE(location, ingredient_id)
+        )
+    """)
+
+    # ========== 7b. inventory_snapshots - V4 库存快照（审计追溯） ==========
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS inventory_snapshots (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            location        TEXT NOT NULL,
+            items_json      TEXT,
+            created_at      TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    # V4: menus 表增加 inventory_snapshot_id 列
+    _safe_add_column(c, "menus", "inventory_snapshot_id", "INTEGER")
 
     # ========== 8. menus - 每日菜单（按真实日期） ==========
     c.execute("""

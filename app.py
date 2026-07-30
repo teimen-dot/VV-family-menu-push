@@ -16,6 +16,9 @@ from inventory import (
     get_available_ingredient_ids, check_shortages,
     create_purchase_requests, get_purchase_requests,
     update_purchase_status,
+    save_pantry_changes, get_current_pantry,
+    check_dish_availability, check_dishes_availability_batch,
+    get_common_ingredients_static,
 )
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
@@ -405,48 +408,26 @@ def get_menu_purchase_requests(menu_id):
 
 
 def get_dish_availability(dish_ids, location):
-    """检查菜品食材可用性。返回 {dish_id: {available: bool, missing_count: int, missing: [names]}}"""
+    """V4: 检查菜品食材可用性（使用统一 InventoryService）。
+    返回 {dish_id: {available, missing_count, missing_names, total_ingredients}}"""
     if not dish_ids:
         return {}
-    conn = get_db()
-    try:
-        available_ings, _, _ = get_available_ingredient_ids(location)
-        result = {}
-        for did in dish_ids:
-            ings = conn.execute(
-                "SELECT di.ingredient_id, i.name_cn FROM dish_ingredients di "
-                "JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
-                "WHERE di.dish_id = ?",
-                (did,)
-            ).fetchall()
-            missing = [r for r in ings if r["ingredient_id"] not in available_ings]
-            result[did] = {
-                "available": len(missing) == 0,
-                "missing_count": len(missing),
-                "missing_names": [r["name_cn"] for r in missing],
-                "total_ingredients": len(ings),
-            }
-        return result
-    finally:
-        conn.close()
+    result = {}
+    batch = check_dishes_availability_batch(dish_ids, location)
+    for did, avail in batch.items():
+        result[did] = {
+            "available": avail["status"] == "available",
+            "missing_count": len(avail["missing_required"]),
+            "missing_names": [m["name_cn"] for m in avail["missing_required"]],
+            "total_ingredients": len(avail["required"]),
+            "status": avail["status"],
+        }
+    return result
 
 
 def get_common_ingredients():
-    """常用食材（按使用频率排序，取前15）"""
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT i.ingredient_id, i.name_cn, i.name_en, "
-            "COUNT(di.dish_id) as usage_count "
-            "FROM ingredients i "
-            "JOIN dish_ingredients di ON i.ingredient_id = di.ingredient_id "
-            "WHERE i.ingredient_group = 'main' "
-            "GROUP BY i.ingredient_id "
-            "ORDER BY usage_count DESC LIMIT 15"
-        ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()
+    """V4: 常用食材（is_common 字段，独立于当前库存）"""
+    return get_common_ingredients_static()
 
 
 # ============================================================
@@ -1145,16 +1126,19 @@ fetch('/api/tomorrow').then(r=>r.json()).then(d=>{{window.tomorrowMenuId=d.menu_
 # ============================================================
 
 def render_pantry(role="nanny", location="shenzhen"):
-    inv = get_latest_inventory(location)
+    pantry = get_current_pantry(location)
     reqs = get_purchase_requests(location=location) if location else []
 
     sections = []
 
-    if not inv:
-        sections.append(f'<div class="empty"><h2>暂无库存 No Inventory</h2><p>请先录入食材库存 Please submit pantry first</p></div>')
-        sections.append(f'<a class="btn btn-primary" href="/pantry/submit?role={role}" style="margin-top:12px">录入库存 Submit Pantry</a>')
+    if not pantry or pantry["count"] == 0:
+        sections.append(f'<div class="empty"><h2>暂无库存 No Inventory</h2><p>当前冰箱为空，请添加食材</p><p style="font-size:12px;color:#a89888">Current pantry is empty, please add ingredients</p></div>')
+        sections.append(f'<a class="btn btn-primary" href="/pantry/submit?role={role}" style="margin-top:12px">添加食材 Add Ingredients</a>')
     else:
-        # 库存列表
+        # V4: 显示当前库存数量
+        sections.append(f'<div class="card"><h3>当前库存 Current Pantry</h3><p>当前库存 <strong>{pantry["count"]}</strong> 项 · {LOCATIONS.get(location, location)}</p></div>')
+
+        # V4: 库存列表带状态切换和删除
         status_map = {
             "available": ("st-available", "可用 Available"),
             "priority_use": ("st-priority", "优先 Priority"),
@@ -1162,52 +1146,68 @@ def render_pantry(role="nanny", location="shenzhen"):
             "out_of_stock": ("st-out", "缺货 Out"),
         }
         items_html = ""
-        for item in inv["items"]:
+        for item in pantry["items"]:
             css, label = status_map.get(item["status"], ("st-out", item["status"]))
-            items_html += f"""<div class="pantry-item">
-<div><div class="name">{item["name_cn"]}</div><div class="name-en">{item.get("name_en","") or ""}</div></div>
-<span class="pantry-status {css}">{label}</span></div>"""
+            ing_id = item["ingredient_id"]
+            name_en = item.get("name_en", "") or ""
+            # V4: 状态按钮单选视觉 + 删除按钮
+            st_btns = ""
+            for st_key, (st_css, st_label) in status_map.items():
+                active_cls = "active" if item["status"] == st_key else ""
+                st_btns += f'<span class="status-pick {active_cls} {st_css}" onclick="cycleStatus(\'{ing_id}\',\'{st_key}\')">{st_label.split()[0]}</span>'
+            items_html += f"""<div class="pantry-item" id="pi-{ing_id}">
+<div><div class="name">{item["name_cn"]}</div><div class="name-en">{name_en}</div></div>
+<div class="status-picker">{st_btns}<span class="status-pick" onclick="removeItem(\'{ing_id}\')" style="color:#721c24;cursor:pointer">✕</span></div></div>"""
 
-        sections.append(f'<div class="card"><h3>最新库存 Latest Inventory</h3><p>日期 Date: {inv["date"]} | {LOCATIONS.get(inv["location"], inv["location"])}</p></div>')
         sections.append(f'<div class="card">{items_html}</div>')
-        sections.append(f'<a class="btn btn-outline" href="/pantry/submit?role={role}" style="margin-top:8px">更新库存 Update Pantry</a>')
+        sections.append(f'<a class="btn btn-primary" href="/pantry/submit?role={role}" style="margin-top:8px">添加食材 Add Ingredients</a>')
 
         # 采购任务（可操作）
         if reqs:
-            reqs_html = ""
-            for r in reqs:
-                ing_name = r.get("ingredient_name") or r["ingredient_id"]
-                ing_en = r.get("ingredient_name_en") or ""
-                dish_name = r.get("dish_name") or ""
-                status = r["status"]
+            active_reqs = [r for r in reqs if r["status"] in ("needed", "notified")]
+            if active_reqs:
+                reqs_html = ""
+                for r in active_reqs:
+                    ing_name = r.get("ingredient_name") or r["ingredient_id"]
+                    ing_en = r.get("ingredient_name_en") or ""
+                    dish_name = r.get("dish_name") or ""
+                    status = r["status"]
 
-                if status == "needed":
-                    action_btn = f'<button class="act-btn act-notify" onclick="notifyPurchase({r["id"]})">通知采购 Notify</button>'
-                    status_badge = ""
-                elif status == "notified":
-                    action_btn = f'<button class="act-btn act-purchased" onclick="markPurchased({r["id"]})">已购买 Purchased</button>'
-                    status_badge = '<span class="badge badge-shortage-notified">已通知 Notified</span>'
-                elif status == "purchased":
-                    action_btn = '<span class="act-btn act-purchased">✓ 已购买 Purchased</span>'
-                    status_badge = ""
-                else:
-                    action_btn = f'<span class="badge badge-cat">{status}</span>'
-                    status_badge = ""
+                    if status == "needed":
+                        action_btn = f'<button class="act-btn act-notify" onclick="notifyPurchase({r["id"]})">通知采购 Notify</button>'
+                        status_badge = ""
+                    elif status == "notified":
+                        action_btn = f'<button class="act-btn act-purchased" onclick="markPurchased({r["id"]})">已购买 Purchased</button>'
+                        status_badge = '<span class="badge badge-shortage-notified">已通知 Notified</span>'
+                    else:
+                        action_btn = f'<span class="badge badge-cat">{status}</span>'
+                        status_badge = ""
 
-                reqs_html += f"""<div class="purchase-task">
+                    reqs_html += f"""<div class="purchase-task">
 <div class="info">
 <div class="dish-name-sm">{ing_name} <span style="font-size:11px;color:#a89888">{ing_en}</span></div>
 {f'<div class="missing-list">用于: {dish_name}</div>' if dish_name else ''}
 {status_badge}
 </div>{action_btn}</div>"""
 
-            sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks</h3>{reqs_html}</div>')
+                sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks ({len(active_reqs)})</h3>{reqs_html}</div>')
 
     body = "\n".join(sections)
     return f"""{page_head("食材库存 · Pantry", "pantry", location)}
 <div class="content">{body}</div>
 {PAGE_FOOT}
 <script>
+async function cycleStatus(ingId,newStatus){{
+  let r=await fetch('/api/pantry/update_status',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,status:newStatus,location:'{location}'}})}});
+  let result=await r.json();
+  if(result.ok){{snack('状态已更新 Status updated');location.reload();}}else{{snack('失败 Failed');}}
+}}
+async function removeItem(ingId){{
+  if(!confirm('移出当前库存？\\nRemove from current pantry?'))return;
+  let r=await fetch('/api/pantry/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,location:'{location}'}})}});
+  let result=await r.json();
+  if(result.ok){{snack('已移出 Removed');location.reload();}}else{{snack('失败 Failed');}}
+}}
 async function notifyPurchase(reqId){{
   let r=await fetch('/api/purchase/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:reqId,status:'notified',by:'nanny'}})}});
   let result=await r.json();
@@ -1227,12 +1227,15 @@ async function markPurchased(reqId){{
 
 def render_pantry_submit(role="nanny", location="shenzhen"):
     common = get_common_ingredients()
-    last_items = get_last_inventory_items(location)
+    # V4: 从 current_pantry 获取当前库存（预加载已选）
+    pantry_data = get_current_pantry(location)
+    current_items = pantry_data["items"] if pantry_data else []
     all_ings = get_all_ingredients()
 
-    common_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i["name_en"] or ""} for i in common], ensure_ascii=False)
-    last_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i["name_en"] or "", "status": i["status"]} for i in last_items], ensure_ascii=False)
+    common_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i.get("name_en") or ""} for i in common], ensure_ascii=False)
+    current_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i.get("name_en") or "", "status": i["status"]} for i in current_items], ensure_ascii=False)
     all_ings_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i["name_en"] or "", "aliases": i.get("aliases", []), "group": i.get("ingredient_group", "vegetable_mushroom"), "category": i.get("category", "")} for i in all_ings], ensure_ascii=False)
+    pantry_count = len(current_items)
 
     # Group labels
     group_labels = {
@@ -1245,9 +1248,9 @@ def render_pantry_submit(role="nanny", location="shenzhen"):
         "other": "其他 Other",
     }
 
-    return f"""{page_head("录入库存 · Submit Pantry", "pantry", location)}
+    return f"""{page_head("管理库存 · Manage Pantry", "pantry", location)}
 <div class="content">
-<div class="card"><p>当前厨房 Kitchen: <strong>{LOCATIONS.get(location, location)}</strong></p></div>
+<div class="card"><p>当前厨房 Kitchen: <strong>{LOCATIONS.get(location, location)}</strong> | 当前库存 <strong>{pantry_count}</strong> 项</p></div>
 
 <div class="search-bar" style="position:static;padding:0">
 <input type="text" id="ingSearch" placeholder="搜索食材 Search ingredient (name/aliases)..." oninput="filterIngs()">
@@ -1258,8 +1261,7 @@ def render_pantry_submit(role="nanny", location="shenzhen"):
 <div class="card">
 <h3>快捷操作 Quick Actions</h3>
 <div style="display:flex;gap:8px;margin-top:8px">
-<button class="btn btn-outline" style="flex:1" onclick="reuseLast()">沿用上次 Reuse Last</button>
-<button class="btn btn-outline" style="flex:1" onclick="clearAll()">清空 Clear</button>
+<button class="btn btn-outline" style="flex:1" onclick="clearAll()">清空全部 Clear All</button>
 </div>
 </div>
 
@@ -1268,23 +1270,18 @@ def render_pantry_submit(role="nanny", location="shenzhen"):
 <div class="ing-picker" id="commonList"></div>
 </div>
 
-<div id="lastInvSection" style="display:none" class="card">
-<h3>上次库存 Last Inventory</h3>
-<div class="ing-picker" id="lastList"></div>
-</div>
-
 <div class="card" id="selectedSection" style="display:none">
-<h3>已选食材 Selected (<span id="selectedCount">0</span>)</h3>
+<h3>当前库存 + 新增 Current Pantry + Added (<span id="selectedCount">0</span>)</h3>
 <div class="selected-list" id="selectedList"></div>
 </div>
 
-<button class="btn btn-primary" id="submitBtn" style="margin-top:12px" onclick="submitPantry()" disabled>提交库存 Submit</button>
+<button class="btn btn-primary" id="submitBtn" style="margin-top:12px" onclick="submitPantry()" disabled>保存库存变更 Save Changes</button>
 </div>
 {PAGE_FOOT}
 <script>
 const allIngs={all_ings_json};
 const commonIngs={common_json};
-const lastIngs={last_json};
+const currentPantry={current_json};
 let selected={{}};
 let currentLoc='{location}';
 let hasUnsavedChanges=false;
@@ -1293,12 +1290,9 @@ function init(){{
   // 渲染常用食材
   let cl=document.getElementById('commonList');
   cl.innerHTML=commonIngs.map(i=>`<div class="ing-chip" onclick="toggleIng('${{i.id}}','${{i.cn}}','${{i.en}}')">${{i.cn}} ${{i.en}}</div>`).join('');
-  // 渲染上次库存
-  if(lastIngs.length){{
-    document.getElementById('lastInvSection').style.display='block';
-    let ll=document.getElementById('lastList');
-    ll.innerHTML=lastIngs.map(i=>`<div class="ing-chip" onclick="addFromLast('${{i.id}}','${{i.cn}}','${{i.en}}','${{i.status}}')">${{i.cn}} ${{i.en}}</div>`).join('');
-  }}
+  // V4: 预加载当前库存为已选
+  currentPantry.forEach(i=>{{selected[i.id]={{cn:i.cn,en:i.en,status:i.status}};}});
+  renderSelected();
 }}
 function filterIngs(){{
   let q=document.getElementById('ingSearch').value.toLowerCase().trim();
@@ -1348,19 +1342,9 @@ function toggleIng(id,cn,en){{
   hasUnsavedChanges=true;
   renderSelected();
 }}
-function addFromLast(id,cn,en,status){{
-  selected[id]={{cn,en,status}};
-  hasUnsavedChanges=true;
-  renderSelected();
-}}
-function reuseLast(){{
-  lastIngs.forEach(i=>{{selected[i.id]={{cn:i.cn,en:i.en,status:i.status}};}});
-  hasUnsavedChanges=true;
-  renderSelected();
-}}
 function clearAll(){{
   selected={{}};
-  hasUnsavedChanges=false;
+  hasUnsavedChanges=true;
   renderSelected();
 }}
 function setStatus(id,status){{
@@ -1395,7 +1379,13 @@ async function submitPantry(){{
     body:JSON.stringify({{items:items,location:currentLoc,submitted_by:'nanny'}})
   }});
   let result=await res.json();
-  if(result.ok){{hasUnsavedChanges=false;snack('库存提交成功! Submitted!');setTimeout(()=>location.href='/pantry',1000);}}else{{snack(result.error||'提交失败');}}
+  if(result.ok){{
+    hasUnsavedChanges=false;
+    let msg='库存已更新 Pantry Updated';
+    if(result.summary) msg+=` (${{result.summary.added}}新增 ${{result.summary.updated}}更新 ${{result.summary.removed}}移除)`;
+    snack(msg);
+    setTimeout(()=>location.href='/pantry',1500);
+  }}else{{snack(result.error||'保存失败 Save failed');}}
 }}
 init();
 </script>"""
@@ -1506,10 +1496,13 @@ class AppHandler(BaseHTTPRequestHandler):
             days = int(qs.get("days", ["30"])[0])
             self.send_json(get_history_menus(days))
         elif path == "/api/pantry":
-            inv = get_latest_inventory(location)
-            self.send_json(inv or {})
+            # V4: 从 current_pantry 读取
+            pantry = get_current_pantry(location)
+            self.send_json(pantry or {})
         elif path == "/api/pantry/last":
-            self.send_json(get_last_inventory_items(location))
+            # V4: 兼容旧接口，返回 current_pantry items
+            pantry = get_current_pantry(location)
+            self.send_json(pantry["items"] if pantry else [])
         elif path == "/api/purchase-requests":
             reqs = get_purchase_requests(location=location, status=qs.get("status", [None])[0])
             self.send_json(reqs)
@@ -1527,13 +1520,44 @@ class AppHandler(BaseHTTPRequestHandler):
         body = self.read_json()
 
         if path == "/api/pantry/submit":
-            inv_id = submit_inventory(
-                body.get("location", location),
-                date.today().isoformat(),
+            # V4: 增量保存库存变更
+            loc = body.get("location", location)
+            summary = save_pantry_changes(
+                loc,
                 body["items"],
                 submitted_by=body.get("submitted_by", "nanny")
             )
-            self.send_json({"ok": True, "inventory_id": inv_id})
+            self.send_json({"ok": True, "summary": summary})
+
+        elif path == "/api/pantry/update_status":
+            # V4: 单项状态更新
+            from db import get_db
+            conn = get_db()
+            try:
+                conn.execute(
+                    "UPDATE current_pantry SET status = ?, updated_at = datetime('now') "
+                    "WHERE location = ? AND ingredient_id = ? AND is_active = 1",
+                    (body["status"], body.get("location", location), body["ingredient_id"])
+                )
+                conn.commit()
+                self.send_json({"ok": True})
+            finally:
+                conn.close()
+
+        elif path == "/api/pantry/remove":
+            # V4: 从当前库存移除单项
+            from db import get_db
+            conn = get_db()
+            try:
+                conn.execute(
+                    "UPDATE current_pantry SET is_active = 0, updated_at = datetime('now') "
+                    "WHERE location = ? AND ingredient_id = ?",
+                    (body.get("location", location), body["ingredient_id"])
+                )
+                conn.commit()
+                self.send_json({"ok": True})
+            finally:
+                conn.close()
 
         elif path == "/api/ingredients/add":
             # Add new ingredient (needs_review = true)

@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 """
-家庭菜单管家 - 库存与采购闭环模块
+家庭菜单管家 - 库存与采购闭环模块 (V4: Current Pantry 增量维护)
 
-流程：保姆录库存 → 老板点菜 → 缺货检测 → 采购任务 → PushPlus通知 → 采购完成
+核心原则：库存是持续存在的 Current Pantry，不是每天重新提交一份完整清单。
+- 新增项 → INSERT
+- 状态变化 → UPDATE
+- 用户删除 → REMOVE (is_active = 0)
+- 未操作旧项 → 保留不变
+
+流程：保姆维护库存 → 老板点菜 → 缺货检测 → 采购任务 → PushPlus通知 → 采购完成
 """
 
 import os
@@ -15,19 +21,312 @@ PUSHPLUS_API = "https://www.pushplus.plus/send"
 
 
 # ============================================================
-# 库存录入
+# V4: Current Pantry 增量维护
 # ============================================================
 
-def submit_inventory(location, inv_date, items, submitted_by="nanny", notes=None):
+def save_pantry_changes(location, items, submitted_by="nanny"):
     """
-    保姆提交库存。
-    items: list of {ingredient_id, status, notes?}
-    status: available / priority_use / expiring / out_of_stock
-    返回: inventory_id
+    V4: 保存库存变更（增量模式）。
+    items: list of {ingredient_id, status}
+    - items 中的项 → UPSERT (新增或更新状态)
+    - current_pantry 中有但 items 中没有的 → 标记 is_active = 0 (用户已删除)
+    返回: {pantry_count, added, updated, removed, snapshot_id}
     """
     conn = get_db()
     try:
-        # 创建库存记录（UPSERT）
+        now = datetime.now().isoformat()
+        submitted_ids = set()
+
+        # 获取当前活跃库存
+        current_rows = conn.execute(
+            "SELECT ingredient_id, status FROM current_pantry "
+            "WHERE location = ? AND is_active = 1",
+            (location,)
+        ).fetchall()
+        current_map = {r["ingredient_id"]: r["status"] for r in current_rows}
+
+        added = 0
+        updated = 0
+
+        for item in items:
+            ing_id = item["ingredient_id"]
+            status = item.get("status", "available")
+            submitted_ids.add(ing_id)
+
+            if ing_id in current_map:
+                if current_map[ing_id] != status:
+                    # 状态变化 → UPDATE
+                    conn.execute(
+                        "UPDATE current_pantry SET status = ?, updated_at = ?, is_active = 1 "
+                        "WHERE location = ? AND ingredient_id = ?",
+                        (status, now, location, ing_id)
+                    )
+                    updated += 1
+                # else: 未变化，不操作
+            else:
+                # 新增 → INSERT
+                conn.execute(
+                    "INSERT INTO current_pantry (location, ingredient_id, status, is_active, created_at, updated_at) "
+                    "VALUES (?, ?, ?, 1, ?, ?) "
+                    "ON CONFLICT(location, ingredient_id) DO UPDATE SET "
+                    "status = excluded.status, is_active = 1, updated_at = excluded.updated_at",
+                    (location, ing_id, status, now, now)
+                )
+                added += 1
+
+        # 用户删除的项 → is_active = 0
+        removed_ids = set(current_map.keys()) - submitted_ids
+        removed = 0
+        for ing_id in removed_ids:
+            conn.execute(
+                "UPDATE current_pantry SET is_active = 0, updated_at = ? "
+                "WHERE location = ? AND ingredient_id = ?",
+                (now, location, ing_id)
+            )
+            removed += 1
+
+        conn.commit()
+
+        # 生成快照
+        snapshot_id = _create_snapshot(conn, location)
+
+        # 同步写入旧 inventory 表（兼容）
+        _sync_to_legacy_inventory(conn, location, items, submitted_by)
+
+        conn.commit()
+
+        # Purchase Request 联动：自动标记已购买的
+        auto_purchased = _auto_mark_purchased(conn, location, submitted_ids)
+
+        conn.commit()
+
+        pantry_count = conn.execute(
+            "SELECT COUNT(*) as cnt FROM current_pantry WHERE location = ? AND is_active = 1",
+            (location,)
+        ).fetchone()["cnt"]
+
+        log_event("pantry_changes_saved", "current_pantry", None, {
+            "location": location, "added": added, "updated": updated,
+            "removed": removed, "pantry_count": pantry_count,
+            "auto_purchased": auto_purchased, "submitted_by": submitted_by
+        })
+
+        return {
+            "pantry_count": pantry_count,
+            "added": added,
+            "updated": updated,
+            "removed": removed,
+            "auto_purchased": auto_purchased,
+            "snapshot_id": snapshot_id,
+        }
+    finally:
+        conn.close()
+
+
+def _create_snapshot(conn, location):
+    """生成当前库存快照"""
+    items = conn.execute(
+        "SELECT ingredient_id, status FROM current_pantry "
+        "WHERE location = ? AND is_active = 1",
+        (location,)
+    ).fetchall()
+    items_json = json.dumps([dict(r) for r in items], ensure_ascii=False)
+    cur = conn.execute(
+        "INSERT INTO inventory_snapshots (location, items_json, created_at) VALUES (?, ?, ?)",
+        (location, items_json, datetime.now().isoformat())
+    )
+    return cur.lastrowid
+
+
+def _sync_to_legacy_inventory(conn, location, items, submitted_by):
+    """同步写入旧 inventory 表（向后兼容）"""
+    today = date.today().isoformat()
+    now = datetime.now().isoformat()
+    conn.execute(
+        "INSERT INTO inventory (location, date, submitted_by, submitted_at, status) "
+        "VALUES (?, ?, ?, ?, 'submitted') "
+        "ON CONFLICT(location, date) DO UPDATE SET "
+        "submitted_by=excluded.submitted_by, submitted_at=excluded.submitted_at, status='submitted'",
+        (location, today, submitted_by, now)
+    )
+    row = conn.execute(
+        "SELECT id FROM inventory WHERE location = ? AND date = ?",
+        (location, today)
+    ).fetchone()
+    if row:
+        inv_id = row["id"]
+        conn.execute("DELETE FROM inventory_items WHERE inventory_id = ?", (inv_id,))
+        for item in items:
+            conn.execute(
+                "INSERT INTO inventory_items (inventory_id, ingredient_id, status) VALUES (?, ?, ?)",
+                (inv_id, item["ingredient_id"], item.get("status", "available"))
+            )
+
+
+def _auto_mark_purchased(conn, location, available_ingredient_ids):
+    """V4 Section 35: 新增库存后自动标记采购任务为已购买"""
+    if not available_ingredient_ids:
+        return 0
+    placeholders = ",".join("?" * len(available_ingredient_ids))
+    params = list(available_ingredient_ids) + [location]
+    rows = conn.execute(
+        f"SELECT id FROM purchase_requests "
+        f"WHERE ingredient_id IN ({placeholders}) AND location = ? "
+        f"AND status IN ('needed', 'notified')",
+        params
+    ).fetchall()
+    now = datetime.now().isoformat()
+    for r in rows:
+        conn.execute(
+            "UPDATE purchase_requests SET status = 'purchased', resolved_at = ?, resolved_by = 'system_auto' WHERE id = ?",
+            (now, r["id"])
+        )
+    return len(rows)
+
+
+def get_current_pantry(location):
+    """
+    V4: 获取当前持续库存。
+    返回: {location, items: [{ingredient_id, name_cn, name_en, status}], count}
+    """
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT cp.ingredient_id, cp.status, i.name_cn, i.name_en "
+            "FROM current_pantry cp "
+            "JOIN ingredients i ON cp.ingredient_id = i.ingredient_id "
+            "WHERE cp.location = ? AND cp.is_active = 1 "
+            "ORDER BY i.name_cn",
+            (location,)
+        ).fetchall()
+        return {
+            "location": location,
+            "items": [dict(r) for r in rows],
+            "count": len(rows),
+        }
+    finally:
+        conn.close()
+
+
+def get_current_pantry_ids(location):
+    """V4: 获取当前可用食材ID集合（available + priority_use + expiring）"""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT ingredient_id, status FROM current_pantry "
+            "WHERE location = ? AND is_active = 1",
+            (location,)
+        ).fetchall()
+        available = set()
+        priority = set()
+        expiring = set()
+        for r in rows:
+            if r["status"] in ("available", "priority_use", "expiring"):
+                available.add(r["ingredient_id"])
+            if r["status"] == "priority_use":
+                priority.add(r["ingredient_id"])
+            if r["status"] == "expiring":
+                expiring.add(r["ingredient_id"])
+        return available, priority, expiring
+    finally:
+        conn.close()
+
+
+def check_dish_availability(dish_id, location):
+    """
+    V4 Section 22-23: 统一菜品可用性检查服务。
+    返回: {status, required, available_required, missing_required, optional}
+    status: available / almost_available / missing / incomplete
+    """
+    conn = get_db()
+    try:
+        ings = conn.execute(
+            "SELECT di.ingredient_id, di.required, i.name_cn, i.name_en "
+            "FROM dish_ingredients di "
+            "JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
+            "WHERE di.dish_id = ?",
+            (dish_id,)
+        ).fetchall()
+
+        if not ings:
+            return {"status": "available", "required": [], "available_required": [],
+                    "missing_required": [], "optional": []}
+
+        available_ings, _, _ = get_current_pantry_ids(location)
+
+        required = []
+        available_required = []
+        missing_required = []
+        optional = []
+
+        for ing in ings:
+            ing_data = {"ingredient_id": ing["ingredient_id"],
+                        "name_cn": ing["name_cn"],
+                        "name_en": ing["name_en"] if ing["name_en"] else ""}
+            if ing["required"]:
+                required.append(ing_data)
+                if ing["ingredient_id"] in available_ings:
+                    available_required.append(ing_data)
+                else:
+                    missing_required.append(ing_data)
+            else:
+                optional.append(ing_data)
+
+        if not missing_required:
+            status = "available"
+        elif len(missing_required) <= 2 and len(required) > 0:
+            status = "almost_available"
+        else:
+            status = "missing"
+
+        return {
+            "status": status,
+            "required": required,
+            "available_required": available_required,
+            "missing_required": missing_required,
+            "optional": optional,
+        }
+    finally:
+        conn.close()
+
+
+def check_dishes_availability_batch(dish_ids, location):
+    """V4: 批量检查菜品可用性。返回 {dish_id: check_dish_availability_result}"""
+    result = {}
+    for did in dish_ids:
+        if did and did.startswith("dish_"):
+            result[did] = check_dish_availability(did, location)
+    return result
+
+
+def get_common_ingredients_static():
+    """V4 Section 13-15: 获取常用食材（is_common 字段，独立于当前库存）"""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT ingredient_id, name_cn, name_en FROM ingredients "
+            "WHERE is_common = 1 ORDER BY name_cn"
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+# ============================================================
+# 旧接口兼容（内部改为读 current_pantry）
+# ============================================================
+
+def submit_inventory(location, inv_date, items, submitted_by="nanny", notes=None, replace=False):
+    """
+    兼容旧接口。V4 默认 replace=False（增量模式）。
+    内部调用 save_pantry_changes() 同步 current_pantry。
+    """
+    # 同步到 current_pantry（增量）
+    save_pantry_changes(location, items, submitted_by=submitted_by)
+
+    # 同时写入旧 inventory 表（快照兼容）
+    conn = get_db()
+    try:
         conn.execute(
             "INSERT INTO inventory (location, date, submitted_by, submitted_at, status, notes) "
             "VALUES (?, ?, ?, ?, 'submitted', ?) "
@@ -37,16 +336,14 @@ def submit_inventory(location, inv_date, items, submitted_by="nanny", notes=None
             (location, inv_date, submitted_by, datetime.now().isoformat(), notes)
         )
         conn.commit()
-
-        # 查询实际的 inventory_id（UPSERT 后 lastrowid 不可靠）
         row = conn.execute(
             "SELECT id FROM inventory WHERE location = ? AND date = ?",
             (location, inv_date)
         ).fetchone()
-        inv_id = row["id"]
+        inv_id = row["id"] if row else 0
 
-        # 清除旧条目，重新写入
-        conn.execute("DELETE FROM inventory_items WHERE inventory_id = ?", (inv_id,))
+        if replace:
+            conn.execute("DELETE FROM inventory_items WHERE inventory_id = ?", (inv_id,))
         for item in items:
             conn.execute(
                 "INSERT INTO inventory_items (inventory_id, ingredient_id, status, notes) "
@@ -57,7 +354,7 @@ def submit_inventory(location, inv_date, items, submitted_by="nanny", notes=None
 
         log_event("inventory_submitted", "inventory", str(inv_id), {
             "location": location, "date": inv_date, "items_count": len(items),
-            "submitted_by": submitted_by
+            "submitted_by": submitted_by, "replace": replace
         })
         return inv_id
     finally:
@@ -66,67 +363,37 @@ def submit_inventory(location, inv_date, items, submitted_by="nanny", notes=None
 
 def get_latest_inventory(location, before_date=None):
     """
-    获取指定地点最新已提交的库存。
-    返回: {inventory_id, date, items: [{ingredient_id, status, name_cn}]}
+    V4: 获取当前库存（从 current_pantry 读取）。
+    before_date 参数保留兼容但不再使用（Current Pantry 是持续的）。
+    返回: {inventory_id, date, location, items: [{ingredient_id, status, name_cn, name_en}]}
     """
     conn = get_db()
     try:
-        if before_date:
-            row = conn.execute(
-                "SELECT id, date, location FROM inventory "
-                "WHERE location = ? AND date <= ? AND status = 'submitted' "
-                "ORDER BY date DESC LIMIT 1",
-                (location, before_date)
-            ).fetchone()
-        else:
-            row = conn.execute(
-                "SELECT id, date, location FROM inventory "
-                "WHERE location = ? AND status = 'submitted' "
-                "ORDER BY date DESC LIMIT 1",
-                (location,)
-            ).fetchone()
-
-        if not row:
-            return None
-
-        items = conn.execute(
-            "SELECT ii.ingredient_id, ii.status, ii.notes, i.name_cn, i.name_en "
-            "FROM inventory_items ii "
-            "JOIN ingredients i ON ii.ingredient_id = i.ingredient_id "
-            "WHERE ii.inventory_id = ?",
-            (row["id"],)
+        rows = conn.execute(
+            "SELECT cp.ingredient_id, cp.status, i.name_cn, i.name_en "
+            "FROM current_pantry cp "
+            "JOIN ingredients i ON cp.ingredient_id = i.ingredient_id "
+            "WHERE cp.location = ? AND cp.is_active = 1 "
+            "ORDER BY i.name_cn",
+            (location,)
         ).fetchall()
 
+        if not rows:
+            return None
+
         return {
-            "inventory_id": row["id"],
-            "date": row["date"],
-            "location": row["location"],
-            "items": [dict(item) for item in items]
+            "inventory_id": 0,
+            "date": date.today().isoformat(),
+            "location": location,
+            "items": [dict(r) for r in rows]
         }
     finally:
         conn.close()
 
 
 def get_available_ingredient_ids(location, before_date=None):
-    """获取可用食材ID集合（available + priority_use + expiring）"""
-    inv = get_latest_inventory(location, before_date)
-    if not inv:
-        return set(), set(), set()
-
-    available = set()
-    priority = set()
-    expiring = set()
-
-    for item in inv["items"]:
-        ing_id = item["ingredient_id"]
-        if item["status"] in ("available", "priority_use", "expiring"):
-            available.add(ing_id)
-        if item["status"] == "priority_use":
-            priority.add(ing_id)
-        if item["status"] == "expiring":
-            expiring.add(ing_id)
-
-    return available, priority, expiring
+    """V4: 获取可用食材ID集合（从 current_pantry 读取）"""
+    return get_current_pantry_ids(location)
 
 
 # ============================================================
