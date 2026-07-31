@@ -14,17 +14,38 @@ from rule_engine import (
     generate_afternoon_snack, get_dish_ingredients_map,
     get_history_3day, get_history_7day, get_inventory_ingredients,
 )
-from inventory import check_shortages, get_available_ingredient_ids
+from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 
 
 def _load_pool():
-    """加载菜品池"""
-    with open("dish_pool.json", "r", encoding="utf-8") as f:
-        return json.load(f)
+    """V6: 从 SQLite 加载菜品池（Single Source of Truth），不再读 dish_pool.json。
+    只加载 is_active=1 的菜品。"""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM dishes WHERE is_active = 1 OR is_active IS NULL ORDER BY id"
+        ).fetchall()
+        dishes = []
+        for r in rows:
+            d = dict(r)
+            # 解析 JSON 字段
+            for field in ["protein_types", "vegetables", "meal_tags", "cooking_methods", "custom_tags"]:
+                if d.get(field):
+                    try:
+                        d[field] = json.loads(d[field])
+                    except (json.JSONDecodeError, TypeError):
+                        d[field] = []
+                else:
+                    d[field] = []
+            dishes.append(d)
+        return {"dishes": dishes}
+    finally:
+        conn.close()
 
 
 def _store_menu_items(conn, menu_id, result):
-    """将 rule_engine 生成结果存入 menu_items（每道菜一行）"""
+    """将 rule_engine 生成结果存入 menu_items（每道菜一行）
+    V6: 跳过 dish_id 为 None/空的候选，不写入 null menu_item"""
     # 先清除旧条目
     conn.execute("DELETE FROM menu_items WHERE menu_id = ?", (menu_id,))
 
@@ -32,10 +53,14 @@ def _store_menu_items(conn, menu_id, result):
     for meal_type in ["breakfast", "lunch", "afternoon_snack", "dinner"]:
         dishes = result.get(meal_type, {}).get("dishes", [])
         for d in dishes:
+            # V6 Section 14: 没有 dish 就不能创建 menu_item
+            dish_id = d.get("id")
+            if not dish_id or dish_id == "None":
+                continue
             conn.execute(
-                "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (menu_id, d["id"], meal_type, 0, sort)
+                "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (menu_id, dish_id, meal_type, 0, sort, "ai")
             )
             sort += 1
     conn.commit()
@@ -130,12 +155,13 @@ def get_menu_with_dishes(date_str):
             return {"date": date_str, "exists": False}
 
         items = conn.execute(
-            "SELECT mi.id as menu_item_id, mi.dish_id, mi.meal_type, mi.is_locked, "
-            "mi.locked_by, mi.sort_order, "
+            "SELECT mi.id as menu_item_id, mi.dish_id, mi.custom_name, mi.meal_type, mi.is_locked, "
+            "mi.locked_by, mi.sort_order, mi.source, "
             "d.name_cn, d.name_en, d.category_id, d.carb_type, d.protein_types, "
             "d.vegetables, d.vegetable_count, d.image, d.meal_tags, d.cooking_methods, "
             "d.taste, d.banquet, d.custom_tags, "
-            "d.quick_soup, d.slow_soup, d.manual_only_for_breakfast "
+            "d.quick_soup, d.slow_soup, d.manual_only_for_breakfast, "
+            "d.is_active as dish_is_active "
             "FROM menu_items mi "
             "LEFT JOIN dishes d ON mi.dish_id = d.id "
             "WHERE mi.menu_id = ? ORDER BY mi.meal_type, mi.sort_order",
@@ -147,7 +173,37 @@ def get_menu_with_dishes(date_str):
             mt = item["meal_type"]
             if mt not in meals:
                 continue
+
+            # V7 Section: 过滤 null/orphan menu items
+            dish_id = item["dish_id"]
+            custom_name = item["custom_name"] if "custom_name" in item.keys() else None
+
+            # V7: 历史数据兼容 — dish_id 可能是 V3 时代的"组合菜名"（中文），
+            # 视为 custom_name 保留显示，不当作脏数据过滤
+            is_historical_name = (
+                dish_id and not dish_id.startswith("dish_") and dish_id != "None"
+            )
+
+            # 仅过滤真正的脏数据：dish_id 为空/null/None 且无 custom_name
+            if (not dish_id or dish_id == "None" or dish_id == "") and not custom_name:
+                log_event("menu_item_filtered_null", "menu_items", str(item["menu_item_id"]), {
+                    "menu_id": menu["id"], "dish_id": str(dish_id)
+                })
+                continue
+
             d = dict(item)
+
+            # V7: 历史数据回填 — 把 dish_id 中文菜名填到 name_cn，让前端正常显示
+            if is_historical_name and not d.get("name_cn"):
+                d["name_cn"] = dish_id
+                d["name_en"] = "(历史组合菜单 Historical Combo)"
+                d["is_historical_combo"] = True
+                if not custom_name:
+                    d["custom_name"] = dish_id
+
+            # V6: 如果菜品已被删除（is_active=0），标记为已下架
+            d["dish_archived"] = (d.get("dish_is_active") == 0)
+
             # 解析 JSON 字段
             for field in ["protein_types", "vegetables", "meal_tags", "cooking_methods", "custom_tags"]:
                 if d.get(field):
@@ -160,19 +216,18 @@ def get_menu_with_dishes(date_str):
             d["is_locked"] = bool(d.get("is_locked"))
             meals[mt].append(d)
 
-        # 缺货检查
+        # V5: 使用统一 InventoryService 检查可用性（只看 required ingredients）
         location = menu["location"]
         dish_ids = [item["dish_id"] for item in items
                     if item["dish_id"] and item["dish_id"].startswith("dish_")]
-        shortages = check_shortages(dish_ids, location) if dish_ids else []
+        avail_batch = check_dishes_availability_batch(dish_ids, location) if dish_ids else {}
 
-        # 按菜品分组缺货
+        # 按菜品分组缺货（只看 required ingredients）
         shortage_map = {}
-        for s in shortages:
-            did = s["dish_id"]
-            if did not in shortage_map:
-                shortage_map[did] = []
-            shortage_map[did].append(s["ingredient_name"])
+        for did, avail in avail_batch.items():
+            missing_names = [m["name_cn"] for m in avail["missing_required"]]
+            if missing_names:
+                shortage_map[did] = missing_names
 
         return {
             "date": date_str,
@@ -377,10 +432,13 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             sort = (row["max_sort"] or 0) + 1
 
             for d in new_dishes:
+                # V6: 跳过 None dish_id
+                if not d.get("id") or d["id"] == "None":
+                    continue
                 conn.execute(
-                    "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order) "
-                    "VALUES (?, ?, ?, 0, ?)",
-                    (menu_id, d["id"], mt, sort)
+                    "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
+                    "VALUES (?, ?, ?, 0, ?, ?)",
+                    (menu_id, d["id"], mt, sort, "ai")
                 )
                 sort += 1
                 new_items_added += 1

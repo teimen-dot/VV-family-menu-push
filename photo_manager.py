@@ -76,68 +76,98 @@ def generate_dish_id(pool):
 
 
 def get_all_dishes():
-    """返回所有菜品，含照片信息"""
-    pool = load_dish_pool()
-    manifest = load_manifest()
-    categories = {c["id"]: c for c in pool.get("categories", [])}
+    """V7: 从 SQLite 读菜品 (is_active=1)，photo manifest 用于 has_photo/photo_file
+    SQLite 是唯一真相源，dish_pool.json 已废弃为只读快照。"""
+    from db import get_db
+    conn = get_db()
+    try:
+        rows = conn.execute("""
+            SELECT d.id, d.name_cn, d.name_en, d.category_id, d.meal_tags, d.banquet,
+                   d.protein_types, d.vegetables, d.vegetable_count, d.carb_type,
+                   d.meal_components, d.taste, d.cooking_methods, d.can_serve_warm,
+                   d.custom_tags, d.needs_review, d.quick_soup, d.slow_soup,
+                   d.manual_only_for_breakfast, d.image,
+                   c.label_cn AS category_label
+            FROM dishes d
+            LEFT JOIN categories c ON d.category_id = c.id
+            WHERE d.is_active = 1
+            ORDER BY d.category_id, d.name_cn
+        """).fetchall()
 
-    result = []
+        manifest = load_manifest()
+        result = []
+        for r in rows:
+            name_cn = r["name_cn"] or ""
+            has_photo = name_cn in manifest
+            photo_file = manifest.get(name_cn, {}).get("file", "") if has_photo else (r["image"] or "")
 
-    # 普通菜品
-    for dish in pool.get("dishes", []):
-        name_cn = dish.get("name_cn", "")
-        cat_id = dish.get("category_id", "")
-        cat = categories.get(cat_id, {})
+            # 解析 JSON 字段
+            def _parse(v):
+                if not v:
+                    return []
+                if isinstance(v, list):
+                    return v
+                import json as _json
+                try:
+                    return _json.loads(v)
+                except (TypeError, ValueError):
+                    return []
 
-        has_photo = name_cn in manifest
-        photo_file = manifest.get(name_cn, {}).get("file", "") if has_photo else ""
-
-        result.append({
-            "id": dish.get("id", ""),
-            "name_cn": name_cn,
-            "name_en": dish.get("name_en", ""),
-            "category_id": cat_id,
-            "category_label": cat.get("label_cn", cat_id),
-            "meal_tags": dish.get("meal_tags", []),
-            "banquet": dish.get("banquet", False),
-            "protein_types": dish.get("protein_types", []),
-            "vegetables": dish.get("vegetables", []),
-            "vegetable_count": dish.get("vegetable_count", 0),
-            "carb_type": dish.get("carb_type"),
-            "meal_components": dish.get("meal_components", []),
-            "taste": dish.get("taste", "normal"),
-            "cooking_methods": dish.get("cooking_methods", []),
-            "can_serve_warm": dish.get("can_serve_warm", False),
-            "custom_tags": dish.get("custom_tags", []),
-            "needs_review": dish.get("needs_review", False),
-            "quick_soup": dish.get("quick_soup", 0),
-            "slow_soup": dish.get("slow_soup", 0),
-            "manual_only_for_breakfast": dish.get("manual_only_for_breakfast", 0),
-            "has_photo": has_photo,
-            "photo_file": photo_file,
-            "slug": slugify(dish.get("name_en", "")),
-        })
-
-    return result
+            result.append({
+                "id": r["id"],
+                "name_cn": name_cn,
+                "name_en": r["name_en"] or "",
+                "category_id": r["category_id"] or "",
+                "category_label": r["category_label"] or r["category_id"] or "",
+                "meal_tags": _parse(r["meal_tags"]),
+                "banquet": bool(r["banquet"]),
+                "protein_types": _parse(r["protein_types"]),
+                "vegetables": _parse(r["vegetables"]),
+                "vegetable_count": r["vegetable_count"] or 0,
+                "carb_type": r["carb_type"],
+                "meal_components": _parse(r["meal_components"]),
+                "taste": r["taste"] or "normal",
+                "cooking_methods": _parse(r["cooking_methods"]),
+                "can_serve_warm": bool(r["can_serve_warm"]),
+                "custom_tags": _parse(r["custom_tags"]),
+                "needs_review": bool(r["needs_review"]),
+                "quick_soup": int(r["quick_soup"] or 0),
+                "slow_soup": int(r["slow_soup"] or 0),
+                "manual_only_for_breakfast": int(r["manual_only_for_breakfast"] or 0),
+                "has_photo": has_photo,
+                "photo_file": photo_file,
+                "slug": slugify(r["name_en"] or ""),
+            })
+        return result
+    finally:
+        conn.close()
 
 
 def get_categories():
-    """返回所有分类"""
-    pool = load_dish_pool()
-    cats = []
-    for c in pool.get("categories", []):
-        cats.append({
-            "id": c["id"],
-            "label_cn": c.get("label_cn", c["id"]),
-            "label_en": c.get("label_en", ""),
-            "order": c.get("order", 0),
-            "active": c.get("active", True),
-            "type": "category",
-            "dish_count": sum(1 for d in pool.get("dishes", []) if d.get("category_id") == c["id"]),
-        })
-    cats.sort(key=lambda c: c["order"])
-
-    return cats
+    """V7: 从 SQLite categories 表读分类（带每个分类的菜品数量）"""
+    from db import get_db
+    conn = get_db()
+    try:
+        rows = conn.execute("""
+            SELECT c.id, c.label_cn, c.label_en, c.sort_order, c.active,
+                   (SELECT COUNT(*) FROM dishes d WHERE d.category_id = c.id AND d.is_active = 1) AS dish_count
+            FROM categories c
+            ORDER BY c.sort_order
+        """).fetchall()
+        cats = []
+        for r in rows:
+            cats.append({
+                "id": r["id"],
+                "label_cn": r["label_cn"] or r["id"],
+                "label_en": r["label_en"] or "",
+                "order": r["sort_order"] or 0,
+                "active": bool(r["active"]),
+                "type": "category",
+                "dish_count": r["dish_count"] or 0,
+            })
+        return cats
+    finally:
+        conn.close()
 
 
 # ========== HTML 界面 ==========
@@ -1658,67 +1688,90 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             data = self._read_body()
             dish_id = data.get("id", "")
 
-            pool = load_dish_pool()
+            if not dish_id:
+                self._json_response(400, {"success": False, "error": "缺少 id"})
+                return
 
-            if dish_id:
-                # 按 ID 查找
-                dish = None
-                for d in pool.get("dishes", []):
-                    if d.get("id") == dish_id:
-                        dish = d
-                        break
-
-                if not dish:
+            # V7: 写入 SQLite（唯一真相源）
+            from db import get_db, log_event
+            conn = get_db()
+            try:
+                row = conn.execute("SELECT name_cn FROM dishes WHERE id = ?", (dish_id,)).fetchone()
+                if not row:
                     self._json_response(404, {"success": False, "error": f"菜品不存在: {dish_id}"})
                     return
+                old_name = row["name_cn"]
 
-                old_name = dish.get("name_cn", "")
+                # 提取字段
+                name_cn = data.get("name_cn", "").strip()
+                name_en = data.get("name_en", "").strip()
+                category_id = data.get("category_id", "")
+                meal_tags = data.get("meal_tags", [])
+                banquet = data.get("banquet", False)
+                protein_types = data.get("protein_types", [])
+                vegetables = data.get("vegetables", [])
+                carb_type = data.get("carb_type")
+                meal_components = data.get("meal_components", [])
+                taste = data.get("taste", "normal")
+                cooking_methods = data.get("cooking_methods", [])
+                can_serve_warm = data.get("can_serve_warm", False)
+                custom_tags = data.get("custom_tags", [])
+                quick_soup = int(data.get("quick_soup", 0))
+                slow_soup = int(data.get("slow_soup", 0))
+                manual_only_for_breakfast = int(data.get("manual_only_for_breakfast", 0))
 
-                # 更新所有字段
-                dish["name_cn"] = data.get("name_cn", "").strip()
-                dish["name_en"] = data.get("name_en", "").strip()
-                dish["category_id"] = data.get("category_id", "")
-                dish["meal_tags"] = data.get("meal_tags", [])
-                dish["banquet"] = data.get("banquet", False)
-                dish["protein_types"] = data.get("protein_types", [])
-                dish["vegetables"] = data.get("vegetables", [])
-                dish["vegetable_count"] = len(dish["vegetables"])
-                dish["carb_type"] = data.get("carb_type")
-                dish["meal_components"] = data.get("meal_components", [])
-                dish["taste"] = data.get("taste", "normal")
-                dish["cooking_methods"] = data.get("cooking_methods", [])
-                dish["can_serve_warm"] = data.get("can_serve_warm", False)
-                dish["custom_tags"] = data.get("custom_tags", [])
-                dish["quick_soup"] = data.get("quick_soup", 0)
-                dish["slow_soup"] = data.get("slow_soup", 0)
-                dish["manual_only_for_breakfast"] = data.get("manual_only_for_breakfast", 0)
-
-                save_dish_pool(pool)
-
-                # 同步 photo_manifest
-                manifest = load_manifest()
-                has_photo = False
-                photo_file = ""
-                if old_name != dish["name_cn"] and old_name in manifest:
-                    manifest[dish["name_cn"]] = manifest.pop(old_name)
-                    save_manifest(manifest)
-                    has_photo = True
-                    photo_file = manifest[dish["name_cn"]].get("file", "")
-                elif dish["name_cn"] in manifest:
-                    has_photo = True
-                    photo_file = manifest[dish["name_cn"]].get("file", "")
-
-                new_slug = slugify(dish["name_en"])
-                print(f"  [OK] 编辑菜品: {old_name} -> {dish['name_cn']}")
-                self._json_response(200, {
-                    "success": True,
-                    "new_slug": new_slug,
-                    "has_photo": has_photo,
-                    "photo_file": photo_file,
+                conn.execute("""
+                    UPDATE dishes SET
+                        name_cn = ?, name_en = ?, category_id = ?,
+                        meal_tags = ?, banquet = ?,
+                        protein_types = ?, vegetables = ?,
+                        vegetable_count = ?, carb_type = ?,
+                        meal_components = ?, taste = ?,
+                        cooking_methods = ?, can_serve_warm = ?,
+                        custom_tags = ?,
+                        quick_soup = ?, slow_soup = ?,
+                        manual_only_for_breakfast = ?,
+                        updated_at = datetime('now')
+                    WHERE id = ?
+                """, (
+                    name_cn, name_en, category_id,
+                    json.dumps(meal_tags, ensure_ascii=False), 1 if banquet else 0,
+                    json.dumps(protein_types, ensure_ascii=False), json.dumps(vegetables, ensure_ascii=False),
+                    len(vegetables), carb_type,
+                    json.dumps(meal_components, ensure_ascii=False), taste,
+                    json.dumps(cooking_methods, ensure_ascii=False), 1 if can_serve_warm else 0,
+                    json.dumps(custom_tags, ensure_ascii=False),
+                    quick_soup, slow_soup, manual_only_for_breakfast,
+                    dish_id
+                ))
+                conn.commit()
+                log_event("dish_edited", "dishes", dish_id, {
+                    "old_name": old_name, "new_name": name_cn, "via": "photo_manager"
                 })
+            finally:
+                conn.close()
 
-            else:
-                self._json_response(400, {"success": False, "error": "缺少 id"})
+            # 同步 photo manifest（重命名照片映射）
+            manifest = load_manifest()
+            has_photo = False
+            photo_file = ""
+            if old_name != name_cn and old_name in manifest:
+                manifest[name_cn] = manifest.pop(old_name)
+                save_manifest(manifest)
+                has_photo = True
+                photo_file = manifest[name_cn].get("file", "")
+            elif name_cn in manifest:
+                has_photo = True
+                photo_file = manifest[name_cn].get("file", "")
+
+            new_slug = slugify(name_en)
+            print(f"  [OK] 编辑菜品 (SQLite): {old_name} -> {name_cn}")
+            self._json_response(200, {
+                "success": True,
+                "new_slug": new_slug,
+                "has_photo": has_photo,
+                "photo_file": photo_file,
+            })
 
         except Exception as e:
             print(f"  [ERROR] 编辑失败: {e}")
@@ -1737,44 +1790,62 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"success": False, "error": "缺少参数"})
                 return
 
-            pool = load_dish_pool()
-
-            # 检查重名
-            for d in pool.get("dishes", []):
-                if d.get("name_cn") == name_cn:
+            # V7: 写入 SQLite（唯一真相源）
+            from db import get_db, log_event
+            conn = get_db()
+            try:
+                # 重名检查（is_active=1）
+                existing = conn.execute(
+                    "SELECT id FROM dishes WHERE name_cn = ? AND is_active = 1",
+                    (name_cn,)
+                ).fetchone()
+                if existing:
                     self._json_response(400, {"success": False, "error": f"菜品已存在: {name_cn}"})
                     return
 
-            new_id = generate_dish_id(pool)
+                # 生成新 ID
+                cur = conn.execute("SELECT id FROM dishes WHERE id LIKE 'dish_%' ORDER BY id DESC LIMIT 1")
+                last_id = cur.fetchone()
+                if last_id:
+                    last_num = int(last_id["id"].split("_")[1])
+                    new_id = f"dish_{last_num + 1:04d}"
+                else:
+                    new_id = "dish_0001"
 
-            new_dish = {
-                "id": new_id,
-                "name_cn": name_cn,
-                "name_en": name_en,
-                "category_id": category_id,
-                "meal_tags": meal_tags,
-                "banquet": banquet,
-                "protein_types": [],
-                "vegetables": [],
-                "vegetable_count": 0,
-                "carb_type": None,
-                "meal_components": [],
-                "taste": "normal",
-                "cooking_methods": [],
-                "can_serve_warm": False,
-                "custom_tags": [],
-                "needs_review": False,
-                "ingredients": [],
-                "quick_soup": data.get("quick_soup", 0),
-                "slow_soup": data.get("slow_soup", 0),
-                "manual_only_for_breakfast": data.get("manual_only_for_breakfast", 0),
-            }
+                quick_soup = int(data.get("quick_soup", 0))
+                slow_soup = int(data.get("slow_soup", 0))
+                manual_only_for_breakfast = int(data.get("manual_only_for_breakfast", 0))
 
-            pool["dishes"].append(new_dish)
-            save_dish_pool(pool)
+                conn.execute("""
+                    INSERT INTO dishes (
+                        id, name_cn, name_en, category_id, meal_tags, banquet,
+                        protein_types, vegetables, vegetable_count, carb_type,
+                        meal_components, taste, cooking_methods, can_serve_warm,
+                        custom_tags, needs_review, image, image_uploaded,
+                        quick_soup, slow_soup, manual_only_for_breakfast,
+                        is_active, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?, ?, ?,
+                        '[]', '[]', 0, NULL,
+                        '[]', 'normal', '[]', 0,
+                        '[]', 0, NULL, 0,
+                        ?, ?, ?,
+                        1, datetime('now'), datetime('now')
+                    )
+                """, (
+                    new_id, name_cn, name_en, category_id,
+                    json.dumps(meal_tags, ensure_ascii=False), 1 if banquet else 0,
+                    quick_soup, slow_soup, manual_only_for_breakfast
+                ))
+                conn.commit()
+                log_event("dish_added", "dishes", new_id, {
+                    "name_cn": name_cn, "name_en": name_en, "via": "photo_manager"
+                })
+            finally:
+                conn.close()
 
             new_slug = slugify(name_en)
-            print(f"  [OK] 添加菜品: {name_cn} / {name_en} -> {category_id}")
+            print(f"  [OK] 添加菜品 (SQLite): {name_cn} / {name_en} -> {category_id}")
             self._json_response(200, {"success": True, "slug": new_slug, "id": new_id})
 
         except Exception as e:
@@ -1787,39 +1858,47 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             dish_id = data.get("id", "")
             name_cn = data.get("name_cn", "")
 
-            pool = load_dish_pool()
+            if not dish_id:
+                self._json_response(400, {"success": False, "error": "缺少 id"})
+                return
 
-            if dish_id:
-                found = False
-                for i, d in enumerate(pool.get("dishes", [])):
-                    if d.get("id") == dish_id:
-                        name_cn = d.get("name_cn", "")
-                        pool["dishes"].pop(i)
-                        found = True
-                        break
-
-                if not found:
+            # V7: Soft Delete — SQLite 是唯一真相源
+            from db import get_db, log_event
+            conn = get_db()
+            try:
+                dish = conn.execute("SELECT name_cn FROM dishes WHERE id = ?", (dish_id,)).fetchone()
+                if not dish:
                     self._json_response(404, {"success": False, "error": f"菜品不存在: {dish_id}"})
                     return
 
-                save_dish_pool(pool)
+                name_cn = dish["name_cn"]
 
-                # 删除照片
-                manifest = load_manifest()
-                if name_cn in manifest:
-                    photo_file = manifest[name_cn].get("file", "")
-                    if photo_file:
-                        photo_path = os.path.join(PHOTOS_DIR, photo_file)
-                        if os.path.exists(photo_path):
-                            os.remove(photo_path)
-                    del manifest[name_cn]
-                    save_manifest(manifest)
+                # Soft Delete: is_active = 0, deleted_at = timestamp
+                conn.execute(
+                    "UPDATE dishes SET is_active = 0, deleted_at = datetime('now') WHERE id = ?",
+                    (dish_id,)
+                )
+                conn.commit()
 
-                print(f"  [OK] 删除菜品: {name_cn}")
-                self._json_response(200, {"success": True})
+                log_event("dish_soft_deleted", "dishes", dish_id, {
+                    "name_cn": name_cn, "deleted_via": "photo_manager"
+                })
+            finally:
+                conn.close()
 
-            else:
-                self._json_response(400, {"success": False, "error": "缺少 id"})
+            # 删除照片
+            manifest = load_manifest()
+            if name_cn in manifest:
+                photo_file = manifest[name_cn].get("file", "")
+                if photo_file:
+                    photo_path = os.path.join(PHOTOS_DIR, photo_file)
+                    if os.path.exists(photo_path):
+                        os.remove(photo_path)
+                del manifest[name_cn]
+                save_manifest(manifest)
+
+            print(f"  [OK] 菜品已下架(Soft Delete): {name_cn}")
+            self._json_response(200, {"success": True, "soft_delete": True})
 
         except Exception as e:
             print(f"  [ERROR] 删除失败: {e}")
@@ -1830,11 +1909,28 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             data = self._read_body()
             categories = data.get("categories", [])
 
-            pool = load_dish_pool()
-            pool["categories"] = categories
-            save_dish_pool(pool)
+            # V7: 写入 SQLite categories 表
+            from db import get_db
+            conn = get_db()
+            try:
+                # 简单做法：全量替换
+                conn.execute("DELETE FROM categories")
+                for c in categories:
+                    conn.execute("""
+                        INSERT INTO categories (id, label_cn, label_en, sort_order, active)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (
+                        c.get("id", ""),
+                        c.get("label_cn", c.get("id", "")),
+                        c.get("label_en", ""),
+                        c.get("order", c.get("sort_order", 0)),
+                        1 if c.get("active", True) else 0,
+                    ))
+                conn.commit()
+            finally:
+                conn.close()
 
-            print(f"  [OK] 保存分类设置 ({len(categories)} 个分类)")
+            print(f"  [OK] 保存分类设置 (SQLite, {len(categories)} 个分类)")
             self._json_response(200, {"success": True})
 
         except Exception as e:
@@ -1846,11 +1942,23 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             data = self._read_body()
             custom_tags = data.get("custom_tags", [])
 
-            pool = load_dish_pool()
-            pool["custom_tags_def"] = custom_tags
-            save_dish_pool(pool)
+            # V7: 写入 SQLite custom_tags_def 表
+            from db import get_db
+            conn = get_db()
+            try:
+                conn.execute("DELETE FROM custom_tags_def")
+                for t in custom_tags:
+                    label = t.get("label", "") if isinstance(t, dict) else str(t)
+                    if label:
+                        conn.execute(
+                            "INSERT INTO custom_tags_def (label) VALUES (?)",
+                            (label,)
+                        )
+                conn.commit()
+            finally:
+                conn.close()
 
-            print(f"  [OK] 保存自定义标签 ({len(custom_tags)} 个)")
+            print(f"  [OK] 保存自定义标签 (SQLite, {len(custom_tags)} 个)")
             self._json_response(200, {"success": True})
 
         except Exception as e:
