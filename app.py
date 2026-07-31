@@ -61,6 +61,194 @@ def get_all_dishes(category=None, search=""):
         conn.close()
 
 
+def get_dish_recommendations(meal_type, current_dish_id, category_id, location):
+    """V7: 智能换菜推荐。返回 {available: [...], almost_available: [...]}"""
+    conn = get_db()
+    try:
+        # 1. 获取所有 active 菜品
+        all_dishes = conn.execute(
+            "SELECT id, name_cn, name_en, category_id, image, meal_tags, "
+            "protein_types, vegetables, cooking_methods, carb_type, taste "
+            "FROM dishes WHERE (is_active = 1 OR is_active IS NULL) "
+            "ORDER BY category_id, name_cn"
+        ).fetchall()
+
+        # 2. 过滤：meal_tags 包含当前餐别 + 排除当前菜
+        candidates = []
+        for d in all_dishes:
+            if d["id"] == current_dish_id:
+                continue
+            meal_tags = []
+            if d["meal_tags"]:
+                try:
+                    meal_tags = json.loads(d["meal_tags"])
+                except (json.JSONDecodeError, TypeError):
+                    meal_tags = []
+            if meal_type in meal_tags:
+                candidates.append(dict(d))
+
+        if not candidates:
+            return {"available": [], "almost_available": []}
+
+        # 3. 批量检查 availability
+        dish_ids = [c["id"] for c in candidates]
+        avail_batch = check_dishes_availability_batch(dish_ids, location)
+
+        # 4. 获取 pantry 状态（priority_use / expiring 食材集合）
+        pantry = get_current_pantry(location)
+        priority_ings = set()
+        expiring_ings = set()
+        for item in pantry.get("items", []):
+            if item["status"] == "priority_use":
+                priority_ings.add(item["ingredient_id"])
+            elif item["status"] == "expiring":
+                expiring_ings.add(item["ingredient_id"])
+
+        # 5. 获取过去 3 天的菜品 ID（历史去重）
+        past_3d = (date.today() - timedelta(days=3)).isoformat()
+        today = date.today().isoformat()
+        recent_menus = conn.execute(
+            "SELECT mi.dish_id FROM menu_items mi "
+            "JOIN menus m ON mi.menu_id = m.id "
+            "WHERE m.date >= ? AND m.date < ?",
+            (past_3d, today)
+        ).fetchall()
+        recent_dish_ids = set(r["dish_id"] for r in recent_menus if r["dish_id"])
+
+        # 6. 获取当前菜的信息（用于 cooking_methods 对比）
+        current_dish = conn.execute(
+            "SELECT cooking_methods, protein_types FROM dishes WHERE id = ?",
+            (current_dish_id,)
+        ).fetchone()
+        current_cooking = set()
+        current_proteins = set()
+        if current_dish:
+            if current_dish["cooking_methods"]:
+                try:
+                    current_cooking = set(json.loads(current_dish["cooking_methods"]))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            if current_dish["protein_types"]:
+                try:
+                    current_proteins = set(json.loads(current_dish["protein_types"]))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+        # 7. 获取当前餐已有蛋白质（用于去重惩罚）
+        # 从 menu_items 获取今天的菜单
+        tomorrow = get_tomorrow_date()
+        tomorrow_menu = conn.execute(
+            "SELECT id FROM menus WHERE date = ?", (tomorrow,)
+        ).fetchone()
+        meal_proteins = set()
+        if tomorrow_menu:
+            meal_items = conn.execute(
+                "SELECT d.protein_types FROM menu_items mi "
+                "JOIN dishes d ON mi.dish_id = d.id "
+                "WHERE mi.menu_id = ? AND mi.meal_type = ?",
+                (tomorrow_menu["id"], meal_type)
+            ).fetchall()
+            for mi in meal_items:
+                if mi["protein_types"]:
+                    try:
+                        for p in json.loads(mi["protein_types"]):
+                            meal_proteins.add(p)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        # 8. 获取每道菜的食材（用于 priority/expiring 评分）
+        dish_ingredients_map = {}
+        placeholders = ",".join("?" * len(dish_ids))
+        di_rows = conn.execute(
+            f"SELECT dish_id, ingredient_id FROM dish_ingredients WHERE dish_id IN ({placeholders})",
+            dish_ids
+        ).fetchall()
+        for row in di_rows:
+            if row["dish_id"] not in dish_ingredients_map:
+                dish_ingredients_map[row["dish_id"]] = set()
+            dish_ingredients_map[row["dish_id"]].add(row["ingredient_id"])
+
+        # 9. 评分
+        available_list = []
+        almost_list = []
+
+        for c in candidates:
+            did = c["id"]
+            avail = avail_batch.get(did, {})
+            status = avail.get("status", "incomplete")
+
+            # 解析 JSON 字段
+            c_proteins = set()
+            if c["protein_types"]:
+                try:
+                    c_proteins = set(json.loads(c["protein_types"]))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            c_cooking = set()
+            if c["cooking_methods"]:
+                try:
+                    c_cooking = set(json.loads(c["cooking_methods"]))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            score = 0
+
+            # 同 category/role: +60 (V7: 角色优先)
+            if c["category_id"] == category_id:
+                score += 60
+
+            # priority_use 食材: +30
+            dish_ings = dish_ingredients_map.get(did, set())
+            if dish_ings & priority_ings:
+                score += 30
+
+            # expiring 食材: +50
+            if dish_ings & expiring_ings:
+                score += 50
+
+            # 过去3天没吃过: +20
+            if did not in recent_dish_ids:
+                score += 20
+
+            # 与当前菜做法不同: +10
+            if current_cooking and c_cooking and not (current_cooking & c_cooking):
+                score += 10
+
+            # 与当前餐已有蛋白质重复: -10
+            if c_proteins and meal_proteins and (c_proteins & meal_proteins):
+                score -= 10
+
+            # 构建返回对象
+            item = {
+                "id": did,
+                "name_cn": c["name_cn"],
+                "name_en": c["name_en"] or "",
+                "category_id": c["category_id"],
+                "image": c["image"],
+                "availability": status,
+                "missing_required": [m["name_cn"] for m in avail.get("missing_required", [])],
+                "missing_required_en": [m.get("name_en", "") for m in avail.get("missing_required", [])],
+                "score": score,
+            }
+
+            if status == "available":
+                available_list.append(item)
+            elif status == "almost_available":
+                almost_list.append(item)
+            # missing / incomplete 不进入推荐
+
+        # 10. 排序并截断
+        available_list.sort(key=lambda x: x["score"], reverse=True)
+        almost_list.sort(key=lambda x: x["score"], reverse=True)
+
+        return {
+            "available": available_list[:6],
+            "almost_available": almost_list[:4],
+        }
+    finally:
+        conn.close()
+
+
 def get_dish_detail(dish_id):
     conn = get_db()
     try:
@@ -371,36 +559,36 @@ def get_common_ingredients():
 
 CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;background:#faf7f2;color:#2c2620;line-height:1.6}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;background:#faf7f2;color:#2c2620;line-height:1.6;font-size:16px}
 .header{background:#2c2620;color:#faf7f2;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.header h1{font-size:17px;font-weight:600;letter-spacing:.5px}
+.header h1{font-size:22px;font-weight:700;letter-spacing:.5px}
 .loc-switch{display:flex;gap:4px}
-.loc-btn{font-size:11px;padding:4px 10px;border-radius:12px;border:1px solid #a89888;background:transparent;color:#a89888;cursor:pointer}
+.loc-btn{font-size:14px;padding:5px 12px;border-radius:14px;border:1px solid #a89888;background:transparent;color:#a89888;cursor:pointer}
 .loc-btn.active{background:#a89888;color:#2c2620;border-color:#a89888}
-.role-badge{font-size:11px;background:#a89888;padding:3px 8px;border-radius:10px}
-.nav{display:flex;background:#fff;border-bottom:1px solid #e8e0d4;position:sticky;top:50px;z-index:99}
-.nav a{flex:1;text-align:center;padding:11px 2px;font-size:13px;color:#a89888;text-decoration:none;border-bottom:2px solid transparent}
-.nav a.active{color:#2c2620;border-bottom-color:#2c2620;font-weight:600}
-.nav a span{display:block;font-size:10px;margin-top:1px;opacity:.6}
+.role-badge{font-size:13px;background:#a89888;padding:3px 10px;border-radius:10px}
+.nav{display:flex;background:#fff;border-bottom:1px solid #e8e0d4;position:sticky;top:62px;z-index:99}
+.nav a{flex:1;text-align:center;padding:12px 2px;font-size:17px;color:#a89888;text-decoration:none;border-bottom:2px solid transparent;font-weight:600}
+.nav a.active{color:#2c2620;border-bottom-color:#2c2620}
+.nav a span{display:block;font-size:13px;margin-top:1px;opacity:.6}
 .content{max-width:600px;margin:0 auto;padding:12px}
 .meal-section{background:#fff;border-radius:12px;margin-bottom:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-.meal-header{padding:10px 14px;display:flex;align-items:center;gap:8px}
-.meal-bar{width:4px;height:18px;border-radius:2px}
-.meal-title{font-size:15px;font-weight:600}
-.meal-title-en{font-size:11px;color:#a89888;font-style:italic;margin-left:4px}
+.meal-header{padding:12px 14px;display:flex;align-items:center;gap:8px}
+.meal-bar{width:4px;height:24px;border-radius:2px}
+.meal-title{font-size:22px;font-weight:700}
+.meal-title-en{font-size:15px;color:#a89888;font-style:italic;margin-left:4px}
 .meal-actions{margin-left:auto;display:flex;gap:6px}
-.meal-act-btn{font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;white-space:nowrap}
+.meal-act-btn{font-size:15px;padding:8px 14px;border-radius:8px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;white-space:nowrap;min-height:44px;display:flex;align-items:center}
 .meal-act-btn:active{background:#e8e0d4}
 .meal-items{padding:0 14px 8px}
-.meal-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid #f5f0e8;align-items:center}
+.meal-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f5f0e8;align-items:center}
 .meal-item:last-child{border-bottom:none}
-.meal-item img{width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f5f0e8}
-.meal-item .no-img{width:48px;height:48px;border-radius:8px;background:#f5f0e8;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:20px}
+.meal-item img{width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f5f0e8}
+.meal-item .no-img{width:56px;height:56px;border-radius:8px;background:#f5f0e8;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px}
 .meal-item .info{flex:1;min-width:0}
-.dish-name{font-size:14px;font-weight:500}
-.dish-name-en{font-size:11px;color:#a89888;font-style:italic}
-.dish-meta{font-size:10px;color:#a89888;margin-top:2px}
-.badge{display:inline-block;font-size:9px;padding:1px 5px;border-radius:3px;margin-right:3px;vertical-align:middle}
+.dish-name{font-size:18px;font-weight:600}
+.dish-name-en{font-size:14px;color:#a89888;font-style:italic}
+.dish-meta{font-size:12px;color:#a89888;margin-top:2px}
+.badge{display:inline-block;font-size:12px;padding:2px 6px;border-radius:4px;margin-right:3px;vertical-align:middle}
 .badge-owner{background:#d4edda;color:#155724}
 .badge-ai{background:#d1ecf1;color:#0c5460}
 .badge-shortage-missing{background:#f8d7da;color:#721c24}
@@ -409,116 +597,117 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .badge-shortage-purchased{background:#d4edda;color:#155724}
 .badge-cat{background:#e8e0d4;color:#5a4a3a}
 .badge-warning{background:#fff3cd;color:#856404}
-.item-actions{display:flex;gap:4px;flex-shrink:0}
-.item-btn{width:28px;height:28px;border-radius:6px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.item-actions{display:flex;gap:6px;flex-shrink:0}
+.item-btn{width:44px;height:44px;border-radius:8px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center}
 .item-btn:active{background:#e8e0d4}
 .item-btn.danger{border-color:#f5c6cb;color:#721c24}
 .card{background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
-.card h3{font-size:14px;margin-bottom:6px}
-.card p{font-size:13px;color:#5a4a3a}
+.card h3{font-size:16px;margin-bottom:6px}
+.card p{font-size:14px;color:#5a4a3a}
 .empty{text-align:center;padding:40px 20px;color:#a89888}
-.empty h2{font-size:16px;margin-bottom:6px}
-.btn{display:block;width:100%;padding:12px;text-align:center;border:none;border-radius:8px;font-size:15px;font-weight:500;cursor:pointer;text-decoration:none}
+.empty h2{font-size:18px;margin-bottom:6px}
+.btn{display:block;width:100%;padding:14px;text-align:center;border:none;border-radius:8px;font-size:16px;font-weight:500;cursor:pointer;text-decoration:none;min-height:44px}
 .btn-primary{background:#2c2620;color:#faf7f2}
 .btn-outline{background:transparent;border:1px solid #2c2620;color:#2c2620}
 .btn-danger{background:#c0504c;color:#fff}
 .btn:active{opacity:.7}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.status-tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px}
+.status-tag{display:inline-block;font-size:13px;padding:3px 10px;border-radius:10px}
 .status-draft{background:#fff3cd;color:#856404}
 .status-confirmed{background:#d4edda;color:#155724}
 .status-pushed{background:#d1ecf1;color:#0c5460}
-.loc-banner{background:#e8e0d4;color:#5a4a3a;padding:8px 16px;font-size:12px;text-align:center;font-weight:500}
-.search-bar{padding:10px 14px;background:#fff;position:sticky;top:98px;z-index:98}
-.search-bar input{width:100%;padding:9px 14px;border:1px solid #e8e0d4;border-radius:20px;font-size:14px;outline:none}
+.loc-banner{background:#e8e0d4;color:#5a4a3a;padding:8px 16px;font-size:14px;text-align:center;font-weight:500}
+.search-bar{padding:10px 14px;background:#fff;position:sticky;top:118px;z-index:98}
+.search-bar input{width:100%;padding:12px 16px;border:1px solid #e8e0d4;border-radius:24px;font-size:16px;outline:none;box-sizing:border-box}
 .filter-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:6px 14px;background:#fff;border-bottom:1px solid #f5f0e8}
-.filter-tab{white-space:nowrap;padding:5px 12px;border-radius:14px;font-size:12px;background:#f5f0e8;color:#5a4a3a;cursor:pointer}
+.filter-tab{white-space:nowrap;padding:6px 14px;border-radius:16px;font-size:14px;background:#f5f0e8;color:#5a4a3a;cursor:pointer}
 .filter-tab.active{background:#2c2620;color:#faf7f2}
 .dish-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 0}
 .dish-card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03);cursor:pointer}
 .dish-card img{width:100%;aspect-ratio:1.2;object-fit:cover;background:#f5f0e8}
 .dish-card .no-img{width:100%;aspect-ratio:1.2;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:28px}
 .dish-card .info{padding:8px}
-.dish-card .name{font-size:17px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dish-card .name-en{font-size:13px;color:#a89888;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.dish-card .cat-label{font-size:12px;color:#a89888;margin-top:2px}
-.dish-card .avail-badge{font-size:10px;padding:2px 6px;border-radius:4px;margin-top:3px;display:inline-block}
+.dish-card .name{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dish-card .name-en{font-size:14px;color:#a89888;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dish-card .cat-label{font-size:13px;color:#a89888;margin-top:2px}
+.dish-card .avail-badge{font-size:13px;padding:2px 6px;border-radius:4px;margin-top:3px;display:inline-block}
 .avail-yes{background:#d4edda;color:#155724}
 .avail-almost{background:#fff3cd;color:#856404}
 .pantry-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f5f0e8;gap:8px}
 .pantry-item:last-child{border-bottom:none}
-.pantry-item .name{font-size:14px}
-.pantry-item .name-en{font-size:11px;color:#a89888}
+.pantry-item .name{font-size:18px;font-weight:600}
+.pantry-item .name-en{font-size:14px;color:#a89888}
 .pantry-controls{display:flex;align-items:center;gap:12px;flex-shrink:0}
 .pantry-status-group{display:flex;gap:4px}
-.st-btn{font-size:11px;padding:4px 8px;border-radius:8px;cursor:pointer;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;white-space:nowrap;transition:all .15s}
+.st-btn{font-size:14px;padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;white-space:nowrap;transition:all .15s;min-height:40px;display:flex;align-items:center}
 .st-btn:active{opacity:.7}
 .st-btn.active-priority{background:#fff3cd;color:#856404;border-color:#e0c060}
 .st-btn.active-expiring{background:#f8d7da;color:#721c24;border-color:#e8a0a8}
-.pantry-used-up{font-size:11px;padding:4px 8px;border-radius:8px;cursor:pointer;border:1px solid #f5c6cb;background:#fff;color:#721c24;white-space:nowrap}
+.pantry-used-up{font-size:14px;padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid #f5c6cb;background:#fff;color:#721c24;white-space:nowrap;min-height:40px;display:flex;align-items:center}
 .pantry-used-up:active{opacity:.7}
 .history-entry{background:#fff;border-radius:10px;padding:12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
-.history-date{font-size:14px;font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
-.history-context{font-size:11px;color:#a89888;margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
+.history-date{font-size:16px;font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+.history-context{font-size:13px;color:#a89888;margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
 .history-context span{display:inline-flex;align-items:center;gap:2px}
-.history-meal{font-size:12px;margin-top:3px}
-.history-meal .label{color:#a89888;font-weight:600;margin-right:4px;font-size:11px}
+.history-meal{font-size:14px;margin-top:3px}
+.history-meal .label{color:#a89888;font-weight:600;margin-right:4px;font-size:13px}
 .history-meal .dish-list{color:#2c2620}
-.history-meal .dish-list-en{color:#a89888;font-style:italic;font-size:11px}
-.footer{text-align:center;padding:20px;color:#a89888;font-size:11px}
+.history-meal .dish-list-en{color:#a89888;font-style:italic;font-size:13px}
+.footer{text-align:center;padding:20px;color:#a89888;font-size:13px}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;justify-content:center}
 .modal-overlay.show{display:flex}
 .modal{background:#fff;width:100%;max-width:600px;border-radius:16px 16px 0 0;max-height:85vh;overflow-y:auto}
 .modal-img{width:100%;aspect-ratio:2;object-fit:cover;background:#f5f0e8}
 .modal-body{padding:16px}
-.modal-body h2{font-size:18px;margin-bottom:2px}
-.modal-body .en-name{font-size:13px;color:#a89888;font-style:italic;margin-bottom:10px}
+.modal-body h2{font-size:22px;font-weight:700;margin-bottom:2px}
+.modal-body .en-name{font-size:15px;color:#a89888;font-style:italic;margin-bottom:10px}
 .modal-body .meta-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
-.modal-body .section-title{font-size:13px;font-weight:600;color:#5a4a3a;margin:10px 0 4px}
-.modal-body .ing-list{font-size:13px;color:#5a4a3a}
+.modal-body .section-title{font-size:15px;font-weight:600;color:#5a4a3a;margin:10px 0 4px}
+.modal-body .ing-list{font-size:14px;color:#5a4a3a}
 .modal-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #f5f0e8;position:sticky;bottom:0;background:#fff}
-.modal-actions .btn{flex:1;padding:10px;font-size:14px}
+.modal-actions .btn{flex:1;padding:12px;font-size:16px}
+.rec-section-title{font-size:15px;font-weight:700;color:#5a4a3a;padding:8px 16px 4px;background:#f5f0e8;border-radius:6px 6px 0 0}
 .add-to-meal{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
-.add-to-meal .btn{padding:10px;font-size:13px}
-.snack-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2c2620;color:#faf7f2;padding:10px 20px;border-radius:20px;font-size:13px;z-index:300;display:none;white-space:nowrap}
+.add-to-meal .btn{padding:12px;font-size:15px;min-height:44px}
+.snack-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2c2620;color:#faf7f2;padding:10px 20px;border-radius:20px;font-size:14px;z-index:300;display:none;white-space:nowrap}
 .snack-bar.show{display:block}
 .ing-picker{display:flex;gap:6px;flex-wrap:wrap;padding:8px 0}
-.ing-chip{font-size:12px;padding:5px 10px;border-radius:14px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer}
+.ing-chip{font-size:14px;padding:6px 12px;border-radius:14px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer}
 .ing-chip.selected{background:#2c2620;color:#faf7f2;border-color:#2c2620}
 .ing-chip:active{opacity:.7}
-.ing-add-chip{font-size:12px;padding:5px 10px;border-radius:14px;border:1px dashed #4a9eff;background:#e8f4ff;color:#0c5460;cursor:pointer}
+.ing-add-chip{font-size:14px;padding:6px 12px;border-radius:14px;border:1px dashed #4a9eff;background:#e8f4ff;color:#0c5460;cursor:pointer}
 .selected-list{margin-top:10px}
-.selected-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f5f0e8;border-radius:8px;margin-bottom:6px;gap:8px}
-.selected-item .name{font-size:14px}
-.selected-item .name-en{font-size:11px;color:#a89888}
+.selected-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f0e8;border-radius:8px;margin-bottom:6px;gap:8px}
+.selected-item .name{font-size:16px;font-weight:600}
+.selected-item .name-en{font-size:14px;color:#a89888}
 .status-picker{display:flex;gap:4px}
-.status-pick{font-size:11px;padding:3px 8px;border-radius:10px;border:1px solid #d4c9b8;background:#fff;color:#5a4a3a;cursor:pointer}
+.status-pick{font-size:14px;padding:4px 10px;border-radius:10px;border:1px solid #d4c9b8;background:#fff;color:#5a4a3a;cursor:pointer}
 .status-pick.active{font-weight:600}
 .collapsible{margin-bottom:10px}
-.collapsible-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#fff;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500}
+.collapsible-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#fff;border-radius:10px;cursor:pointer;font-size:16px;font-weight:500}
 .collapsible-header .arrow{transition:transform .2s}
 .collapsible-header.open .arrow{transform:rotate(90deg)}
 .collapsible-body{display:none;padding:0 14px}
 .collapsible-body.open{display:block}
-.warning-box{background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px;color:#856404}
+.warning-box{background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:14px;color:#856404}
 .warning-box .warn-title{font-weight:600;margin-bottom:4px}
 .diners-section{background:#fff;border-radius:10px;padding:10px 14px;margin-bottom:8px}
-.diners-section .diners-title{font-size:12px;font-weight:600;color:#a89888;margin-bottom:6px}
+.diners-section .diners-title{font-size:14px;font-weight:600;color:#a89888;margin-bottom:6px}
 .diners-row{display:flex;flex-wrap:wrap;gap:6px}
-.diner-chip{display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:12px;border:1px solid #ddd5c8;font-size:12px;cursor:pointer;transition:all .15s}
+.diner-chip{display:inline-flex;align-items:center;gap:3px;padding:8px 14px;border-radius:14px;border:1px solid #ddd5c8;font-size:16px;cursor:pointer;transition:all .15s;min-height:44px}
 .diner-chip.active{background:#2c2620;color:#faf7f2;border-color:#2c2620}
 .diner-chip.active .diner-en{color:#a89888}
-.diner-en{font-size:10px;opacity:.7}
+.diner-en{font-size:13px;opacity:.7}
 .purchase-task{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f0e8}
 .purchase-task:last-child{border-bottom:none}
 .purchase-task .info{flex:1;min-width:0}
-.purchase-task .dish-name-sm{font-size:13px;font-weight:500}
-.purchase-task .missing-list{font-size:11px;color:#a89888;margin-top:2px}
-.purchase-task .act-btn{font-size:12px;padding:5px 10px;border-radius:6px;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:8px}
+.purchase-task .dish-name-sm{font-size:15px;font-weight:500}
+.purchase-task .missing-list{font-size:13px;color:#a89888;margin-top:2px}
+.purchase-task .act-btn{font-size:14px;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:8px;min-height:44px}
 .act-notify{background:#4a9eff;color:#fff}
 .act-notified{background:#e8e0d4;color:#6c757d}
 .act-purchased{background:#d4edda;color:#155724}
-.ing-group-header{font-size:13px;font-weight:600;color:#5a4a3a;padding:8px 0 4px;border-bottom:1px solid #f5f0e8;margin-top:4px}
+.ing-group-header{font-size:15px;font-weight:600;color:#5a4a3a;padding:8px 0 4px;border-bottom:1px solid #f5f0e8;margin-top:4px}
 .ing-group-header:first-child{margin-top:0}
 """
 
@@ -645,7 +834,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
         # 状态卡
         status_cls = f"status-{menu['status']}"
         status_text = {"draft": "待确认 Pending", "confirmed": "已确认 Confirmed", "pushed": "已推送 Pushed"}.get(menu["status"], menu["status"])
-        sections.append(f'<div class="card"><p>状态 Status: <span class="status-tag {status_cls}">{status_text}</span></p><p style="margin-top:4px;font-size:12px">日期 Date: {menu["date"]} | {LOCATIONS.get(menu["location"], menu["location"])}</p></div>')
+        sections.append(f'<div class="card"><p>状态 Status: <span class="status-tag {status_cls}">{status_text}</span></p><p style="margin-top:4px;font-size:14px">日期 Date: {menu["date"]} | {LOCATIONS.get(menu["location"], menu["location"])}</p></div>')
 
         # 用餐成员选择
         diners_chips = ""
@@ -657,7 +846,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
         # V3: Warning UI（不阻断 Confirm）
         if menu_warnings:
             warn_items = "".join(f'<div class="warn-item">⚠️ {w}</div>' for w in menu_warnings)
-            sections.append(f'<div class="warning-box"><div class="warn-title">提示 Warnings ({len(menu_warnings)})</div>{warn_items}<div style="margin-top:4px;font-size:11px;color:#a89060">VV 仍可确认 · VV can still confirm</div></div>')
+            sections.append(f'<div class="warning-box"><div class="warn-title">提示 Warnings ({len(menu_warnings)})</div>{warn_items}<div style="margin-top:4px;font-size:13px;color:#a89060">VV 仍可确认 · VV can still confirm</div></div>')
 
         # 获取采购任务
         purchase_reqs = get_menu_purchase_requests(menu["menu_id"]) if menu.get("menu_id") else []
@@ -728,7 +917,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 # 操作按钮：替换 + 删除（所有菜都可操作）
                 item_actions = ""
                 if role == "owner":
-                    item_actions = f'<div class="item-actions"><button class="item-btn" onclick="openDishSearch(\'{mt}\',{d["menu_item_id"]})" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" title="删除 Delete">×</button></div>'
+                    item_actions = f'<div class="item-actions"><button class="item-btn" onclick="openDishSearch(\'{mt}\',{d["menu_item_id"]},\'{d.get("dish_id","")}\',\'{d.get("category_id","")}\')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" title="删除 Delete">×</button></div>'
 
                 items_html += f"""<div class="meal-item">
 {img_html}{no_img}
@@ -765,7 +954,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
 
                 reqs_html += f"""<div class="purchase-task">
 <div class="info">
-<div class="dish-name-sm">{ing_name} <span style="font-size:11px;color:#a89888">{ing_en}</span></div>
+<div class="dish-name-sm">{ing_name} <span style="font-size:13px;color:#a89888">{ing_en}</span></div>
 {f'<div class="missing-list">用于: {dish_name}</div>' if dish_name else ''}
 {status_label}
 </div>{action_btn}</div>"""
@@ -784,7 +973,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
             elif menu["status"] == "pushed":
                 sections.append('<div class="card" style="text-align:center"><p>📡 菜单已推送 Menu Pushed</p></div>')
                 sections.append('<button class="btn btn-outline" style="margin-top:8px" onclick="editMenu()">修改菜单 Edit Menu</button>')
-                sections.append('<p style="font-size:11px;color:#a89888;margin-top:4px;text-align:center">修改后需重新确认并通知 Reconfirm required after edit</p>')
+                sections.append('<p style="font-size:13px;color:#a89888;margin-top:4px;text-align:center">修改后需重新确认并通知 Reconfirm required after edit</p>')
 
     body = "\n".join(sections)
     js = f"""<script>
@@ -806,16 +995,26 @@ function toggleDiner(id){{
   // Reload to refresh menu
   setTimeout(()=>location.reload(),800);
 }}
-// V5: Dish search modal (replaces prompt-based number selection)
-let searchMode={{meal:null,replaceId:null}};
-function openDishSearch(mt,replaceId){{
-  searchMode={{meal:mt,replaceId:replaceId||null}};
+// V7: Smart dish replacement modal
+let searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}};
+function openDishSearch(mt,replaceId,currentDishId,categoryId){{
+  searchMode={{meal:mt,replaceId:replaceId||null,currentDishId:currentDishId||null,categoryId:categoryId||null}};
   let m=document.getElementById('dishSearchModal');
   m.classList.add('show');
   let input=document.getElementById('dishSearchInput');
   input.value='';
-  input.focus();
-  document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:14px">输入菜名搜索</div><div style="font-size:12px;margin-top:4px">Type to search</div></div>';
+  let titleEl=document.getElementById('dishSearchTitle');
+  let hintEl=document.getElementById('dishSearchHint');
+  if(replaceId){{
+    titleEl.textContent='换一道 Replace Dish';
+    hintEl.style.display='block';
+    loadRecommendations();
+  }}else{{
+    titleEl.textContent='添加菜品 Add Dish';
+    hintEl.style.display='none';
+    document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">输入菜名搜索</div><div style="font-size:13px;margin-top:4px">Type to search</div></div>';
+    input.focus();
+  }}
 }}
 function closeDishSearch(){{document.getElementById('dishSearchModal').classList.remove('show');}}
 let _searchTimer=null;
@@ -823,26 +1022,75 @@ function onDishSearchInput(){{
   clearTimeout(_searchTimer);
   let q=document.getElementById('dishSearchInput').value.trim();
   if(!q){{
-    document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:14px">输入菜名搜索</div><div style="font-size:12px;margin-top:4px">Type to search</div></div>';
+    if(searchMode.replaceId){{loadRecommendations();}}else{{
+      document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">输入菜名搜索</div><div style="font-size:13px;margin-top:4px">Type to search</div></div>';
+    }}
     return;
   }}
   _searchTimer=setTimeout(()=>doDishSearch(q),300);
+}}
+async function loadRecommendations(){{
+  let container=document.getElementById('dishSearchResults');
+  container.innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">推荐加载中...</div><div style="font-size:13px;margin-top:4px">Loading recommendations...</div></div>';
+  let r=await fetch('/api/dishes/recommend',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{meal_type:searchMode.meal,current_dish_id:searchMode.currentDishId,category_id:searchMode.categoryId,location:currentLoc}})}});
+  let data=await r.json();
+  window._recMap={{}};
+  (data.available||[]).forEach(d=>{{window._recMap[d.id]=d;}});
+  (data.almost_available||[]).forEach(d=>{{window._recMap[d.id]=d;}});
+  let html='';
+  // Available Now
+  if(data.available&&data.available.length){{
+    html+='<div class="rec-section-title">库存可做 Available Now</div>';
+    html+=data.available.map(d=>renderRecCard(d,'available')).join('');
+  }}
+  // Almost Available
+  if(data.almost_available&&data.almost_available.length){{
+    html+='<div class="rec-section-title" style="margin-top:12px">差1种食材 Almost Available</div>';
+    html+=data.almost_available.map(d=>renderRecCard(d,'almost')).join('');
+  }}
+  if(!html){{
+    html='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">暂无推荐</div><div style="font-size:13px;margin-top:4px">No recommendations</div></div>';
+  }}
+  container.innerHTML=html;
+}}
+function renderRecCard(d,type){{
+  let img=d.image?'<img src="/photos/'+d.image+'" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\'" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>';
+  let noImg=d.image?'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>':'';
+  let badge=type==='available'?'<span style="font-size:13px;color:#155724;background:#d4edda;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">库存可做 Available</span>':'';
+  let missing='';
+  if(d.missing_required&&d.missing_required.length){{
+    let mn=d.missing_required.join(', ');
+    let mnEn=d.missing_required_en?d.missing_required_en.join(', '):'';
+    missing='<span style="font-size:13px;color:#856404;background:#fff3cd;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">缺：'+mn+' Missing: '+mnEn+'</span>';
+  }}
+  return '<div onclick="pickRec(\\''+d.id+'\\','+(type==='almost')+')" style="display:flex;gap:10px;padding:12px;border-bottom:1px solid #f5f0e8;cursor:pointer;align-items:center">'+img+noImg+'<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:600">'+d.name_cn+'</div><div style="font-size:14px;color:#a89888;font-style:italic">'+(d.name_en||'')+'</div>'+badge+missing+'</div></div>';
+}}
+async function pickRec(dishId,isAlmost){{
+  if(isAlmost){{
+    let d=window._recMap&&window._recMap[dishId];
+    if(d&&d.missing_required&&d.missing_required.length){{
+      let mn=d.missing_required.join(', ');
+      let mnEn=d.missing_required_en?d.missing_required_en.join(', '):'';
+      if(!confirm('这道菜还缺：'+mn+'\\n\\nThis dish is missing:\\n'+mnEn+'\\n\\n仍然选择? Choose Anyway?'))return;
+    }}
+  }}
+  await doPickDish(dishId);
 }}
 async function doDishSearch(q){{
   let res=await fetch('/api/dishes?search='+encodeURIComponent(q));
   let data=await res.json();
   let container=document.getElementById('dishSearchResults');
   if(!data.length){{
-    container.innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:14px">没有找到相关菜品</div><div style="font-size:12px;margin-top:4px">No matching dishes</div></div>';
+    container.innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">没有找到相关菜品</div><div style="font-size:13px;margin-top:4px">No matching dishes</div></div>';
     return;
   }}
   container.innerHTML=data.slice(0,20).map(d=>{{
-    let img=d.image?'<img src="/photos/'+d.image+'" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\'" style="width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:56px;height:56px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🍽️</div>';
-    let noImg=d.image?'<div style="width:56px;height:56px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🍽️</div>':'';
-    return '<div onclick="pickDish(\\''+d.id+'\\')" style="display:flex;gap:10px;padding:10px;border-bottom:1px solid #f5f0e8;cursor:pointer;align-items:center">'+img+noImg+'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:500">'+d.name_cn+'</div><div style="font-size:12px;color:#a89888;font-style:italic">'+(d.name_en||'')+'</div><div style="font-size:11px;color:#a89888;margin-top:2px">'+(d.category_id||'')+'</div></div></div>';
+    let img=d.image?'<img src="/photos/'+d.image+'" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\'" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>';
+    let noImg=d.image?'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>':'';
+    return '<div onclick="doPickDish(\\''+d.id+'\\')" style="display:flex;gap:10px;padding:12px;border-bottom:1px solid #f5f0e8;cursor:pointer;align-items:center">'+img+noImg+'<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:600">'+d.name_cn+'</div><div style="font-size:14px;color:#a89888;font-style:italic">'+(d.name_en||'')+'</div><div style="font-size:13px;color:#a89888;margin-top:2px">'+(d.category_id||'')+'</div></div></div>';
   }}).join('');
 }}
-async function pickDish(dishId){{
+async function doPickDish(dishId){{
   if(searchMode.replaceId){{
     let r=await fetch('/api/tomorrow/replace',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId}})}});
     let result=await r.json();
@@ -915,8 +1163,9 @@ async function markPurchased(reqId){{
 <div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()">
 <div class="modal" style="max-height:85vh">
 <div style="padding:14px 16px;border-bottom:1px solid #f5f0e8">
-<div style="font-size:15px;font-weight:600;margin-bottom:8px">搜索菜品 Search Dishes</div>
-<input type="text" id="dishSearchInput" placeholder="输入菜名搜索 Type to search..." oninput="onDishSearchInput()" style="width:100%;padding:9px 14px;border:1px solid #e8e0d4;border-radius:20px;font-size:14px;outline:none">
+<div id="dishSearchTitle" style="font-size:22px;font-weight:700;margin-bottom:8px">换一道 Replace Dish</div>
+<div id="dishSearchHint" style="font-size:13px;color:#a89888;margin-bottom:8px">系统根据库存和当前餐位推荐 · 或搜索菜品 Smart recommendations based on pantry & meal</div>
+<input type="text" id="dishSearchInput" placeholder="搜索菜品 Search dishes..." oninput="onDishSearchInput()" style="width:100%;padding:12px 16px;border:1px solid #e8e0d4;border-radius:24px;font-size:16px;outline:none;box-sizing:border-box">
 </div>
 <div id="dishSearchResults" style="overflow-y:auto;max-height:60vh"></div>
 <div class="modal-actions"><button class="btn btn-outline" onclick="closeDishSearch()">取消 Cancel</button></div>
@@ -1091,7 +1340,7 @@ def render_pantry(role="nanny", location="shenzhen"):
     sections.append(f'<button class="btn btn-outline" style="margin-bottom:10px" onclick="sameAsLast()">✓ 和上次一样 Same as Last Update</button>')
 
     if not pantry or pantry_count == 0:
-        sections.append(f'<div class="empty"><h2>暂无库存 No Inventory</h2><p>当前冰箱为空，请添加食材</p><p style="font-size:12px;color:#a89888">Current pantry is empty, please add ingredients</p></div>')
+        sections.append(f'<div class="empty"><h2>暂无库存 No Inventory</h2><p>当前冰箱为空，请添加食材</p><p style="font-size:14px;color:#a89888">Current pantry is empty, please add ingredients</p></div>')
     else:
         # V7: 库存列表 — 2状态切换 + 用完按钮（取消"可用"显示）
         items_html = ""
@@ -1154,7 +1403,7 @@ def render_pantry(role="nanny", location="shenzhen"):
 
                 reqs_html += f"""<div class="purchase-task">
 <div class="info">
-<div class="dish-name-sm">{ing_name} <span style="font-size:11px;color:#a89888">{ing_en}</span></div>
+<div class="dish-name-sm">{ing_name} <span style="font-size:13px;color:#a89888">{ing_en}</span></div>
 {f'<div class="missing-list">用于: {dish_name}</div>' if dish_name else ''}
 {status_badge}
 </div>{action_btn}</div>"""
@@ -1162,7 +1411,7 @@ def render_pantry(role="nanny", location="shenzhen"):
             sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks ({len(active_reqs)})</h3>{reqs_html}</div>')
 
     # V6: 保存状态提示
-    sections.append('<div id="saveIndicator" style="text-align:center;padding:8px;color:#a89888;font-size:12px;display:none">✓ 已保存 Saved</div>')
+    sections.append('<div id="saveIndicator" style="text-align:center;padding:8px;color:#a89888;font-size:14px;display:none">✓ 已保存 Saved</div>')
 
     body = "\n".join(sections)
     return f"""{page_head("食材库存 · Pantry", "pantry", location)}
@@ -1675,6 +1924,15 @@ class AppHandler(BaseHTTPRequestHandler):
             loc = body.get("location", location)
             avail = get_dish_availability(dish_ids, loc)
             self.send_json(avail)
+
+        elif path == "/api/dishes/recommend":
+            rec = get_dish_recommendations(
+                body.get("meal_type", ""),
+                body.get("current_dish_id", ""),
+                body.get("category_id", ""),
+                body.get("location", location),
+            )
+            self.send_json(rec)
 
         elif path == "/api/tomorrow/add":
             ok = add_dish_to_menu(body["menu_id"], body["dish_id"], body["meal_type"])
