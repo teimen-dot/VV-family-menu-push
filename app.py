@@ -580,6 +580,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .meal-act-btn{font-size:15px;padding:8px 14px;border-radius:8px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;white-space:nowrap;min-height:44px;display:flex;align-items:center}
 .meal-act-btn:active{background:#e8e0d4}
 .meal-items{padding:0 14px 8px}
+.slot-hint{padding:6px 14px;font-size:14px;color:#b8860b;background:#fffbeb;border-radius:6px;margin:4px 14px}
 .meal-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f5f0e8;align-items:center}
 .meal-item:last-child{border-bottom:none}
 .meal-item img{width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f5f0e8}
@@ -804,13 +805,13 @@ def render_tomorrow(role="owner", location="shenzhen"):
     if not menu_diners:
         menu_diners = [d["id"] for d in all_diners if d["default_attends"]]
 
-    # V3: 生成 Warning（不阻断 Confirm）
+    # V3: 生成 Warning（不阻断 Confirm）— V8: 从 SQLite 读取（不再读 dish_pool.json）
     menu_warnings = []
     if menu.get("exists") and menu.get("menu_id"):
         try:
             from rule_engine import RuleEngine, NutritionAnalyzer, MealState
-            with open(os.path.join(BASE_DIR, "dish_pool.json"), "r", encoding="utf-8") as f:
-                pool = json.load(f)
+            from menu_service import _load_pool
+            pool = _load_pool()
             dish_map = {d["id"]: d for d in pool["dishes"]}
             day_result = {}
             for mt in ["breakfast", "lunch", "dinner"]:
@@ -858,11 +859,51 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 req_by_ingredient[ing_id] = r
 
         # 各餐次
+        SLOT_LABELS = {
+            "protein_main": ("蛋白质", "Protein"),
+            "vegetable_dish": ("蔬菜", "Vegetable"),
+            "staple": ("主食", "Staple"),
+            "slow_soup": ("煲汤", "Soup"),
+            "quick_soup": ("快手汤", "Quick Soup"),
+            "egg": ("鸡蛋", "Egg"),
+            "tofu": ("豆腐", "Tofu"),
+            "porridge": ("粥", "Porridge"),
+            "companion_staple": ("搭配主食", "Side Staple"),
+            "coarse_grain": ("粗粮", "Coarse Grain"),
+        }
         for mt in ["breakfast", "lunch", "afternoon_snack", "dinner"]:
             dishes = menu["meals"].get(mt, [])
             if not dishes:
                 continue
             color, cn, en = meal_colors[mt]
+
+            # V8: 计算缺失槽位提示
+            slot_hint = ""
+            if mt in ("breakfast", "lunch", "dinner") and menu.get("exists"):
+                try:
+                    from rule_engine import NutritionAnalyzer, MealState, analyze_meal_slots
+                    from menu_service import _load_pool
+                    pool_data = _load_pool()
+                    dm = {d["id"]: d for d in pool_data["dishes"]}
+                    st = MealState()
+                    for item in dishes:
+                        did = item.get("dish_id", "")
+                        if did in dm:
+                            st.add_dish(NutritionAnalyzer.analyze(dm[did]), is_locked=item.get("is_locked", False))
+                    slots = analyze_meal_slots(mt, st)
+                    missing = {k: v for k, v in slots.items() if v["missing_min"] > 0}
+                    if missing:
+                        hint_parts = []
+                        for slot_name in missing:
+                            cn_label, en_label = SLOT_LABELS.get(slot_name, (slot_name, slot_name))
+                            hint_parts.append(f"{cn_label} {missing[slot_name]['missing_min']}")
+                        hint_cn = "还缺：" + " / ".join(hint_parts)
+                        hint_en = "Missing: " + " / ".join(
+                            f"{SLOT_LABELS.get(s, (s, s))[1]} {v['missing_min']}" for s, v in missing.items()
+                        )
+                        slot_hint = f'<div class="slot-hint">{hint_cn}<br>{hint_en}</div>'
+                except Exception:
+                    pass
 
             # 餐次操作按钮
             meal_actions = ""
@@ -929,7 +970,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
 
             sections.append(f"""<div class="meal-section">
 <div class="meal-header"><div class="meal-bar" style="background:{color}"></div><div><span class="meal-title">{cn}</span><span class="meal-title-en">{en}</span></div>{meal_actions}</div>
-<div class="meal-items">{items_html}</div></div>""")
+{slot_hint}<div class="meal-items">{items_html}</div></div>""")
 
         # 采购任务区（可操作）
         if purchase_reqs:
@@ -1111,7 +1152,17 @@ async function aiFillMeal(mt){{
   snack('AI 补充中... AI filling...');
   let r=await fetch('/api/tomorrow/ai-fill',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,location:currentLoc,meal_type:mt}})}});
   let result=await r.json();
-  if(result.ok){{snack('AI 补充完成 AI fill done');location.reload();}}else{{snack(result.error||'补充失败');}}
+  if(result.ok){{
+    // V8: 检查 unmet_slots
+    let unmet=result.review&&(result.review.unmet_slots||[]);
+    if(unmet&&unmet.length>0){{
+      let msgs=unmet.map(u=>u.message||(''+u.slot)).join('\\n');
+      alert('AI 补充完成，但有槽位未补齐：\\n\\n'+msgs+'\\n\\n请手动添加缺失菜品。');
+    }}else{{
+      snack('AI 补充完成 AI fill done');
+    }}
+    location.reload();
+  }}else{{snack(result.error||'补充失败');}}
 }}
 async function repairMenu(){{
   if(!confirm('重新推荐所有 AI 菜品? Refresh all AI suggestions?'))return;

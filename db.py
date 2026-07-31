@@ -70,6 +70,7 @@ def init_db():
             quick_soup              INTEGER DEFAULT 0,
             slow_soup               INTEGER DEFAULT 0,
             manual_only_for_breakfast INTEGER DEFAULT 0,
+            meal_roles               TEXT DEFAULT '[]',
             image                   TEXT,
             image_uploaded          INTEGER DEFAULT 0,
             needs_review            INTEGER DEFAULT 0,
@@ -89,6 +90,9 @@ def init_db():
     # V6 迁移：dishes 表增加 is_active + deleted_at（Soft Delete）
     _safe_add_column(c, "dishes", "is_active", "INTEGER DEFAULT 1")
     _safe_add_column(c, "dishes", "deleted_at", "TEXT")
+
+    # V8 迁移：dishes 表增加 meal_roles（多选角色字段）
+    _safe_add_column(c, "dishes", "meal_roles", "TEXT DEFAULT '[]'")
 
     # ========== 3. ingredients - 食材库 ==========
     c.execute("""

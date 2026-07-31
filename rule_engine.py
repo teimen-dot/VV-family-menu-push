@@ -155,6 +155,18 @@ class NutritionAnalyzer:
         # manual_only_for_breakfast
         manual_only_breakfast = bool(dish.get("manual_only_for_breakfast", 0) if isinstance(dish.get("manual_only_for_breakfast", 0), int) else dish.get("manual_only_for_breakfast", False))
 
+        # V8: 解析 meal_roles（多选角色），fallback 从 category_id 派生
+        meal_roles = dish.get("meal_roles", [])
+        if isinstance(meal_roles, str):
+            try:
+                meal_roles = json.loads(meal_roles)
+            except (json.JSONDecodeError, TypeError):
+                meal_roles = []
+        if not meal_roles:
+            meal_roles = NutritionAnalyzer._derive_meal_roles(
+                cat, is_quick_soup, is_slow_soup, has_tofu, has_egg, name_cn
+            )
+
         return {
             "proteins": proteins,
             "vegetables": vegetables,
@@ -177,7 +189,57 @@ class NutritionAnalyzer:
             "is_quick_soup": is_quick_soup,
             "is_slow_soup": is_slow_soup,
             "manual_only_breakfast": manual_only_breakfast,
+            "meal_roles": meal_roles,
         }
+
+    @staticmethod
+    def _derive_meal_roles(cat, is_quick_soup, is_slow_soup, has_tofu, has_egg, name_cn):
+        """V8: 当 meal_roles 为空时，从 category_id + tags 派生角色。
+        fallback 规则:
+          protein_main → ["protein_main"]
+          egg_tofu → ["egg_dish"] 或 ["tofu_dish"]（按菜名/食材判断）
+          vegetable_mushroom → ["vegetable_dish"]
+          staple_carb → ["staple"]
+          soup + slow_soup → ["slow_soup"]
+          soup + quick_soup → ["quick_soup"]
+          soup (未分类) → ["slow_soup"] 或 ["quick_soup"]（按菜名兜底）
+          cold_dish + 蔬菜为主体 → ["vegetable_dish"]
+          one_pot_meal → ["one_pot_meal"]
+          fruit_snack → ["fruit_snack"]
+        """
+        if cat == "protein_main":
+            return ["protein_main"]
+        elif cat == "egg_tofu":
+            if has_tofu and not has_egg:
+                return ["tofu_dish"]
+            elif has_egg and not has_tofu:
+                return ["egg_dish"]
+            return ["egg_dish", "tofu_dish"]
+        elif cat == "vegetable_mushroom":
+            return ["vegetable_dish"]
+        elif cat == "staple_carb":
+            return ["staple"]
+        elif cat == "soup":
+            if is_slow_soup:
+                return ["slow_soup"]
+            elif is_quick_soup:
+                return ["quick_soup"]
+            # 兜底：按菜名判断
+            slow_kw = ["煲汤", "炖汤", "松茸鸡汤", "排骨汤", "莲藕", "老火"]
+            quick_kw = ["番茄蛋汤", "紫菜", "味噌", "蛋花", "虾米"]
+            if any(kw in name_cn for kw in slow_kw):
+                return ["slow_soup"]
+            elif any(kw in name_cn for kw in quick_kw):
+                return ["quick_soup"]
+            return ["slow_soup"]  # 默认归为煲汤
+        elif cat == "cold_dish":
+            # 冷菜如果蔬菜是主体，也算 vegetable_dish
+            return ["vegetable_dish"]
+        elif cat == "one_pot_meal":
+            return ["one_pot_meal"]
+        elif cat == "fruit_snack":
+            return ["fruit_snack"]
+        return []
 
 
 # ============================================================
@@ -238,15 +300,21 @@ class MealState:
             self.has_slow_soup = True
 
         cat = analysis["category_id"]
-        if cat in ("protein_main", "egg_tofu"):
-            self.protein_count += 1
-        elif cat == "vegetable_mushroom":
+        roles = analysis.get("meal_roles", [])
+
+        # V8: 用 meal_roles 追踪槽位（fallback 到 category_id）
+        if "vegetable_dish" in roles or cat == "vegetable_mushroom":
             self.vegetable_dish_count += 1
-        elif cat == "staple_carb":
-            self.carb_count += 1
-        elif cat == "one_pot_meal":
+        if "protein_main" in roles or cat in ("protein_main", "egg_tofu"):
             self.protein_count += 1
+        if "staple" in roles or cat == "staple_carb":
             self.carb_count += 1
+        if "one_pot_meal" in roles or cat == "one_pot_meal":
+            # 一餐型料理同时贡献蛋白质和主食
+            if "protein_main" not in roles and cat not in ("protein_main", "egg_tofu"):
+                self.protein_count += 1
+            if "staple" not in roles and cat != "staple_carb":
+                self.carb_count += 1
 
         if is_locked:
             self.locked_count += 1
@@ -504,7 +572,7 @@ class RuleEngine:
         elif meal_type == "lunch":
             return (
                 len(state.proteins) >= 1
-                and state.vegetable_count >= 1
+                and state.vegetable_dish_count >= 1
                 and state.carb_count >= 1
                 and state.quick_soup_slot >= 1
             )
@@ -512,7 +580,7 @@ class RuleEngine:
             return (
                 state.dish_count >= 3
                 and len(state.proteins) >= 1
-                and state.vegetable_count >= 2
+                and state.vegetable_dish_count >= 1
                 and state.carb_count == 1
                 and state.slow_soup_slot >= 1
             )
@@ -520,8 +588,152 @@ class RuleEngine:
 
 
 # ============================================================
-# SCORING ENGINE — 软偏好评分
+# V8: MEAL SLOT ANALYZER — 槽位分析器
 # ============================================================
+
+def analyze_meal_slots(meal_type, state, diners_count=4):
+    """
+    V8: 分析一餐中各槽位的当前值和缺口。
+    返回 {slot: {current, target_min, missing_min}}。
+    missing_min > 0 的槽位需要 AI Fill 补齐。
+    """
+    if meal_type == "dinner":
+        if diners_count >= 5:
+            target = {"protein_main": 2, "vegetable_dish": 2, "staple": 1, "slow_soup": 1}
+        else:
+            # 1-4 人: 先补最低结构
+            target = {"protein_main": 1, "vegetable_dish": 1, "staple": 1, "slow_soup": 1}
+        current = {
+            "protein_main": state.protein_count,
+            "vegetable_dish": state.vegetable_dish_count,
+            "staple": state.carb_count,
+            "slow_soup": state.slow_soup_slot,
+        }
+    elif meal_type == "lunch":
+        target = {"protein_main": 1, "vegetable_dish": 1, "staple": 1, "quick_soup": 1}
+        current = {
+            "protein_main": state.protein_count,
+            "vegetable_dish": state.vegetable_dish_count,
+            "staple": state.carb_count,
+            "quick_soup": state.quick_soup_slot,
+        }
+    elif meal_type == "breakfast":
+        target = {
+            "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
+            "protein_main": 1, "vegetable": 2, "egg": 1, "tofu": 1
+        }
+        current = {
+            "porridge": state.porridge_slot,
+            "companion_staple": state.companion_staple_slot,
+            "coarse_grain": state.coarse_grain_slot,
+            "protein_main": state.protein_count,
+            "vegetable": state.vegetable_count,
+            "egg": state.egg_slot,
+            "tofu": state.tofu_slot,
+        }
+    else:
+        return {}
+
+    result = {}
+    for slot, tgt in target.items():
+        cur = current.get(slot, 0)
+        result[slot] = {
+            "current": cur,
+            "target_min": tgt,
+            "missing_min": max(0, tgt - cur),
+        }
+    return result
+
+
+# 槽位 → 候选菜过滤条件映射
+SLOT_ROLE_MAP = {
+    "protein_main": {
+        "roles": ["protein_main"],
+        "categories": ["protein_main", "egg_tofu"],
+        "exclude_names": ["肉末"],
+    },
+    "vegetable_dish": {
+        "roles": ["vegetable_dish"],
+        "categories": ["vegetable_mushroom", "cold_dish"],
+        "require_vegetables": True,
+    },
+    "staple": {
+        "roles": ["staple"],
+        "categories": ["staple_carb"],
+        "exclude_categories": ["one_pot_meal"],
+    },
+    "slow_soup": {
+        "roles": ["slow_soup"],
+        "require_flag": "is_slow_soup",
+    },
+    "quick_soup": {
+        "roles": ["quick_soup"],
+        "require_flag": "is_quick_soup",
+    },
+    "egg": {
+        "roles": ["egg_dish"],
+        "require_flag": "has_egg",
+    },
+    "tofu": {
+        "roles": ["tofu_dish"],
+        "require_flag": "has_tofu",
+    },
+    "porridge": {
+        "require_carb_type": "porridge",
+    },
+    "companion_staple": {
+        "require_breakfast_staple": True,
+    },
+    "coarse_grain": {
+        "require_carb_type": "coarse_grain",
+    },
+}
+
+
+def filter_candidates_for_slot(candidates, slot_name):
+    """V8: 根据槽位名称过滤候选菜。"""
+    spec = SLOT_ROLE_MAP.get(slot_name)
+    if not spec:
+        return candidates
+
+    filtered = []
+    for c in candidates:
+        roles = c.get("meal_roles", [])
+        cat = c.get("category_id", "")
+        name = c.get("name_cn", "")
+
+        # 角色匹配
+        role_match = any(r in roles for r in spec.get("roles", []))
+        # 分类匹配
+        cat_match = cat in spec.get("categories", []) if spec.get("categories") else False
+        # 排除分类
+        if spec.get("exclude_categories") and cat in spec["exclude_categories"]:
+            continue
+        # 排除菜名
+        if any(ex in name for ex in spec.get("exclude_names", [])):
+            continue
+        # 要求标志
+        if spec.get("require_flag") and not c.get(spec["require_flag"]):
+            # 角色或标志至少满足一个
+            if not role_match:
+                continue
+        # 要求 carb_type
+        if spec.get("require_carb_type") and c.get("carb_type") != spec["require_carb_type"]:
+            continue
+        # 要求早餐搭配主食
+        if spec.get("require_breakfast_staple"):
+            from_rule = c.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
+            if not from_rule:
+                continue
+        # 要求有蔬菜
+        if spec.get("require_vegetables") and not c.get("vegetables"):
+            if not role_match and not cat_match:
+                continue
+
+        if role_match or cat_match or spec.get("require_flag") or spec.get("require_carb_type") or spec.get("require_breakfast_staple"):
+            filtered.append(c)
+
+    return filtered
 
 class ScoringEngine:
     """
@@ -939,14 +1151,26 @@ class GapFiller:
                 candidates = filtered
                 log.append(f"  [FILTER] slow_soup gap: {len(candidates)} candidates")
 
+        # V8: 晚餐/午餐蔬菜菜缺口（独立蔬菜菜品，不是食材种类数）
+        if meal_type in ("dinner", "lunch") and state.vegetable_dish_count < 1:
+            filtered = [
+                c for c in candidates
+                if "vegetable_dish" in c.get("meal_roles", [])
+                or c["category_id"] == "vegetable_mushroom"
+                or (c["category_id"] == "cold_dish" and c["vegetables"])
+            ]
+            if filtered:
+                candidates = filtered
+                log.append(f"  [FILTER] vegetable_dish gap: {len(candidates)} candidates")
+
         # 蛋白质缺口（通用）
         if len(state.proteins) < 1 and state.protein_count < 1:
             filtered = [c for c in candidates if c["proteins"]]
             if filtered:
                 candidates = filtered
 
-        # 蔬菜缺口
-        if state.vegetable_count < 2:
+        # 蔬菜食材种类缺口（仅早餐用，午晚餐用 vegetable_dish_count）
+        if meal_type == "breakfast" and state.vegetable_count < 2:
             filtered = [c for c in candidates if c["vegetables"]]
             if filtered:
                 candidates = filtered

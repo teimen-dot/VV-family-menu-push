@@ -13,6 +13,7 @@ from rule_engine import (
     GapFiller, RuleEngine, NutritionAnalyzer, MealState,
     generate_afternoon_snack, get_dish_ingredients_map,
     get_history_3day, get_history_7day, get_inventory_ingredients,
+    analyze_meal_slots, filter_candidates_for_slot,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 
@@ -29,7 +30,7 @@ def _load_pool():
         for r in rows:
             d = dict(r)
             # 解析 JSON 字段
-            for field in ["protein_types", "vegetables", "meal_tags", "cooking_methods", "custom_tags"]:
+            for field in ["protein_types", "vegetables", "meal_tags", "cooking_methods", "custom_tags", "meal_roles"]:
                 if d.get(field):
                     try:
                         d[field] = json.loads(d[field])
@@ -161,6 +162,7 @@ def get_menu_with_dishes(date_str):
             "d.vegetables, d.vegetable_count, d.image, d.meal_tags, d.cooking_methods, "
             "d.taste, d.banquet, d.custom_tags, "
             "d.quick_soup, d.slow_soup, d.manual_only_for_breakfast, "
+            "d.meal_roles, "
             "d.is_active as dish_is_active "
             "FROM menu_items mi "
             "LEFT JOIN dishes d ON mi.dish_id = d.id "
@@ -205,7 +207,7 @@ def get_menu_with_dishes(date_str):
             d["dish_archived"] = (d.get("dish_is_active") == 0)
 
             # 解析 JSON 字段
-            for field in ["protein_types", "vegetables", "meal_tags", "cooking_methods", "custom_tags"]:
+            for field in ["protein_types", "vegetables", "meal_tags", "cooking_methods", "custom_tags", "meal_roles"]:
                 if d.get(field):
                     try:
                         d[field] = json.loads(d[field])
@@ -339,20 +341,23 @@ def lock_dish(menu_item_id, locked=True):
 
 def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
     """
-    AI 补充缺少菜品 (AI Fill Gaps)：
-    保留当前所有菜（owner + AI），只补充该餐缺失结构。
+    V8: AI 补充缺少菜品 (AI Fill Gaps)：
+    保留当前所有菜（owner + AI），先分析槽位缺口，只补 missing_min > 0 的槽位。
+    Available Now 优先；无 Available 不自动加入缺货菜；无候选返回 unmet_slot。
     meal_type: 指定餐次，None = 所有餐次。
+    返回: (ok, msg, review) — review 包含 unmet_slots 信息。
     """
     conn = get_db()
     try:
-        menu = conn.execute("SELECT date FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        menu = conn.execute("SELECT date, location FROM menus WHERE id = ?", (menu_id,)).fetchone()
         if not menu:
             return False, "菜单不存在", None
 
         date_str = menu["date"]
+        loc = menu["location"] or location
         pool = _load_pool()
         dish_ings = get_dish_ingredients_map()
-        inv_avail, inv_pri, inv_exp = get_inventory_ingredients(location)
+        inv_avail, inv_pri, inv_exp = get_inventory_ingredients(loc)
 
         context = {
             "history_3day": get_history_3day(),
@@ -379,15 +384,25 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             if mt in meals_existing:
                 meals_existing[mt].append(item["dish_id"])
 
+        # 获取用餐人数
+        diners_count = 4  # 默认
+        try:
+            diner_row = conn.execute("SELECT diners FROM menus WHERE id = ?", (menu_id,)).fetchone()
+            if diner_row and diner_row["diners"]:
+                diner_ids = json.loads(diner_row["diners"])
+                diners_count = max(len(diner_ids), 1)
+        except Exception:
+            pass
+
         # 确定要处理的餐次
         target_meals = [meal_type] if meal_type else ["breakfast", "lunch", "dinner"]
 
         day_history = set()
         day_proteins = set()
         new_items_added = 0
+        unmet_slots = []  # V8: 记录无法补齐的槽位
 
         for mt in ["breakfast", "lunch", "dinner"]:
-            # 先收集所有餐的已有菜品到 day_history
             for did in meals_existing[mt]:
                 if did in dish_map:
                     day_history.add(did)
@@ -397,53 +412,59 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             if mt not in meals_existing:
                 continue
 
-            # 把当前餐所有菜品当作 locked 来分析
             existing_ids = [did for did in meals_existing[mt] if did in dish_map]
             if not existing_ids:
                 continue
 
-            # 检查是否已满足硬规则
+            # 构建 MealState
             state = MealState()
             for did in existing_ids:
                 analysis = NutritionAnalyzer.analyze(dish_map[did])
                 state.add_dish(analysis, is_locked=True)
 
-            if RuleEngine.is_satisfied(mt, state):
-                continue  # 已满足，不需要补
-
-            # 用 GapFiller 补缺口：所有现有菜作为 locked
-            meal_ctx = dict(context)
-            meal_ctx["day_proteins"] = set(day_proteins)
-            meal_ctx["day_history"] = set(day_history)
-
-            dishes, new_state, log = gf.generate_meal(
-                mt, locked_dish_ids=existing_ids, context=meal_ctx
-            )
-
-            # 找出新增的菜（不在 existing_ids 中的）
-            existing_set = set(existing_ids)
-            new_dishes = [d for d in dishes if d["id"] not in existing_set]
-
-            # 添加新菜到数据库
-            row = conn.execute(
-                "SELECT MAX(sort_order) as max_sort FROM menu_items WHERE menu_id = ? AND meal_type = ?",
-                (menu_id, mt)
-            ).fetchone()
-            sort = (row["max_sort"] or 0) + 1
-
-            for d in new_dishes:
-                # V6: 跳过 None dish_id
-                if not d.get("id") or d["id"] == "None":
-                    continue
-                conn.execute(
-                    "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
-                    "VALUES (?, ?, ?, 0, ?, ?)",
-                    (menu_id, d["id"], mt, sort, "ai")
+            # V8: 槽位分析
+            if mt in ("dinner", "lunch"):
+                # 晚餐/午餐：使用 V8 槽位分析 + Available Now 优先
+                added = _fill_missing_slots_v8(
+                    conn, menu_id, mt, state, gf, dish_map, context,
+                    day_history, day_proteins, diners_count, loc,
+                    unmet_slots
                 )
-                sort += 1
-                new_items_added += 1
-                day_history.add(d["id"])
-                day_proteins.update(d.get("protein_types", []))
+                new_items_added += added
+            else:
+                # 早餐：保持使用 generate_meal（已修复 is_satisfied + _filter_by_gaps）
+                if RuleEngine.is_satisfied(mt, state):
+                    continue
+
+                meal_ctx = dict(context)
+                meal_ctx["day_proteins"] = set(day_proteins)
+                meal_ctx["day_history"] = set(day_history)
+
+                dishes, new_state, log = gf.generate_meal(
+                    mt, locked_dish_ids=existing_ids, context=meal_ctx
+                )
+
+                existing_set = set(existing_ids)
+                new_dishes = [d for d in dishes if d["id"] not in existing_set]
+
+                row = conn.execute(
+                    "SELECT MAX(sort_order) as max_sort FROM menu_items WHERE menu_id = ? AND meal_type = ?",
+                    (menu_id, mt)
+                ).fetchone()
+                sort = (row["max_sort"] or 0) + 1
+
+                for d in new_dishes:
+                    if not d.get("id") or d["id"] == "None":
+                        continue
+                    conn.execute(
+                        "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
+                        "VALUES (?, ?, ?, 0, ?, ?)",
+                        (menu_id, d["id"], mt, sort, "ai")
+                    )
+                    sort += 1
+                    new_items_added += 1
+                    day_history.add(d["id"])
+                    day_proteins.update(d.get("protein_types", []))
 
         conn.commit()
 
@@ -460,14 +481,130 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             day_result[mt] = {"state": state}
 
         review = RuleEngine.final_review(day_result)
+        review["unmet_slots"] = unmet_slots  # V8: 附加 unmet_slot 信息
 
         log_event("ai_fill_menu", "menu", str(menu_id), {
-            "new_items_added": new_items_added, "review_passed": review["passed"]
+            "new_items_added": new_items_added,
+            "review_passed": review["passed"],
+            "unmet_slots": unmet_slots,
         })
 
         return True, f"AI 补充了 {new_items_added} 道菜", review
     finally:
         conn.close()
+
+
+def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, context,
+                            day_history, day_proteins, diners_count, location,
+                            unmet_slots):
+    """
+    V8: 槽位分析 + Available Now 优先补齐。
+    用于 dinner 和 lunch。
+    返回: items_added (int)
+    """
+    items_added = 0
+    max_rounds = 6  # 安全上限
+
+    for round_i in range(max_rounds):
+        # Step 1: 分析当前槽位
+        slots = analyze_meal_slots(meal_type, state, diners_count)
+
+        # Step 2: 找 missing_min > 0 的槽位
+        missing = {k: v for k, v in slots.items() if v["missing_min"] > 0}
+        if not missing:
+            break  # 所有最低槽位已满足
+
+        # Step 3: 逐个补齐缺失槽位
+        for slot_name, slot_info in missing.items():
+            # 获取该槽位的候选菜
+            all_candidates = gf.get_candidates(meal_type, exclude_ids=day_history)
+            slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
+
+            if not slot_candidates:
+                unmet_slots.append({
+                    "meal": meal_type,
+                    "slot": slot_name,
+                    "message": f"暂未找到合适的{slot_name}菜品，请手动添加 / No suitable {slot_name} found.",
+                })
+                continue
+
+            # V8: Available Now 优先 — 检查库存可用性
+            candidate_ids = [c["id"] for c in slot_candidates]
+            avail_batch = check_dishes_availability_batch(candidate_ids, location)
+
+            available_candidates = [
+                c for c in slot_candidates
+                if avail_batch.get(c["id"], {}).get("status") == "available"
+            ]
+
+            if available_candidates:
+                # 有 Available 候选 → 评分选最优
+                # ScoringEngine 已处理 Expiring > Use First > normal 排序
+                meal_ctx = dict(context)
+                meal_ctx["day_proteins"] = set(day_proteins)
+                meal_ctx["day_history"] = set(day_history)
+
+                scored = []
+                for c in available_candidates:
+                    s = gf.scorer.score_dish(c, state, meal_type, meal_ctx)
+                    scored.append((s, c))
+                scored.sort(key=lambda x: x[0], reverse=True)
+
+                chosen = scored[0][1]
+
+                # 添加到数据库
+                row = conn.execute(
+                    "SELECT MAX(sort_order) as max_sort FROM menu_items WHERE menu_id = ? AND meal_type = ?",
+                    (menu_id, meal_type)
+                ).fetchone()
+                sort = (row["max_sort"] or 0) + 1
+
+                conn.execute(
+                    "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
+                    "VALUES (?, ?, ?, 0, ?, ?)",
+                    (menu_id, chosen["id"], meal_type, sort, "ai")
+                )
+                items_added += 1
+                day_history.add(chosen["id"])
+                day_proteins.update(chosen.get("protein_types", []))
+
+                # 更新 state
+                state.add_dish(chosen, is_locked=False)
+            else:
+                # V8: 无 Available → 检查 Almost Available
+                almost_candidates = [
+                    c for c in slot_candidates
+                    if avail_batch.get(c["id"], {}).get("status") == "almost_available"
+                ]
+                if almost_candidates:
+                    unmet_slots.append({
+                        "meal": meal_type,
+                        "slot": slot_name,
+                        "almost_count": len(almost_candidates),
+                        "almost_dishes": [
+                            {"id": c["id"], "name_cn": c["name_cn"],
+                             "name_en": c.get("name_en", ""),
+                             "missing": [m["name_cn"] for m in avail_batch.get(c["id"], {}).get("missing_required", [])]}
+                            for c in almost_candidates[:5]
+                        ],
+                        "message": (
+                            f"当前库存没有可直接制作的{slot_name}菜品。"
+                            f"有{len(almost_candidates)}道菜只差1种食材。"
+                            f" / No {slot_name} is fully available. "
+                            f"{len(almost_candidates)} dishes are missing only one ingredient."
+                        ),
+                    })
+                else:
+                    unmet_slots.append({
+                        "meal": meal_type,
+                        "slot": slot_name,
+                        "message": (
+                            f"当前库存没有可直接制作的{slot_name}菜品，请手动添加。"
+                            f" / No {slot_name} is fully available. Please add manually."
+                        ),
+                    })
+
+    return items_added
 
 
 def repair_menu(menu_id, location="shenzhen", seed=None):
