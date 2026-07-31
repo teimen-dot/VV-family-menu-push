@@ -270,6 +270,9 @@ class MealState:
         self.has_egg = False
         self.has_quick_soup = False
         self.has_slow_soup = False
+        # V9: 基于 meal_roles 的精确槽位计数（不依赖 ingredients）
+        self.egg_dish_count = 0
+        self.tofu_dish_count = 0
 
     def add_dish(self, analysis, is_locked=False):
         """添加一道菜到状态中。无论 locked 还是 AI 选的，只计算一次。"""
@@ -309,6 +312,11 @@ class MealState:
             self.protein_count += 1
         if "staple" in roles or cat == "staple_carb":
             self.carb_count += 1
+        # V9: egg_dish / tofu_dish 精确槽位（基于 meal_roles，不依赖 ingredients）
+        if "egg_dish" in roles:
+            self.egg_dish_count += 1
+        if "tofu_dish" in roles:
+            self.tofu_dish_count += 1
         if "one_pot_meal" in roles or cat == "one_pot_meal":
             # 一餐型料理同时贡献蛋白质和主食
             if "protein_main" not in roles and cat not in ("protein_main", "egg_tofu"):
@@ -356,13 +364,14 @@ class MealState:
         return 1 if self.has_coarse_grain else 0
 
     # V3 新增槽位属性
+    # V9: egg_slot / tofu_slot 改为基于 meal_roles 的精确计数
     @property
     def tofu_slot(self):
-        return 1 if self.has_tofu else 0
+        return self.tofu_dish_count
 
     @property
     def egg_slot(self):
-        return 1 if self.has_egg else 0
+        return self.egg_dish_count
 
     @property
     def quick_soup_slot(self):
@@ -451,24 +460,24 @@ class RuleEngine:
         return True, [], warnings
 
     @staticmethod
-    def check_dinner_rules(state):
+    def check_dinner_rules(state, diners_count=4):
         """
-        V3 晚餐规则（全部为 Warning，不阻断 Confirm）：
-          蛋白质主菜: >=1
-          蔬菜/菌菇: >=2种
+        V9 晚餐规则（全部为 Warning，不阻断 Confirm）：
+          蛋白质主菜: 按人数 (2人=1, 3人=2, 4人=2)
+          独立蔬菜菜品: 按人数 (2人=1, 3人=1, 4人=2)
           主食: 1
-          至少3道菜
-          slow_soup >= 1 (V3 新增)
+          slow_soup >= 1
         返回: (passed, issues, warnings)
         """
         warnings = []
+        target = RuleEngine._dinner_target(diners_count)
 
         if state.dish_count < 3:
             warnings.append(f"晚餐菜品不足: {state.dish_count}道 / Insufficient dishes ({state.dish_count}, need >=3)")
-        if len(state.proteins) < 1:
-            warnings.append("晚餐缺蛋白质 / No protein for dinner")
-        if state.vegetable_count < 2:
-            warnings.append(f"晚餐蔬菜不足: {state.vegetable_count}种 / Insufficient vegetables ({state.vegetable_count}, need >=2)")
+        if state.protein_count < target["protein_main"]:
+            warnings.append(f"晚餐蛋白质不足: {state.protein_count}/{target['protein_main']} / Insufficient protein ({state.protein_count}/{target['protein_main']}, diners={diners_count})")
+        if state.vegetable_dish_count < target["vegetable_dish"]:
+            warnings.append(f"晚餐蔬菜不足: {state.vegetable_dish_count}/{target['vegetable_dish']} / Insufficient vegetable dishes ({state.vegetable_dish_count}/{target['vegetable_dish']}, diners={diners_count})")
         if state.carb_count < 1:
             warnings.append("晚餐缺主食 / No carb for dinner")
         if state.carb_count > 1:
@@ -493,20 +502,21 @@ class RuleEngine:
         return True, [], warnings
 
     @staticmethod
-    def check_meal(meal_type, state):
+    def check_meal(meal_type, state, diners_count=4):
         """检查单餐是否合格。返回: (passed, hard_errors, warnings)"""
         if meal_type == "breakfast":
             return RuleEngine.check_breakfast_rules(state)
         elif meal_type == "lunch":
             return RuleEngine.check_lunch_rules(state)
         elif meal_type == "dinner":
-            return RuleEngine.check_dinner_rules(state)
+            return RuleEngine.check_dinner_rules(state, diners_count)
         return True, [], []
 
     @staticmethod
-    def final_review(day_result):
+    def final_review(day_result, diners_count=4):
         """
         V3 最终审查：所有检查项均为 Warning，不阻断 Confirm。
+        V9: diners_count 用于晚餐精确人数目标。
         返回:
           {
             passed: True (V3: 始终 True，不再阻断),
@@ -523,7 +533,7 @@ class RuleEngine:
                 warnings.append(f"{meal_type} 未生成 / {meal_type} not generated")
                 continue
 
-            passed, meal_hard, meal_warnings = RuleEngine.check_meal(meal_type, state)
+            passed, meal_hard, meal_warnings = RuleEngine.check_meal(meal_type, state, diners_count)
             # V3: meal_hard 始终为空，但保留兼容
             warnings.extend(meal_hard)
             warnings.extend(meal_warnings)
@@ -552,10 +562,12 @@ class RuleEngine:
         }
 
     @staticmethod
-    def is_satisfied(meal_type, state):
+    def is_satisfied(meal_type, state, diners_count=4):
         """
         判断硬规则是否已满足（用于决定是否 STOP）。
         V3: 包含 tofu/egg/quick_soup/slow_soup 新槽位。
+        V9: 早餐 egg_slot/tofu_slot 基于 meal_roles（非 ingredients）；
+             晚餐按 2/3/4 人精确定量。
         满足 → STOP，不再加菜。
         不满足 → 继续补缺口。
         """
@@ -577,14 +589,31 @@ class RuleEngine:
                 and state.quick_soup_slot >= 1
             )
         elif meal_type == "dinner":
+            # V9: 按人数精确定量
+            target = RuleEngine._dinner_target(diners_count)
             return (
-                state.dish_count >= 3
-                and len(state.proteins) >= 1
-                and state.vegetable_dish_count >= 1
-                and state.carb_count == 1
-                and state.slow_soup_slot >= 1
+                state.protein_count >= target["protein_main"]
+                and state.vegetable_dish_count >= target["vegetable_dish"]
+                and state.carb_count >= target["staple"]
+                and state.slow_soup_slot >= target["slow_soup"]
             )
         return True
+
+    @staticmethod
+    def _dinner_target(diners_count):
+        """V9: 晚餐按人数确定精确目标。
+        2人: 1蛋白+1蔬菜+1主食+1煲汤
+        3人: 2蛋白+1蔬菜+1主食+1煲汤
+        4人: 2蛋白+2蔬菜+1主食+1煲汤
+        1人或5+人: 使用 fallback（同4人）
+        """
+        if diners_count <= 2:
+            return {"protein_main": 1, "vegetable_dish": 1, "staple": 1, "slow_soup": 1}
+        elif diners_count == 3:
+            return {"protein_main": 2, "vegetable_dish": 1, "staple": 1, "slow_soup": 1}
+        else:
+            # 4人及以上
+            return {"protein_main": 2, "vegetable_dish": 2, "staple": 1, "slow_soup": 1}
 
 
 # ============================================================
@@ -598,11 +627,8 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
     missing_min > 0 的槽位需要 AI Fill 补齐。
     """
     if meal_type == "dinner":
-        if diners_count >= 5:
-            target = {"protein_main": 2, "vegetable_dish": 2, "staple": 1, "slow_soup": 1}
-        else:
-            # 1-4 人: 先补最低结构
-            target = {"protein_main": 1, "vegetable_dish": 1, "staple": 1, "slow_soup": 1}
+        # V9: 按 2/3/4 人精确定量
+        target = RuleEngine._dinner_target(diners_count)
         current = {
             "protein_main": state.protein_count,
             "vegetable_dish": state.vegetable_dish_count,
@@ -628,8 +654,9 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
             "coarse_grain": state.coarse_grain_slot,
             "protein_main": state.protein_count,
             "vegetable": state.vegetable_count,
-            "egg": state.egg_slot,
-            "tofu": state.tofu_slot,
+            # V9: egg/tofu 基于 meal_roles 而非 ingredients
+            "egg": state.egg_dish_count,
+            "tofu": state.tofu_dish_count,
         }
     else:
         return {}
@@ -672,11 +699,9 @@ SLOT_ROLE_MAP = {
     },
     "egg": {
         "roles": ["egg_dish"],
-        "require_flag": "has_egg",
     },
     "tofu": {
         "roles": ["tofu_dish"],
-        "require_flag": "has_tofu",
     },
     "porridge": {
         "require_carb_type": "porridge",
@@ -686,6 +711,10 @@ SLOT_ROLE_MAP = {
     },
     "coarse_grain": {
         "require_carb_type": "coarse_grain",
+    },
+    # V9: 早餐蔬菜食材种类缺口（与 vegetable_dish 不同：这是食材种类数，不是菜品数）
+    "vegetable": {
+        "require_vegetables": True,
     },
 }
 
@@ -866,18 +895,15 @@ class ScoringEngine:
             if not state.has_companion_staple:
                 score += 20
 
-        # V3: 早餐鸡蛋缺口加分
-        if meal_type == "breakfast" and analysis.get("has_egg"):
-            if not state.has_egg:
+        # V9: 早餐鸡蛋缺口加分 — 基于 meal_roles (egg_dish)，不依赖 ingredients
+        if meal_type == "breakfast" and "egg_dish" in analysis.get("meal_roles", []):
+            if state.egg_dish_count < 1:
                 score += 25
 
-        # V3: 早餐豆腐缺口加分
-        if meal_type == "breakfast" and analysis.get("has_tofu"):
-            if not state.has_tofu:
+        # V9: 早餐豆腐缺口加分 — 基于 meal_roles (tofu_dish)
+        if meal_type == "breakfast" and "tofu_dish" in analysis.get("meal_roles", []):
+            if state.tofu_dish_count < 1:
                 score += 25
-            elif not state.has_egg and analysis.get("has_egg"):
-                # 组合菜如豆腐蒸蛋同时满足蛋和豆腐
-                score += 15
 
         # V3: 早餐排除 manual_only_breakfast
         if meal_type == "breakfast" and analysis.get("manual_only_breakfast"):
@@ -972,9 +998,10 @@ class GapFiller:
             if a["id"] not in exclude and meal_type in a["meal_tags"]
         ]
 
-    def generate_meal(self, meal_type, locked_dish_ids=None, context=None):
+    def generate_meal(self, meal_type, locked_dish_ids=None, context=None, diners_count=4):
         """
         生成一餐菜单。
+        V9: diners_count 用于晚餐 is_satisfied 精确判断。
         返回: (dishes, state, log)
         """
         locked_ids = locked_dish_ids or []
@@ -999,7 +1026,7 @@ class GapFiller:
         max_iterations = 12
         for iteration in range(max_iterations):
             # 检查硬规则是否满足
-            if RuleEngine.is_satisfied(meal_type, state):
+            if RuleEngine.is_satisfied(meal_type, state, diners_count):
                 log.append(f"  [STOP] 硬规则已满足, {state.dish_count} dishes")
                 break
 
@@ -1045,7 +1072,7 @@ class GapFiller:
                 break
 
             # 选最高分（关键缺口不随机，非关键前3随机）
-            has_critical = not RuleEngine.is_satisfied(meal_type, state)
+            has_critical = not RuleEngine.is_satisfied(meal_type, state, diners_count)
             if has_critical:
                 chosen = scored[0][1]
             else:
@@ -1094,19 +1121,19 @@ class GapFiller:
                 candidates = filtered
                 log.append(f"  [FILTER] companion_staple gap: {len(candidates)} candidates")
 
-        # V3: 早餐鸡蛋缺口
-        if meal_type == "breakfast" and not state.has_egg:
-            filtered = [c for c in candidates if c.get("has_egg")]
+        # V9: 早餐鸡蛋缺口 — 基于 meal_roles (egg_dish)，不依赖 ingredients
+        if meal_type == "breakfast" and state.egg_dish_count < 1:
+            filtered = [c for c in candidates if "egg_dish" in c.get("meal_roles", [])]
             if filtered:
                 candidates = filtered
-                log.append(f"  [FILTER] egg gap: {len(candidates)} candidates")
+                log.append(f"  [FILTER] egg_dish gap: {len(candidates)} candidates")
 
-        # V3: 早餐豆腐缺口
-        if meal_type == "breakfast" and not state.has_tofu:
-            filtered = [c for c in candidates if c.get("has_tofu")]
+        # V9: 早餐豆腐缺口 — 基于 meal_roles (tofu_dish)
+        if meal_type == "breakfast" and state.tofu_dish_count < 1:
+            filtered = [c for c in candidates if "tofu_dish" in c.get("meal_roles", [])]
             if filtered:
                 candidates = filtered
-                log.append(f"  [FILTER] tofu gap: {len(candidates)} candidates")
+                log.append(f"  [FILTER] tofu_dish gap: {len(candidates)} candidates")
 
         # V3: 早餐排除 manual_only_breakfast 菜品（豆浆等不由 AI 自动推荐）
         if meal_type == "breakfast":

@@ -422,49 +422,13 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 analysis = NutritionAnalyzer.analyze(dish_map[did])
                 state.add_dish(analysis, is_locked=True)
 
-            # V8: 槽位分析
-            if mt in ("dinner", "lunch"):
-                # 晚餐/午餐：使用 V8 槽位分析 + Available Now 优先
-                added = _fill_missing_slots_v8(
-                    conn, menu_id, mt, state, gf, dish_map, context,
-                    day_history, day_proteins, diners_count, loc,
-                    unmet_slots
-                )
-                new_items_added += added
-            else:
-                # 早餐：保持使用 generate_meal（已修复 is_satisfied + _filter_by_gaps）
-                if RuleEngine.is_satisfied(mt, state):
-                    continue
-
-                meal_ctx = dict(context)
-                meal_ctx["day_proteins"] = set(day_proteins)
-                meal_ctx["day_history"] = set(day_history)
-
-                dishes, new_state, log = gf.generate_meal(
-                    mt, locked_dish_ids=existing_ids, context=meal_ctx
-                )
-
-                existing_set = set(existing_ids)
-                new_dishes = [d for d in dishes if d["id"] not in existing_set]
-
-                row = conn.execute(
-                    "SELECT MAX(sort_order) as max_sort FROM menu_items WHERE menu_id = ? AND meal_type = ?",
-                    (menu_id, mt)
-                ).fetchone()
-                sort = (row["max_sort"] or 0) + 1
-
-                for d in new_dishes:
-                    if not d.get("id") or d["id"] == "None":
-                        continue
-                    conn.execute(
-                        "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
-                        "VALUES (?, ?, ?, 0, ?, ?)",
-                        (menu_id, d["id"], mt, sort, "ai")
-                    )
-                    sort += 1
-                    new_items_added += 1
-                    day_history.add(d["id"])
-                    day_proteins.update(d.get("protein_types", []))
+            # V9: 所有餐次使用槽位分析 + Available Now 优先
+            added = _fill_missing_slots_v8(
+                conn, menu_id, mt, state, gf, dish_map, context,
+                day_history, day_proteins, diners_count, loc,
+                unmet_slots
+            )
+            new_items_added += added
 
         conn.commit()
 
@@ -480,7 +444,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                     state.add_dish(analysis, is_locked=item["is_locked"])
             day_result[mt] = {"state": state}
 
-        review = RuleEngine.final_review(day_result)
+        review = RuleEngine.final_review(day_result, diners_count)
         review["unmet_slots"] = unmet_slots  # V8: 附加 unmet_slot 信息
 
         log_event("ai_fill_menu", "menu", str(menu_id), {
@@ -498,12 +462,20 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                             day_history, day_proteins, diners_count, location,
                             unmet_slots):
     """
-    V8: 槽位分析 + Available Now 优先补齐。
-    用于 dinner 和 lunch。
+    V8/V9: 槽位分析 + Available Now 优先补齐。
+    用于 breakfast / lunch / dinner。
+    V9: 早餐按固定顺序补齐 (porridge → companion_staple → egg_dish → tofu → vegetable → protein → coarse_grain)。
+    V9: 晚餐按人数精确 target 补齐 (不再只补 minimum)。
     返回: items_added (int)
     """
     items_added = 0
-    max_rounds = 6  # 安全上限
+    max_rounds = 8  # V9: 早餐最多7个槽位，安全上限设8
+
+    # V9: 早餐槽位补齐优先顺序
+    BREAKFAST_SLOT_ORDER = [
+        "porridge", "companion_staple", "egg", "tofu",
+        "vegetable", "protein_main", "coarse_grain"
+    ]
 
     for round_i in range(max_rounds):
         # Step 1: 分析当前槽位
@@ -512,10 +484,17 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
         # Step 2: 找 missing_min > 0 的槽位
         missing = {k: v for k, v in slots.items() if v["missing_min"] > 0}
         if not missing:
-            break  # 所有最低槽位已满足
+            break  # 所有槽位已满足
 
         # Step 3: 逐个补齐缺失槽位
-        for slot_name, slot_info in missing.items():
+        # V9: 早餐按固定优先顺序补齐
+        if meal_type == "breakfast":
+            ordered_slots = [s for s in BREAKFAST_SLOT_ORDER if s in missing]
+        else:
+            ordered_slots = list(missing.keys())
+
+        for slot_name in ordered_slots:
+            slot_info = missing[slot_name]
             # 获取该槽位的候选菜
             all_candidates = gf.get_candidates(meal_type, exclude_ids=day_history)
             slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
@@ -657,9 +636,18 @@ def confirm_menu(menu_id):
     """V3: 确认菜单。Warning 不阻断 Confirm，VV 是唯一最终确认人。"""
     conn = get_db()
     try:
-        menu = conn.execute("SELECT date FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        menu = conn.execute("SELECT date, diners FROM menus WHERE id = ?", (menu_id,)).fetchone()
         if not menu:
             return False, "菜单不存在"
+
+        # V9: 读取用餐人数用于晚餐精确目标
+        diners_count = 4
+        try:
+            if menu["diners"]:
+                diner_ids = json.loads(menu["diners"])
+                diners_count = max(len(diner_ids), 1)
+        except Exception:
+            pass
 
         menu_data = get_menu_with_dishes(menu["date"])
 
@@ -676,7 +664,7 @@ def confirm_menu(menu_id):
                     state.add_dish(analysis, is_locked=item["is_locked"])
             day_result[mt] = {"state": state}
 
-        review = RuleEngine.final_review(day_result)
+        review = RuleEngine.final_review(day_result, diners_count)
         warnings = review.get("warnings", [])
 
         # V3: 无论是否有 warnings，都允许确认

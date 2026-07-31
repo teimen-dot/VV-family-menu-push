@@ -822,7 +822,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
                         analysis = NutritionAnalyzer.analyze(dish_map[did])
                         state.add_dish(analysis, is_locked=item.get("is_locked", False))
                 day_result[mt] = {"state": state}
-            review = RuleEngine.final_review(day_result)
+            review = RuleEngine.final_review(day_result, len(menu_diners))
             menu_warnings = review.get("warnings", [])
         except Exception:
             pass
@@ -877,7 +877,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 continue
             color, cn, en = meal_colors[mt]
 
-            # V8: 计算缺失槽位提示
+            # V8/V9: 计算缺失槽位提示
             slot_hint = ""
             if mt in ("breakfast", "lunch", "dinner") and menu.get("exists"):
                 try:
@@ -890,7 +890,8 @@ def render_tomorrow(role="owner", location="shenzhen"):
                         did = item.get("dish_id", "")
                         if did in dm:
                             st.add_dish(NutritionAnalyzer.analyze(dm[did]), is_locked=item.get("is_locked", False))
-                    slots = analyze_meal_slots(mt, st)
+                    # V9: 晚餐传 diners_count 用于精确人数目标
+                    slots = analyze_meal_slots(mt, st, len(menu_diners))
                     missing = {k: v for k, v in slots.items() if v["missing_min"] > 0}
                     if missing:
                         hint_parts = []
