@@ -14,6 +14,7 @@ from rule_engine import (
     generate_afternoon_snack, get_dish_ingredients_map,
     get_history_3day, get_history_7day, get_inventory_ingredients,
     analyze_meal_slots, filter_candidates_for_slot,
+    BREAKFAST_COMPANION_STAPLES,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 
@@ -89,9 +90,23 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         "dish_ingredients": dish_ings,
     }
 
+    # V10: 读取已有菜单的 diners_count（如果存在），确保晚餐按人数生成
+    diners_count = 4
+    conn_pre = get_db()
+    try:
+        existing = conn_pre.execute("SELECT diners FROM menus WHERE date = ?", (date_str,)).fetchone()
+        if existing and existing["diners"]:
+            try:
+                diner_ids = json.loads(existing["diners"])
+                diners_count = max(len(diner_ids), 1)
+            except (json.JSONDecodeError, TypeError):
+                pass
+    finally:
+        conn_pre.close()
+
     # 生成三餐
     gf = GapFiller(pool, seed=seed, dish_ingredients=dish_ings)
-    result, logs = gf.generate_day(locked=locked, context=context)
+    result, logs = gf.generate_day(locked=locked, context=context, diners_count=diners_count)
 
     # 生成下午茶
     rng = random.Random((seed or 42) + 1000)
@@ -401,6 +416,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         day_proteins = set()
         new_items_added = 0
         unmet_slots = []  # V8: 记录无法补齐的槽位
+        seen_unmet = set()  # V10: unmet_slots 去重集合
 
         for mt in ["breakfast", "lunch", "dinner"]:
             for did in meals_existing[mt]:
@@ -426,7 +442,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             added = _fill_missing_slots_v8(
                 conn, menu_id, mt, state, gf, dish_map, context,
                 day_history, day_proteins, diners_count, loc,
-                unmet_slots
+                unmet_slots, seen_unmet
             )
             new_items_added += added
 
@@ -460,16 +476,22 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
 
 def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, context,
                             day_history, day_proteins, diners_count, location,
-                            unmet_slots):
+                            unmet_slots, seen_unmet=None):
     """
     V8/V9: 槽位分析 + Available Now 优先补齐。
     用于 breakfast / lunch / dinner。
     V9: 早餐按固定顺序补齐 (porridge → companion_staple → egg_dish → tofu → vegetable → protein → coarse_grain)。
     V9: 晚餐按人数精确 target 补齐 (不再只补 minimum)。
+    V10: unmet_slots 去重 — 同一个 (meal, slot) 只记录一次。
+    V10: 幂等 — 所有槽位已满足时 0 change。
     返回: items_added (int)
     """
     items_added = 0
     max_rounds = 8  # V9: 早餐最多7个槽位，安全上限设8
+
+    # V10: unmet_slots 去重集合
+    if seen_unmet is None:
+        seen_unmet = set()
 
     # V9: 早餐槽位补齐优先顺序
     BREAKFAST_SLOT_ORDER = [
@@ -484,7 +506,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
         # Step 2: 找 missing_min > 0 的槽位
         missing = {k: v for k, v in slots.items() if v["missing_min"] > 0}
         if not missing:
-            break  # 所有槽位已满足
+            break  # 所有槽位已满足 — V10: 幂等 STOP
 
         # Step 3: 逐个补齐缺失槽位
         # V9: 早餐按固定优先顺序补齐
@@ -500,11 +522,15 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
 
             if not slot_candidates:
-                unmet_slots.append({
-                    "meal": meal_type,
-                    "slot": slot_name,
-                    "message": f"暂未找到合适的{slot_name}菜品，请手动添加 / No suitable {slot_name} found.",
-                })
+                # V10: 去重 — 同一个 (meal, slot) 只记录一次
+                dedup_key = (meal_type, slot_name)
+                if dedup_key not in seen_unmet:
+                    seen_unmet.add(dedup_key)
+                    unmet_slots.append({
+                        "meal": meal_type,
+                        "slot": slot_name,
+                        "message": f"暂未找到合适的{slot_name}菜品，请手动添加 / No suitable {slot_name} found.",
+                    })
                 continue
 
             # V8: Available Now 优先 — 检查库存可用性
@@ -555,35 +581,246 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                     c for c in slot_candidates
                     if avail_batch.get(c["id"], {}).get("status") == "almost_available"
                 ]
-                if almost_candidates:
-                    unmet_slots.append({
-                        "meal": meal_type,
-                        "slot": slot_name,
-                        "almost_count": len(almost_candidates),
-                        "almost_dishes": [
-                            {"id": c["id"], "name_cn": c["name_cn"],
-                             "name_en": c.get("name_en", ""),
-                             "missing": [m["name_cn"] for m in avail_batch.get(c["id"], {}).get("missing_required", [])]}
-                            for c in almost_candidates[:5]
-                        ],
-                        "message": (
-                            f"当前库存没有可直接制作的{slot_name}菜品。"
-                            f"有{len(almost_candidates)}道菜只差1种食材。"
-                            f" / No {slot_name} is fully available. "
-                            f"{len(almost_candidates)} dishes are missing only one ingredient."
-                        ),
-                    })
-                else:
-                    unmet_slots.append({
-                        "meal": meal_type,
-                        "slot": slot_name,
-                        "message": (
-                            f"当前库存没有可直接制作的{slot_name}菜品，请手动添加。"
-                            f" / No {slot_name} is fully available. Please add manually."
-                        ),
-                    })
+                # V10: 去重 — 同一个 (meal, slot) 只记录一次
+                dedup_key = (meal_type, slot_name)
+                if dedup_key not in seen_unmet:
+                    seen_unmet.add(dedup_key)
+                    if almost_candidates:
+                        unmet_slots.append({
+                            "meal": meal_type,
+                            "slot": slot_name,
+                            "almost_count": len(almost_candidates),
+                            "almost_dishes": [
+                                {"id": c["id"], "name_cn": c["name_cn"],
+                                 "name_en": c.get("name_en", ""),
+                                 "missing": [m["name_cn"] for m in avail_batch.get(c["id"], {}).get("missing_required", [])]}
+                                for c in almost_candidates[:5]
+                            ],
+                            "message": (
+                                f"当前库存没有可直接制作的{slot_name}菜品。"
+                                f"有{len(almost_candidates)}道菜只差1种食材。"
+                                f" / No {slot_name} is fully available. "
+                                f"{len(almost_candidates)} dishes are missing only one ingredient."
+                            ),
+                        })
+                    else:
+                        unmet_slots.append({
+                            "meal": meal_type,
+                            "slot": slot_name,
+                            "message": (
+                                f"当前库存没有可直接制作的{slot_name}菜品，请手动添加。"
+                                f" / No {slot_name} is fully available. Please add manually."
+                            ),
+                        })
 
     return items_added
+
+
+# V10: 槽位 → 角色 映射（用于 reconcile 时识别 AI 菜品角色）
+_RECONCILE_SLOT_ROLES = {
+    "protein_main": ["protein_main"],
+    "vegetable_dish": ["vegetable_dish"],
+    "staple": ["staple"],
+    "slow_soup": ["slow_soup"],
+    "quick_soup": ["quick_soup"],
+    "egg": ["egg_dish"],
+    "tofu": ["tofu_dish"],
+    "porridge": [],
+    "companion_staple": [],
+    "coarse_grain": [],
+    "vegetable": [],
+}
+
+
+def reconcile_meal_for_diners(menu_id, location="shenzhen"):
+    """
+    V10: Diners 变化后重新调整菜单。
+    
+    流程:
+      1. 读取 diners_count
+      2. 获取精确 target（晚餐按人数）
+      3. 分析 Owner Selected（source=owner / is_locked=1）
+      4. 分析 AI items（source=ai / is_locked=0）
+      5. 计算各 slot 当前数量
+      6. 删除 excess AI items（保留 owner）
+      7. 对不足 slot 调用 ai_fill_menu 补齐
+    
+    Owner Selected 永远保留。超额时优先删除 AI items。
+    返回: (ok, msg, review)
+    """
+    conn = get_db()
+    try:
+        menu = conn.execute("SELECT date, location, diners FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        if not menu:
+            return False, "菜单不存在", None
+
+        date_str = menu["date"]
+        loc = menu["location"] or location
+
+        # 获取用餐人数
+        diners_count = 4
+        try:
+            if menu["diners"]:
+                diner_ids = json.loads(menu["diners"])
+                diners_count = max(len(diner_ids), 1)
+        except Exception:
+            pass
+
+        pool = _load_pool()
+        dish_map = {d["id"]: d for d in pool["dishes"]}
+
+        removed_count = 0
+
+        # 对每个餐次执行 reconcile（晚餐最关键，但也处理午餐）
+        for mt in ["breakfast", "lunch", "dinner"]:
+            # 获取该餐次所有 items，区分 owner 和 AI
+            items = conn.execute(
+                "SELECT id, dish_id, is_locked, source FROM menu_items "
+                "WHERE menu_id = ? AND meal_type = ? ORDER BY sort_order",
+                (menu_id, mt)
+            ).fetchall()
+
+            # 分析所有菜品的槽位贡献
+            state = MealState()
+            owner_items = []  # (menu_item_id, dish_id, analysis)
+            ai_items = []     # (menu_item_id, dish_id, analysis)
+
+            for item in items:
+                did = item["dish_id"]
+                if did not in dish_map:
+                    continue
+                analysis = NutritionAnalyzer.analyze(dish_map[did])
+                is_owner = item["is_locked"] or item["source"] == "owner"
+                # V10 FIX: state 必须包含所有菜品（owner + AI），否则
+                # 当没有 owner 菜时 current=0，无法检测超额。
+                state.add_dish(analysis, is_locked=is_owner)
+                if is_owner:
+                    owner_items.append((item["id"], did, analysis))
+                else:
+                    ai_items.append((item["id"], did, analysis))
+
+            # 获取 target
+            if mt == "dinner":
+                target = RuleEngine._dinner_target(diners_count)
+            elif mt == "lunch":
+                target = {"protein_main": 1, "vegetable_dish": 1, "staple": 1, "quick_soup": 1}
+            elif mt == "breakfast":
+                target = {
+                    "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
+                    "protein_main": 1, "vegetable": 2, "egg": 1, "tofu": 1
+                }
+            else:
+                continue
+
+            # 计算每个 slot 的 owner-only 数量（用于限制删除：只删 AI，不删 owner）
+            owner_state = MealState()
+            for _, _, analysis in owner_items:
+                owner_state.add_dish(analysis, is_locked=True)
+            owner_slots = analyze_meal_slots(mt, owner_state, diners_count)
+
+            # 对每个 slot，如果总数（owner + AI）超过 target，删除多余的 AI items
+            slots = analyze_meal_slots(mt, state, diners_count)
+            excess_slots = {k: v for k, v in slots.items() if v["current"] > v["target_min"]}
+
+            if not excess_slots:
+                continue
+
+            # 按 slot 删除 excess AI items
+            # 优先删除：缺食材的 → almost available → 普通 AI → 最近重复度高的
+            from inventory import check_dishes_availability_batch
+            ai_dish_ids = [aid for _, aid, _ in ai_items]
+            avail_batch = check_dishes_availability_batch(ai_dish_ids, loc) if ai_dish_ids else {}
+
+            # 对每个超额 slot，计算需要删除多少 AI items
+            for slot_name, slot_info in excess_slots.items():
+                total_current = slot_info["current"]
+                target_min = slot_info["target_min"]
+                # owner 菜占用的槽位数 — 不能删 owner 菜
+                owner_current = owner_slots.get(slot_name, {}).get("current", 0)
+                # 可删除的 AI 菜数量 = min(超额数, AI 贡献数)
+                excess = total_current - target_min
+                ai_contributable = total_current - owner_current
+                excess = min(excess, max(0, ai_contributable))
+                if excess <= 0:
+                    continue
+
+                # 找出贡献该 slot 的 AI items
+                slot_roles = _RECONCILE_SLOT_ROLES.get(slot_name, [])
+                contributing_ai = []
+
+                for mi_id, did, analysis in ai_items:
+                    roles = analysis.get("meal_roles", [])
+                    cat = analysis.get("category_id", "")
+                    # 判断这道 AI 菜是否贡献该 slot
+                    contributes = False
+                    if slot_name == "protein_main":
+                        contributes = "protein_main" in roles or cat in ("protein_main", "egg_tofu")
+                    elif slot_name == "vegetable_dish":
+                        contributes = "vegetable_dish" in roles or cat in ("vegetable_mushroom", "cold_dish")
+                    elif slot_name == "staple":
+                        contributes = "staple" in roles or cat == "staple_carb"
+                    elif slot_name == "slow_soup":
+                        contributes = "slow_soup" in roles or analysis.get("is_slow_soup")
+                    elif slot_name == "quick_soup":
+                        contributes = "quick_soup" in roles or analysis.get("is_quick_soup")
+                    elif slot_name == "egg":
+                        contributes = "egg_dish" in roles
+                    elif slot_name == "tofu":
+                        contributes = "tofu_dish" in roles
+                    elif slot_name == "porridge":
+                        contributes = analysis.get("carb_type") == "porridge"
+                    elif slot_name == "companion_staple":
+                        contributes = analysis.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
+                    elif slot_name == "coarse_grain":
+                        contributes = analysis.get("carb_type") == "coarse_grain"
+                    elif slot_name == "vegetable":
+                        # 早餐蔬菜是种类数，不是菜品数 — 不删除
+                        contributes = False
+
+                    if contributes:
+                        avail_status = avail_batch.get(did, {}).get("status", "incomplete")
+                        contributing_ai.append((mi_id, did, avail_status))
+
+                if not contributing_ai:
+                    continue
+
+                # 按优先级排序：缺食材的先删 (missing > almost > available)
+                # priority: 0=missing, 1=almost, 2=available, 3=incomplete(无食材信息)
+                def del_priority(item_tuple):
+                    _, _, status = item_tuple
+                    return {"missing": 0, "almost_available": 1, "available": 2}.get(status, 3)
+
+                contributing_ai.sort(key=del_priority)
+
+                # 删除前 excess 个
+                to_remove = contributing_ai[:excess]
+                for mi_id, did, _ in to_remove:
+                    conn.execute("DELETE FROM menu_items WHERE id = ?", (mi_id,))
+                    removed_count += 1
+                    # 从 state 移除（重新构建更简单）
+                    ai_items = [(m, d, a) for m, d, a in ai_items if m != mi_id]
+
+        conn.commit()
+
+        # 删除完成后，调用 ai_fill_menu 补齐可能新增的缺口
+        if removed_count > 0:
+            log_event("reconcile_removed_excess", "menu", str(menu_id), {
+                "diners_count": diners_count,
+                "removed_ai_items": removed_count,
+            })
+
+        # 调用 ai_fill 补齐
+        ok, msg, review = ai_fill_menu(menu_id, location=loc, seed=42)
+
+        # 附加 reconcile 信息
+        if review:
+            review["reconciled"] = True
+            review["reconcile_diners"] = diners_count
+            review["reconcile_removed"] = removed_count
+
+        return True, f"已根据 {diners_count} 人用餐重新调整 AI 推荐（删除 {removed_count} 道多余 AI 菜）", review
+    finally:
+        conn.close()
 
 
 def repair_menu(menu_id, location="shenzhen", seed=None):

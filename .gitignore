@@ -11,3 +11,4 @@ HANDOFF.md
 fix_data.py
 verify_fixes.py
 verify_new_features.py
+deploy_tmp/

@@ -6714,16 +6714,120 @@
       ],
       "banquet": false,
       "protein_types": [],
+      "vegetables": [
+        "南瓜"
+      ],
+      "vegetable_count": 1,
+      "carb_type": "dim_sum",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0210",
+      "name_cn": "牛油果虾仁滑蛋酸种面包早餐盘+水果",
+      "name_en": "Western-Style Breakfast & fruit",
+      "category_id": "one_pot_meal",
+      "meal_tags": [
+        "breakfast",
+        "lunch"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "shrimp",
+        "egg",
+        "none"
+      ],
+      "vegetables": [
+        "牛油果",
+        "火腿",
+        "水果"
+      ],
+      "vegetable_count": 3,
+      "carb_type": null,
+      "meal_components": [
+        "protein",
+        "vegetable",
+        "carb"
+      ],
+      "taste": "normal",
+      "cooking_methods": [
+        "other"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
+    },
+    {
+      "id": "dish_0211",
+      "name_cn": "芋头",
+      "name_en": "Taro",
+      "category_id": "staple_carb",
+      "meal_tags": [
+        "breakfast"
+      ],
+      "banquet": false,
+      "protein_types": [],
+      "vegetables": [],
+      "vegetable_count": 0,
+      "carb_type": "coarse_grain",
+      "meal_components": [],
+      "taste": "normal",
+      "cooking_methods": [
+        "steam"
+      ],
+      "can_serve_warm": false,
+      "custom_tags": [],
+      "needs_review": false,
+      "ingredients": [],
+      "quick_soup": 0,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 1
+    },
+    {
+      "id": "dish_0212",
+      "name_cn": "肉饼汤",
+      "name_en": "Pork Patty Soup",
+      "category_id": "soup",
+      "meal_tags": [
+        "breakfast",
+        "lunch",
+        "dinner"
+      ],
+      "banquet": false,
+      "protein_types": [
+        "pork",
+        "egg"
+      ],
       "vegetables": [],
       "vegetable_count": 0,
       "carb_type": null,
       "meal_components": [],
       "taste": "normal",
-      "cooking_methods": [],
+      "cooking_methods": [
+        "steam",
+        "boil"
+      ],
       "can_serve_warm": false,
       "custom_tags": [],
       "needs_review": false,
-      "ingredients": []
+      "ingredients": [],
+      "quick_soup": 1,
+      "slow_soup": 0,
+      "manual_only_for_breakfast": 0
     }
   ],
   "custom_tags_def": [

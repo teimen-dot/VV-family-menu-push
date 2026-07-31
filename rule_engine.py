@@ -1204,8 +1204,10 @@ class GapFiller:
 
         return candidates
 
-    def generate_day(self, locked=None, context=None):
-        """生成一天三餐"""
+    def generate_day(self, locked=None, context=None, diners_count=4):
+        """生成一天三餐
+        V10: diners_count 传递给 generate_meal，确保晚餐按人数精确生成。
+        """
         locked = locked or {}
         ctx = context or {}
         all_logs = {}
@@ -1226,6 +1228,7 @@ class GapFiller:
                 meal_type,
                 locked_dish_ids=locked_ids,
                 context=meal_ctx,
+                diners_count=diners_count,
             )
 
             for d in dishes:

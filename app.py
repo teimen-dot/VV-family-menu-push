@@ -765,6 +765,13 @@ function snack(msg){
   b.textContent=msg;b.classList.add('show');
   setTimeout(()=>b.classList.remove('show'),2000);
 }
+function showWarningCard(title,content){{
+  let card=document.getElementById('warnCard')||document.createElement('div');
+  card.id='warnCard';
+  card.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff8e1;border:2px solid #e6a700;border-radius:12px;padding:20px;max-width:90vw;max-height:80vh;overflow-y:auto;z-index:400;box-shadow:0 4px 20px rgba(0,0,0,.15);font-size:14px;color:#2c2620';
+  card.innerHTML='<div style="font-size:16px;font-weight:700;margin-bottom:12px;color:#e6a700">'+title+'</div><div style="line-height:1.6">'+content+'</div><div style="margin-top:16px;text-align:center"><button onclick="document.getElementById(\\'warnCard\\').remove()" style="padding:8px 24px;border:none;border-radius:20px;background:#2c2620;color:#faf7f2;font-size:14px;cursor:pointer">关闭 Close</button></div>';
+  document.body.appendChild(card);
+}}
 </script>
 </body></html>"""
 
@@ -1031,11 +1038,17 @@ function toggleDiner(id){{
   let chip=document.querySelector('.diner-chip[data-diner="'+id+'"]');
   if(chip)chip.classList.toggle('active');
   // Save to server
-  fetch('/api/tomorrow/diners',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,diners:selectedDiners}})}}).then(r=>r.json()).then(res=>{{
-    if(res.ok){{snack('用餐成员已更新 Diners updated');}}
+  fetch('/api/tomorrow/diners',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,diners:selectedDiners,location:currentLoc}})}}).then(r=>r.json()).then(res=>{{
+    if(res.ok){{
+      if(res.reconciled){{
+        snack('已根据人数重新调整 AI 推荐 · Reconciled');
+      }}else{{
+        snack('用餐成员已更新 Diners updated');
+      }}
+    }}
   }});
   // Reload to refresh menu
-  setTimeout(()=>location.reload(),800);
+  setTimeout(()=>location.reload(),1000);
 }}
 // V7: Smart dish replacement modal
 let searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}};
@@ -1154,11 +1167,20 @@ async function aiFillMeal(mt){{
   let r=await fetch('/api/tomorrow/ai-fill',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,location:currentLoc,meal_type:mt}})}});
   let result=await r.json();
   if(result.ok){{
-    // V8: 检查 unmet_slots
+    // V10: 用页面内 Warning Card 替代 alert()
     let unmet=result.review&&(result.review.unmet_slots||[]);
+    let added=result.message||'AI 补充完成';
     if(unmet&&unmet.length>0){{
-      let msgs=unmet.map(u=>u.message||(''+u.slot)).join('\\n');
-      alert('AI 补充完成，但有槽位未补齐：\\n\\n'+msgs+'\\n\\n请手动添加缺失菜品。');
+      // 去重显示
+      let seen={{}};
+      let uniqueUnmet=unmet.filter(u=>{{
+        let k=(u.meal||'')+'|'+(u.slot||'');
+        if(seen[k])return false;seen[k]=true;return true;
+      }});
+      let msgs=uniqueUnmet.map(u=>u.message||(''+u.slot)).join('<br>• ');
+      showWarningCard('AI 补充完成，但仍有槽位未补齐：','• '+msgs+'<br><br>请手动添加缺失菜品 / Please add missing dishes manually.');
+    }}else if(result.review&&result.review.reconciled){{
+      snack('已重新调整 AI 推荐 Reconciled for '+result.review.reconcile_diners+' diners');
     }}else{{
       snack('AI 补充完成 AI fill done');
     }}
@@ -2033,7 +2055,18 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/tomorrow/diners":
             ok = update_menu_diners(body["menu_id"], body["diners"])
-            self.send_json({"ok": ok})
+            if ok:
+                # V10: Diners 变化后自动 Reconcile AI 菜品
+                try:
+                    from menu_service import reconcile_meal_for_diners
+                    reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(
+                        body["menu_id"], location=body.get("location", "shenzhen")
+                    )
+                    self.send_json({"ok": True, "reconciled": True, "message": reconcile_msg})
+                except Exception as e:
+                    self.send_json({"ok": True, "reconcile_error": str(e)})
+            else:
+                self.send_json({"ok": False})
 
         else:
             self.send_error(404, "Not Found")
