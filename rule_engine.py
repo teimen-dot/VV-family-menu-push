@@ -745,6 +745,8 @@ SLOT_ROLE_MAP = {
     },
     # V9: 早餐蔬菜食材种类缺口（与 vegetable_dish 不同：这是食材种类数，不是菜品数）
     "vegetable": {
+        "roles": ["vegetable_dish"],
+        "categories": ["vegetable_mushroom", "cold_dish", "protein_main"],
         "require_vegetables": True,
     },
 }
