@@ -18,7 +18,13 @@ from inventory import (
     update_purchase_status,
     save_pantry_changes, get_current_pantry,
     check_dish_availability, check_dishes_availability_batch,
+    check_dish_availability_debug,
     get_common_ingredients_static,
+    add_ingredient_to_pantry, remove_ingredient_from_pantry,
+    update_ingredient_status, confirm_pantry_unchanged,
+    is_ingredient_in_pantry,
+    _invalidate_availability_cache, _increment_inventory_version,
+    get_inventory_version,
 )
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
@@ -37,9 +43,10 @@ LOCATIONS = {"shenzhen": "深圳 Shenzhen", "hongkong": "香港 Hong Kong"}
 # ============================================================
 
 def get_all_dishes(category=None, search=""):
+    """V6: 只返回 is_active=1 的菜品（Single Source of Truth）"""
     conn = get_db()
     try:
-        query = "SELECT * FROM dishes WHERE 1=1"
+        query = "SELECT * FROM dishes WHERE (is_active = 1 OR is_active IS NULL)"
         params = []
         if category:
             query += " AND category_id = ?"
@@ -408,8 +415,8 @@ def get_menu_purchase_requests(menu_id):
 
 
 def get_dish_availability(dish_ids, location):
-    """V4: 检查菜品食材可用性（使用统一 InventoryService）。
-    返回 {dish_id: {available, missing_count, missing_names, total_ingredients}}"""
+    """V6: 检查菜品食材可用性（使用统一 InventoryService）。
+    返回 {dish_id: {available, missing_count, missing_names, total_ingredients, status}}"""
     if not dish_ids:
         return {}
     result = {}
@@ -510,15 +517,18 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .dish-card .avail-badge{font-size:10px;padding:2px 6px;border-radius:4px;margin-top:3px;display:inline-block}
 .avail-yes{background:#d4edda;color:#155724}
 .avail-almost{background:#fff3cd;color:#856404}
-.pantry-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f0e8}
+.pantry-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f5f0e8;gap:8px}
 .pantry-item:last-child{border-bottom:none}
 .pantry-item .name{font-size:14px}
 .pantry-item .name-en{font-size:11px;color:#a89888}
-.pantry-status{font-size:12px;padding:3px 10px;border-radius:10px;cursor:pointer}
-.st-available{background:#d4edda;color:#155724}
-.st-priority{background:#fff3cd;color:#856404}
-.st-expiring{background:#f8d7da;color:#721c24}
-.st-out{background:#e8e0d4;color:#6c757d}
+.pantry-controls{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.pantry-status-group{display:flex;gap:4px}
+.st-btn{font-size:11px;padding:4px 8px;border-radius:8px;cursor:pointer;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;white-space:nowrap;transition:all .15s}
+.st-btn:active{opacity:.7}
+.st-btn.active-priority{background:#fff3cd;color:#856404;border-color:#e0c060}
+.st-btn.active-expiring{background:#f8d7da;color:#721c24;border-color:#e8a0a8}
+.pantry-used-up{font-size:11px;padding:4px 8px;border-radius:8px;cursor:pointer;border:1px solid #f5c6cb;background:#fff;color:#721c24;white-space:nowrap}
+.pantry-used-up:active{opacity:.7}
 .history-entry{background:#fff;border-radius:10px;padding:12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
 .history-date{font-size:14px;font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
 .history-context{font-size:11px;color:#a89888;margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
@@ -550,7 +560,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .ing-chip:active{opacity:.7}
 .ing-add-chip{font-size:12px;padding:5px 10px;border-radius:14px;border:1px dashed #4a9eff;background:#e8f4ff;color:#0c5460;cursor:pointer}
 .selected-list{margin-top:10px}
-.selected-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f5f0e8;border-radius:8px;margin-bottom:6px}
+.selected-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f5f0e8;border-radius:8px;margin-bottom:6px;gap:8px}
 .selected-item .name{font-size:14px}
 .selected-item .name-en{font-size:11px;color:#a89888}
 .status-picker{display:flex;gap:4px}
@@ -753,9 +763,9 @@ def render_tomorrow(role="owner", location="shenzhen"):
             if role == "owner":
                 if mt == "afternoon_snack":
                     # V3: 下午茶 VV 自选，允许添加但不进入正式推送
-                    meal_actions = f'<div class="meal-actions"><span class="badge badge-warning" style="margin-right:8px">VV 自选 Optional</span><button class="meal-act-btn" onclick="addDishPrompt(\'{mt}\')">＋添加 Add</button></div>'
+                    meal_actions = f'<div class="meal-actions"><span class="badge badge-warning" style="margin-right:8px">VV 自选 Optional</span><button class="meal-act-btn" onclick="openDishSearch(\'{mt}\')">＋添加 Add</button></div>'
                 else:
-                    meal_actions = f'<div class="meal-actions"><button class="meal-act-btn" onclick="addDishPrompt(\'{mt}\')">＋添加 Add</button><button class="meal-act-btn" onclick="aiFillMeal(\'{mt}\')">AI 补充 AI Fill</button></div>'
+                    meal_actions = f'<div class="meal-actions"><button class="meal-act-btn" onclick="openDishSearch(\'{mt}\')">＋添加 Add</button><button class="meal-act-btn" onclick="aiFillMeal(\'{mt}\')">AI 补充 AI Fill</button></div>'
 
             items_html = ""
             for d in dishes:
@@ -768,10 +778,18 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 else:
                     source_badge = '<span class="badge badge-ai">AI 推荐 AI Suggestion</span>'
 
-                # 缺货标识（拆分状态）
+                # V6: 已下架菜品标记
+                archived_badge = ""
+                if d.get("dish_archived"):
+                    archived_badge = '<span class="badge" style="background:#e8e0d4;color:#6c757d">已下架 Archived</span>'
+
+                # 缺货标识（拆分状态，V5: 显示具体缺失食材名）
                 shortage_badge = ""
                 short_ings = menu.get("shortages", {}).get(d["dish_id"], [])
                 if short_ings:
+                    missing_names = ", ".join(short_ings[:3])
+                    if len(short_ings) > 3:
+                        missing_names += f" 等{len(short_ings)}种"
                     # 检查采购任务状态
                     req_status = None
                     for r in purchase_reqs:
@@ -779,13 +797,13 @@ def render_tomorrow(role="owner", location="shenzhen"):
                             req_status = r["status"]
                             break
                     if req_status == "notified":
-                        shortage_badge = '<span class="badge badge-shortage-notified">已通知采购 Notified</span>'
+                        shortage_badge = f'<span class="badge badge-shortage-notified">已通知采购: {missing_names}</span>'
                     elif req_status == "purchased":
-                        shortage_badge = '<span class="badge badge-shortage-purchased">已购买 Purchased</span>'
+                        shortage_badge = f'<span class="badge badge-shortage-purchased">已购买: {missing_names}</span>'
                     elif req_status == "needed":
-                        shortage_badge = '<span class="badge badge-shortage-tobuy">待采购 To Buy</span>'
+                        shortage_badge = f'<span class="badge badge-shortage-tobuy">待采购: {missing_names}</span>'
                     else:
-                        shortage_badge = '<span class="badge badge-shortage-missing">缺食材 Missing</span>'
+                        shortage_badge = f'<span class="badge badge-shortage-missing">缺: {missing_names}</span>'
 
                 cat_label = d.get("category_id", "")
                 cat_badge = f'<span class="badge badge-cat">{cat_label}</span>' if cat_label else ""
@@ -793,7 +811,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 # 操作按钮：替换 + 删除（所有菜都可操作）
                 item_actions = ""
                 if role == "owner":
-                    item_actions = f'<div class="item-actions"><button class="item-btn" onclick="replaceDishPrompt({d["menu_item_id"]},\'{mt}\')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" title="删除 Delete">×</button></div>'
+                    item_actions = f'<div class="item-actions"><button class="item-btn" onclick="openDishSearch(\'{mt}\',{d["menu_item_id"]})" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" title="删除 Delete">×</button></div>'
 
                 # 过敏提醒
                 allergy_badge = ""
@@ -816,7 +834,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 items_html += f"""<div class="meal-item">
 {img_html}{no_img}
 <div class="info">
-<div class="dish-name">{source_badge}{shortage_badge}{d["name_cn"]}{allergy_badge}</div>
+<div class="dish-name">{source_badge}{archived_badge}{shortage_badge}{d["name_cn"]}{allergy_badge}</div>
 <div class="dish-name-en">{d["name_en"] or ""}</div>
 <div class="dish-meta">{cat_badge} {" · ".join(d.get("protein_types", []) or [])} {("· " + " ".join((d.get("vegetables") or [])[:2])) if d.get("vegetables") else ""}</div>
 {allergy_note}
@@ -890,41 +908,58 @@ function toggleDiner(id){{
   // Reload to update allergy alerts
   setTimeout(()=>location.reload(),800);
 }}
-async function addDishPrompt(mt){{
-  let q=prompt('输入菜名搜索 Search dish:');
-  if(!q)return;
+// V5: Dish search modal (replaces prompt-based number selection)
+let searchMode={{meal:null,replaceId:null}};
+function openDishSearch(mt,replaceId){{
+  searchMode={{meal:mt,replaceId:replaceId||null}};
+  let m=document.getElementById('dishSearchModal');
+  m.classList.add('show');
+  let input=document.getElementById('dishSearchInput');
+  input.value='';
+  input.focus();
+  document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:14px">输入菜名搜索</div><div style="font-size:12px;margin-top:4px">Type to search</div></div>';
+}}
+function closeDishSearch(){{document.getElementById('dishSearchModal').classList.remove('show');}}
+let _searchTimer=null;
+function onDishSearchInput(){{
+  clearTimeout(_searchTimer);
+  let q=document.getElementById('dishSearchInput').value.trim();
+  if(!q){{
+    document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:14px">输入菜名搜索</div><div style="font-size:12px;margin-top:4px">Type to search</div></div>';
+    return;
+  }}
+  _searchTimer=setTimeout(()=>doDishSearch(q),300);
+}}
+async function doDishSearch(q){{
   let res=await fetch('/api/dishes?search='+encodeURIComponent(q));
   let data=await res.json();
-  if(!data.length){{snack('未找到菜品 No dishes found');return;}}
-  let opts=data.slice(0,10).map((d,i)=>(i+1)+'. '+d.name_cn+' ('+d.name_en+')').join('\\n');
-  let pick=prompt('选择菜品(输入序号) Pick dish (number):\\n'+opts);
-  if(!pick)return;
-  let idx=parseInt(pick)-1;
-  if(idx<0||idx>=data.length)return;
-  let r=await fetch('/api/tomorrow/add',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,dish_id:data[idx].id,meal_type:mt}})}});
-  let result=await r.json();
-  if(result.ok){{snack('已添加 Added');location.reload();}}else{{snack(result.error||'添加失败');}}
+  let container=document.getElementById('dishSearchResults');
+  if(!data.length){{
+    container.innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:14px">没有找到相关菜品</div><div style="font-size:12px;margin-top:4px">No matching dishes</div></div>';
+    return;
+  }}
+  container.innerHTML=data.slice(0,20).map(d=>{{
+    let img=d.image?'<img src="/photos/'+d.image+'" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\'" style="width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:56px;height:56px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🍽️</div>';
+    let noImg=d.image?'<div style="width:56px;height:56px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🍽️</div>':'';
+    return '<div onclick="pickDish(\\''+d.id+'\\')" style="display:flex;gap:10px;padding:10px;border-bottom:1px solid #f5f0e8;cursor:pointer;align-items:center">'+img+noImg+'<div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:500">'+d.name_cn+'</div><div style="font-size:12px;color:#a89888;font-style:italic">'+(d.name_en||'')+'</div><div style="font-size:11px;color:#a89888;margin-top:2px">'+(d.category_id||'')+'</div></div></div>';
+  }}).join('');
+}}
+async function pickDish(dishId){{
+  if(searchMode.replaceId){{
+    let r=await fetch('/api/tomorrow/replace',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId}})}});
+    let result=await r.json();
+    if(result.ok){{closeDishSearch();snack('已替换 Replaced');location.reload();}}else{{snack(result.error||'替换失败');}}
+  }}else{{
+    let r=await fetch('/api/tomorrow/add',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,dish_id:dishId,meal_type:searchMode.meal}})}});
+    let result=await r.json();
+    if(result.ok){{closeDishSearch();snack('已添加 Added');location.reload();}}else{{snack(result.error||'添加失败');}}
+  }}
 }}
 async function removeDish(itemId){{
   if(!confirm('确认删除? Confirm delete?'))return;
   let r=await fetch('/api/tomorrow/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:itemId}})}});
   let result=await r.json();
   if(result.ok){{snack('已删除 Removed');location.reload();}}else{{snack(result.error||'删除失败');}}
-}}
-async function replaceDishPrompt(itemId,mt){{
-  let q=prompt('输入要替换的菜名搜索 Search replacement:');
-  if(!q)return;
-  let res=await fetch('/api/dishes?search='+encodeURIComponent(q));
-  let data=await res.json();
-  if(!data.length){{snack('未找到菜品 No dishes found');return;}}
-  let opts=data.slice(0,10).map((d,i)=>(i+1)+'. '+d.name_cn+' ('+d.name_en+')').join('\\n');
-  let pick=prompt('选择新菜品(输入序号) Pick new dish (number):\\n'+opts);
-  if(!pick)return;
-  let idx=parseInt(pick)-1;
-  if(idx<0||idx>=data.length)return;
-  let r=await fetch('/api/tomorrow/replace',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:itemId,new_dish_id:data[idx].id}})}});
-  let result=await r.json();
-  if(result.ok){{snack('已替换 Replaced');location.reload();}}else{{snack(result.error||'替换失败');}}
 }}
 async function aiFillMeal(mt){{
   snack('AI 补充中... AI filling...');
@@ -979,6 +1014,15 @@ async function markPurchased(reqId){{
 
     return f"""{page_head("明日菜单 · Tomorrow", "tomorrow", location)}
 <div class="content">{body}</div>
+<div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()">
+<div class="modal" style="max-height:85vh">
+<div style="padding:14px 16px;border-bottom:1px solid #f5f0e8">
+<div style="font-size:15px;font-weight:600;margin-bottom:8px">搜索菜品 Search Dishes</div>
+<input type="text" id="dishSearchInput" placeholder="输入菜名搜索 Type to search..." oninput="onDishSearchInput()" style="width:100%;padding:9px 14px;border:1px solid #e8e0d4;border-radius:20px;font-size:14px;outline:none">
+</div>
+<div id="dishSearchResults" style="overflow-y:auto;max-height:60vh"></div>
+<div class="modal-actions"><button class="btn btn-outline" onclick="closeDishSearch()">取消 Cancel</button></div>
+</div></div>
 {PAGE_FOOT}
 {js}"""
 
@@ -1038,8 +1082,8 @@ async function loadDishes(){{
     data=data.filter(d=>{{
       let av=availData[d.id];
       if(!av)return false;
-      if(currentAvail==='available')return av.available;
-      if(currentAvail==='almost')return !av.available&&av.missing_count<=2&&av.total_ingredients>0;
+      if(currentAvail==='available')return av.status==='available';
+      if(currentAvail==='almost')return av.status==='almost_available';
       return true;
     }});
   }}
@@ -1052,8 +1096,16 @@ async function loadDishes(){{
     let av=availData[d.id];
     let avBadge='';
     if(av){{
-      if(av.available)avBadge='<div class="avail-badge avail-yes">库存可做 Available</div>';
-      else if(av.missing_count<=2&&av.total_ingredients>0)avBadge='<div class="avail-badge avail-almost">差'+av.missing_count+'种 Missing '+av.missing_count+'</div>';
+      if(av.status==='available')avBadge='<div class="avail-badge avail-yes">库存可做 Available</div>';
+      else if(av.status==='almost_available'){{
+        let mn=av.missing_names||[];
+        avBadge='<div class="avail-badge avail-almost">缺: '+mn.join(', ')+' Missing: '+mn.join(', ')+'</div>';
+      }}
+      else if(av.status==='incomplete')avBadge='<div class="avail-badge" style="background:#e8e0d4;color:#6c757d">食材资料待完善 Incomplete</div>';
+      else if(av.status==='missing'&&av.missing_count>0){{
+        let mn=av.missing_names||[];
+        avBadge='<div class="avail-badge" style="background:#f8d7da;color:#721c24">缺'+av.missing_count+'种: '+mn.slice(0,3).join(', ')+'</div>';
+      }}
     }}
     return '<div class="dish-card" onclick="showDetail(\\''+d.id+'\\')">'+img+noImg+'<div class="info"><div class="name">'+d.name_cn+'</div><div class="name-en">'+(d.name_en||'')+'</div><div class="cat-label">'+catInfo.cn+' '+catInfo.en+'</div>'+avBadge+'</div></div>';
   }}).join('');
@@ -1128,85 +1180,177 @@ fetch('/api/tomorrow').then(r=>r.json()).then(d=>{{window.tomorrowMenuId=d.menu_
 def render_pantry(role="nanny", location="shenzhen"):
     pantry = get_current_pantry(location)
     reqs = get_purchase_requests(location=location) if location else []
+    common = get_common_ingredients()
+    all_ings = get_all_ingredients()
 
     sections = []
 
-    if not pantry or pantry["count"] == 0:
-        sections.append(f'<div class="empty"><h2>暂无库存 No Inventory</h2><p>当前冰箱为空，请添加食材</p><p style="font-size:12px;color:#a89888">Current pantry is empty, please add ingredients</p></div>')
-        sections.append(f'<a class="btn btn-primary" href="/pantry/submit?role={role}" style="margin-top:12px">添加食材 Add Ingredients</a>')
-    else:
-        # V4: 显示当前库存数量
-        sections.append(f'<div class="card"><h3>当前库存 Current Pantry</h3><p>当前库存 <strong>{pantry["count"]}</strong> 项 · {LOCATIONS.get(location, location)}</p></div>')
+    # V6: 顶部显示库存数量
+    pantry_count = pantry["count"] if pantry else 0
+    sections.append(f'<div class="card"><h3>当前库存 Current Pantry</h3><p>当前库存 <strong>{pantry_count}</strong> 项 · {LOCATIONS.get(location, location)}</p></div>')
 
-        # V4: 库存列表带状态切换和删除
-        status_map = {
-            "available": ("st-available", "可用 Available"),
-            "priority_use": ("st-priority", "优先 Priority"),
-            "expiring": ("st-expiring", "快过期 Expiring"),
-            "out_of_stock": ("st-out", "缺货 Out"),
-        }
+    # V6: "和上次一样" 主按钮
+    sections.append(f'<button class="btn btn-outline" style="margin-bottom:10px" onclick="sameAsLast()">✓ 和上次一样 Same as Last Update</button>')
+
+    if not pantry or pantry_count == 0:
+        sections.append(f'<div class="empty"><h2>暂无库存 No Inventory</h2><p>当前冰箱为空，请添加食材</p><p style="font-size:12px;color:#a89888">Current pantry is empty, please add ingredients</p></div>')
+    else:
+        # V7: 库存列表 — 2状态切换 + 用完按钮（取消"可用"显示）
         items_html = ""
         for item in pantry["items"]:
-            css, label = status_map.get(item["status"], ("st-out", item["status"]))
             ing_id = item["ingredient_id"]
             name_en = item.get("name_en", "") or ""
-            # V4: 状态按钮单选视觉 + 删除按钮
-            st_btns = ""
-            for st_key, (st_css, st_label) in status_map.items():
-                active_cls = "active" if item["status"] == st_key else ""
-                st_btns += f'<span class="status-pick {active_cls} {st_css}" onclick="cycleStatus(\'{ing_id}\',\'{st_key}\')">{st_label.split()[0]}</span>'
+            st = item["status"]
+            # Use First button
+            pf_cls = "active-priority" if st == "priority_use" else ""
+            # Expiring Soon button
+            ex_cls = "active-expiring" if st == "expiring" else ""
             items_html += f"""<div class="pantry-item" id="pi-{ing_id}">
 <div><div class="name">{item["name_cn"]}</div><div class="name-en">{name_en}</div></div>
-<div class="status-picker">{st_btns}<span class="status-pick" onclick="removeItem(\'{ing_id}\')" style="color:#721c24;cursor:pointer">✕</span></div></div>"""
+<div class="pantry-controls">
+<div class="pantry-status-group">
+<span class="st-btn {pf_cls}" onclick="toggleStatus('{ing_id}','priority_use')">优先用 Use First</span>
+<span class="st-btn {ex_cls}" onclick="toggleStatus('{ing_id}','expiring')">快过期 Expiring Soon</span>
+</div>
+<span class="pantry-used-up" onclick="usedUp('{ing_id}')">用完 Used Up</span>
+</div></div>"""
 
         sections.append(f'<div class="card">{items_html}</div>')
-        sections.append(f'<a class="btn btn-primary" href="/pantry/submit?role={role}" style="margin-top:8px">添加食材 Add Ingredients</a>')
 
-        # 采购任务（可操作）
-        if reqs:
-            active_reqs = [r for r in reqs if r["status"] in ("needed", "notified")]
-            if active_reqs:
-                reqs_html = ""
-                for r in active_reqs:
-                    ing_name = r.get("ingredient_name") or r["ingredient_id"]
-                    ing_en = r.get("ingredient_name_en") or ""
-                    dish_name = r.get("dish_name") or ""
-                    status = r["status"]
+    # V6: 搜索添加区（内嵌，不需要跳转页面）
+    common_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i.get("name_en") or ""} for i in common], ensure_ascii=False)
+    all_ings_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i["name_en"] or "", "aliases": i.get("aliases", [])} for i in all_ings], ensure_ascii=False)
+    current_ids = json.dumps([i["ingredient_id"] for i in (pantry["items"] if pantry else [])], ensure_ascii=False)
 
-                    if status == "needed":
-                        action_btn = f'<button class="act-btn act-notify" onclick="notifyPurchase({r["id"]})">通知采购 Notify</button>'
-                        status_badge = ""
-                    elif status == "notified":
-                        action_btn = f'<button class="act-btn act-purchased" onclick="markPurchased({r["id"]})">已购买 Purchased</button>'
-                        status_badge = '<span class="badge badge-shortage-notified">已通知 Notified</span>'
-                    else:
-                        action_btn = f'<span class="badge badge-cat">{status}</span>'
-                        status_badge = ""
+    sections.append(f"""<div class="card">
+<h3>搜索或添加食材 Search or Add</h3>
+<input type="text" id="ingSearch" placeholder="搜索食材 Search ingredient..." oninput="filterIngs()" style="width:100%;padding:9px 14px;border:1px solid #e8e0d4;border-radius:20px;font-size:14px;outline:none;margin-top:8px">
+<div id="searchResults" style="margin-top:8px"></div>
+</div>""")
 
-                    reqs_html += f"""<div class="purchase-task">
+    sections.append(f"""<div class="card">
+<h3>常用食材 Common</h3>
+<div class="ing-picker" id="commonList"></div>
+</div>""")
+
+    # 采购任务（可操作）
+    if reqs:
+        active_reqs = [r for r in reqs if r["status"] in ("needed", "notified")]
+        if active_reqs:
+            reqs_html = ""
+            for r in active_reqs:
+                ing_name = r.get("ingredient_name") or r["ingredient_id"]
+                ing_en = r.get("ingredient_name_en") or ""
+                dish_name = r.get("dish_name") or ""
+                status = r["status"]
+
+                if status == "needed":
+                    action_btn = f'<button class="act-btn act-notify" onclick="notifyPurchase({r["id"]})">通知采购 Notify</button>'
+                    status_badge = ""
+                elif status == "notified":
+                    action_btn = f'<button class="act-btn act-purchased" onclick="markPurchased({r["id"]})">已购买 Purchased</button>'
+                    status_badge = '<span class="badge badge-shortage-notified">已通知 Notified</span>'
+                else:
+                    action_btn = f'<span class="badge badge-cat">{status}</span>'
+                    status_badge = ""
+
+                reqs_html += f"""<div class="purchase-task">
 <div class="info">
 <div class="dish-name-sm">{ing_name} <span style="font-size:11px;color:#a89888">{ing_en}</span></div>
 {f'<div class="missing-list">用于: {dish_name}</div>' if dish_name else ''}
 {status_badge}
 </div>{action_btn}</div>"""
 
-                sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks ({len(active_reqs)})</h3>{reqs_html}</div>')
+            sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks ({len(active_reqs)})</h3>{reqs_html}</div>')
+
+    # V6: 保存状态提示
+    sections.append('<div id="saveIndicator" style="text-align:center;padding:8px;color:#a89888;font-size:12px;display:none">✓ 已保存 Saved</div>')
 
     body = "\n".join(sections)
     return f"""{page_head("食材库存 · Pantry", "pantry", location)}
 <div class="content">{body}</div>
 {PAGE_FOOT}
 <script>
-async function cycleStatus(ingId,newStatus){{
-  let r=await fetch('/api/pantry/update_status',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,status:newStatus,location:'{location}'}})}});
-  let result=await r.json();
-  if(result.ok){{snack('状态已更新 Status updated');location.reload();}}else{{snack('失败 Failed');}}
+const allIngs={all_ings_json};
+const commonIngs={common_json};
+const currentIds={current_ids};
+let currentLoc='{location}';
+
+function init(){{
+  let cl=document.getElementById('commonList');
+  cl.innerHTML=commonIngs.map(i=>{{
+    let inPantry=currentIds.includes(i.id);
+    let cls=inPantry?'ing-chip selected':'ing-chip';
+    let suffix=inPantry?' ✓ 已在库存':'';
+    return `<div class="${{cls}}" onclick="addIngredient('${{i.id}}')">${{i.cn}} ${{i.en}}${{suffix}}</div>`;
+  }}).join('');
 }}
-async function removeItem(ingId){{
-  if(!confirm('移出当前库存？\\nRemove from current pantry?'))return;
-  let r=await fetch('/api/pantry/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,location:'{location}'}})}});
+function filterIngs(){{
+  let q=document.getElementById('ingSearch').value.toLowerCase().trim();
+  let res=document.getElementById('searchResults');
+  if(!q){{res.innerHTML='';return;}}
+  let matched=allIngs.filter(i=>{{
+    if(i.cn.toLowerCase().includes(q))return true;
+    if(i.en&&i.en.toLowerCase().includes(q))return true;
+    if(i.aliases&&i.aliases.some(a=>a.toLowerCase().includes(q)))return true;
+    return false;
+  }}).slice(0,15);
+  let html='';
+  if(matched.length){{
+    html=matched.map(i=>{{
+      let inPantry=currentIds.includes(i.id);
+      if(inPantry){{
+        return `<div class="ing-chip selected" style="opacity:.6">✓ ${{i.cn}} ${{i.en||''}} 已在库存</div>`;
+      }}else{{
+        return `<div class="ing-chip" onclick="addIngredient('${{i.id}}')">${{i.cn}} ${{i.en||''}}</div>`;
+      }}
+    }}).join('');
+  }}
+  html+=`<div class="ing-add-chip" onclick="addNewIng('${{q}}')">+ 添加"${{q}}" Add New</div>`;
+  res.innerHTML=html;
+}}
+function addNewIng(name){{
+  fetch('/api/ingredients/add',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{name_cn:name}})}}).then(r=>r.json()).then(data=>{{
+    if(data.ok){{addIngredient(data.ingredient_id);}}else{{snack(data.error||'添加失败');}}
+  }});
+}}
+async function addIngredient(ingId){{
+  if(currentIds.includes(ingId)){{snack('该食材已在当前库存中 Already in pantry');return;}}
+  let r=await fetch('/api/pantry/add',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,location:currentLoc}})}});
   let result=await r.json();
-  if(result.ok){{snack('已移出 Removed');location.reload();}}else{{snack('失败 Failed');}}
+  if(result.ok){{showSaved();setTimeout(()=>location.reload(),500);}}else{{snack('失败 Failed');}}
+}}
+async function toggleStatus(ingId,status){{
+  // V7: Toggle logic — if current status matches, revert to "available"
+  let itemEl=document.getElementById('pi-'+ingId);
+  let currentActive=itemEl.querySelector('.active-priority,.active-expiring');
+  let isAlreadyActive=currentActive&&currentActive.classList.contains(status==='priority_use'?'active-priority':'active-expiring');
+  let finalStatus=isAlreadyActive?'available':status;
+  let r=await fetch('/api/pantry/update_status',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,status:finalStatus,location:currentLoc}})}});
+  let result=await r.json();
+  if(result.ok){{
+    // Update UI without reload
+    let btns=itemEl.querySelectorAll('.st-btn');
+    btns.forEach(b=>{{b.classList.remove('active-priority','active-expiring');}});
+    if(finalStatus==='priority_use')btns[0].classList.add('active-priority');
+    else if(finalStatus==='expiring')btns[1].classList.add('active-expiring');
+    showSaved();
+  }}else{{snack('失败 Failed');}}
+}}
+async function usedUp(ingId){{
+  if(!confirm('确定已经用完并移出当前库存吗？\\nRemove this ingredient from the current pantry?'))return;
+  let r=await fetch('/api/pantry/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,location:currentLoc}})}});
+  let result=await r.json();
+  if(result.ok){{snack('已移出 Removed');setTimeout(()=>location.reload(),500);}}else{{snack('失败 Failed');}}
+}}
+async function sameAsLast(){{
+  let r=await fetch('/api/pantry/same-as-last',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{location:currentLoc}})}});
+  let result=await r.json();
+  if(result.ok){{snack('✓ 已确认: 和上次一样 Same as last');}}else{{snack('失败 Failed');}}
+}}
+function showSaved(){{
+  let s=document.getElementById('saveIndicator');
+  if(s){{s.style.display='block';setTimeout(()=>s.style.display='none',1500);}}
 }}
 async function notifyPurchase(reqId){{
   let r=await fetch('/api/purchase/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:reqId,status:'notified',by:'nanny'}})}});
@@ -1218,6 +1362,7 @@ async function markPurchased(reqId){{
   let result=await r.json();
   if(result.ok){{snack('已标记购买 Purchased');location.reload();}}else{{snack('失败');}}
 }}
+init();
 </script>"""
 
 
@@ -1347,8 +1492,11 @@ function clearAll(){{
   hasUnsavedChanges=true;
   renderSelected();
 }}
-function setStatus(id,status){{
-  if(selected[id])selected[id].status=status;
+function toggleStatusSelected(id,status){{
+  if(selected[id]){{
+    // Toggle: if already this status, revert to available
+    selected[id].status=selected[id].status===status?'available':status;
+  }}
   hasUnsavedChanges=true;
   renderSelected();
 }}
@@ -1368,8 +1516,9 @@ function renderSelected(){{
   section.style.display='block';
   list.innerHTML=keys.map(id=>{{
     let s=selected[id];
-    let stBtn=(st,label)=>`<span class="status-pick ${{s.status===st?'active':''}} ${{st==='available'?'st-available':st==='priority_use'?'st-priority':'st-expiring'}}" onclick="setStatus('${{id}}','${{st}}')">${{label}}</span>`;
-    return `<div class="selected-item"><div><div class="name">${{s.cn}}</div><div class="name-en">${{s.en}}</div></div><div class="status-picker">${{stBtn('available','可用')}}${{stBtn('priority_use','优先')}}${{stBtn('expiring','快过期')}}<span class="status-pick" onclick="removeIng('${{id}}')" style="color:#721c24">✕</span></div></div>`;
+    let pfCls=s.status==='priority_use'?'active-priority':'';
+    let exCls=s.status==='expiring'?'active-expiring':'';
+    return `<div class="selected-item"><div><div class="name">${{s.cn}}</div><div class="name-en">${{s.en}}</div></div><div class="pantry-controls"><div class="pantry-status-group"><span class="st-btn ${{pfCls}}" onclick="toggleStatusSelected('${{id}}','priority_use')">优先用 Use First</span><span class="st-btn ${{exCls}}" onclick="toggleStatusSelected('${{id}}','expiring')">快过期 Expiring Soon</span></div><span class="pantry-used-up" onclick="removeIng('${{id}}')">用完 Used Up</span></div></div>`;
   }}).join('');
 }}
 async function submitPantry(){{
@@ -1462,7 +1611,10 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/pantry":
             self.send_html(render_pantry(qs.get("role", ["nanny"])[0], location))
         elif path == "/pantry/submit":
-            self.send_html(render_pantry_submit(qs.get("role", ["nanny"])[0], location))
+            # V6: pantry submit 已合并到主页面，重定向
+            self.send_response(302)
+            self.send_header("Location", f"/pantry?role={qs.get('role', ['nanny'])[0]}")
+            self.end_headers()
         elif path == "/dishes":
             self.send_html(render_dishes(role, location))
         elif path == "/history":
@@ -1476,7 +1628,13 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(dishes)
         elif path.startswith("/api/dishes/"):
             parts = path.split("/")
-            if len(parts) == 4 and parts[3] == "availability":
+            if len(parts) == 5 and parts[4] == "availability-debug":
+                # V5 Section 22: Availability Debug API
+                dish_id = parts[3]
+                loc = qs.get("location", [location])[0]
+                debug = check_dish_availability_debug(dish_id, loc)
+                self.send_json(debug)
+            elif len(parts) == 4 and parts[3] == "availability":
                 # POST handled in do_POST
                 self.send_error(405, "Use POST")
             else:
@@ -1529,17 +1687,38 @@ class AppHandler(BaseHTTPRequestHandler):
             )
             self.send_json({"ok": True, "summary": summary})
 
+        elif path == "/api/pantry/add":
+            # V6: 单项增量添加（不影响其他食材）
+            loc = body.get("location", location)
+            result = add_ingredient_to_pantry(
+                loc, body["ingredient_id"],
+                status=body.get("status", "available"),
+                submitted_by=body.get("submitted_by", "nanny")
+            )
+            self.send_json(result)
+
+        elif path == "/api/pantry/same-as-last":
+            # V6: "和上次一样" — 不修改库存，只记录确认时间
+            loc = body.get("location", location)
+            result = confirm_pantry_unchanged(loc, body.get("submitted_by", "nanny"))
+            self.send_json(result)
+
         elif path == "/api/pantry/update_status":
             # V4: 单项状态更新
             from db import get_db
+            loc = body.get("location", location)
             conn = get_db()
             try:
                 conn.execute(
                     "UPDATE current_pantry SET status = ?, updated_at = datetime('now') "
                     "WHERE location = ? AND ingredient_id = ? AND is_active = 1",
-                    (body["status"], body.get("location", location), body["ingredient_id"])
+                    (body["status"], loc, body["ingredient_id"])
                 )
+                # V5: 递增 inventory_version
+                _increment_inventory_version(conn, loc)
                 conn.commit()
+                # V5: 清除 availability 缓存
+                _invalidate_availability_cache(loc)
                 self.send_json({"ok": True})
             finally:
                 conn.close()
@@ -1547,14 +1726,19 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/pantry/remove":
             # V4: 从当前库存移除单项
             from db import get_db
+            loc = body.get("location", location)
             conn = get_db()
             try:
                 conn.execute(
                     "UPDATE current_pantry SET is_active = 0, updated_at = datetime('now') "
                     "WHERE location = ? AND ingredient_id = ?",
-                    (body.get("location", location), body["ingredient_id"])
+                    (loc, body["ingredient_id"])
                 )
+                # V5: 递增 inventory_version
+                _increment_inventory_version(conn, loc)
                 conn.commit()
+                # V5: 清除 availability 缓存
+                _invalidate_availability_cache(loc)
                 self.send_json({"ok": True})
             finally:
                 conn.close()
