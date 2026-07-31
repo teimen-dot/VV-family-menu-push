@@ -1040,7 +1040,7 @@ class GapFiller:
                 break
 
             # === 缺口过滤 ===
-            candidates = self._filter_by_gaps(meal_type, state, candidates, log)
+            candidates = self._filter_by_gaps(meal_type, state, candidates, log, diners_count)
 
             # 主食已满时排除带主食的菜品
             if meal_type == "dinner" and state.carb_count >= 1:
@@ -1050,10 +1050,27 @@ class GapFiller:
                     log.append(f"  [FILTER] carb full: {len(candidates)} non-carb candidates")
 
             # 蛋白质已满时排除带新蛋白质的菜品
-            if len(state.proteins) >= 2:
+            # V10.1 FIX: 用 protein_count（实际蛋白质菜品数）而非 len(state.proteins)（含汤/沙拉的蛋白质类型）
+            if meal_type == "dinner":
+                dinner_target = RuleEngine._dinner_target(diners_count)
+                protein_full = state.protein_count >= dinner_target["protein_main"]
+            else:
+                protein_full = len(state.proteins) >= 2
+            if protein_full:
                 filtered = [c for c in candidates if not (set(c["proteins"]) - state.proteins)]
                 if filtered:
                     candidates = filtered
+
+            # 蔬菜已满时排除蔬菜菜 (V10.1 FIX: 之前没有这个过滤，导致晚餐蔬菜无限增长)
+            if meal_type == "dinner":
+                dinner_target = RuleEngine._dinner_target(diners_count)
+                if state.vegetable_dish_count >= dinner_target["vegetable_dish"]:
+                    filtered = [c for c in candidates
+                                if c["category_id"] not in ("vegetable_mushroom", "cold_dish")
+                                and "vegetable_dish" not in c.get("meal_roles", [])]
+                    if filtered:
+                        candidates = filtered
+                        log.append(f"  [FILTER] vegetable_dish full: {len(candidates)} candidates")
 
             # 汤已有时排除汤类
             if state.has_soup:
@@ -1096,8 +1113,9 @@ class GapFiller:
         )
         return state.dishes, state, log
 
-    def _filter_by_gaps(self, meal_type, state, candidates, log):
-        """根据缺口过滤候选菜 (V3: 含 tofu/egg/quick_soup/slow_soup)"""
+    def _filter_by_gaps(self, meal_type, state, candidates, log, diners_count=4):
+        """根据缺口过滤候选菜 (V3: 含 tofu/egg/quick_soup/slow_soup)
+        V10.1: diners_count 用于晚餐蛋白质精确定量"""
 
         # 早餐粥缺口
         if meal_type == "breakfast" and not state.has_porridge:
@@ -1151,6 +1169,20 @@ class GapFiller:
             if filtered:
                 candidates = filtered
                 log.append(f"  [FILTER] clear_protein gap: {len(candidates)} candidates")
+
+        # V10.1: 晚餐明确蛋白质缺口 — 按人数精确定量
+        # 只有当蔬菜已满足且蛋白质未满足时，才强制过滤为蛋白质菜品
+        if meal_type == "dinner":
+            dinner_target = RuleEngine._dinner_target(diners_count)
+            if state.protein_count < dinner_target["protein_main"]:
+                filtered = [
+                    c for c in candidates
+                    if c["category_id"] in ("protein_main", "egg_tofu")
+                    and "肉末" not in c["name_cn"]
+                ]
+                if filtered:
+                    candidates = filtered
+                    log.append(f"  [FILTER] dinner protein gap ({state.protein_count}/{dinner_target['protein_main']}): {len(candidates)} candidates")
 
         # V3: 午餐快手汤缺口
         if meal_type == "lunch" and not state.has_quick_soup:
@@ -1238,7 +1270,7 @@ class GapFiller:
             result[meal_type] = {"dishes": dishes, "state": state}
             all_logs[meal_type] = log
 
-        review = RuleEngine.final_review(result)
+        review = RuleEngine.final_review(result, diners_count)
         all_logs["review"] = review
         return result, all_logs
 
