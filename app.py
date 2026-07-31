@@ -175,7 +175,7 @@ def get_dish_recommendations(meal_type, current_dish_id, category_id, location):
         for c in candidates:
             did = c["id"]
             avail = avail_batch.get(did, {})
-            status = avail.get("status", "incomplete")
+            status = avail.get("status", "available")
 
             # 解析 JSON 字段
             c_proteins = set()
@@ -235,7 +235,7 @@ def get_dish_recommendations(meal_type, current_dish_id, category_id, location):
                 available_list.append(item)
             elif status == "almost_available":
                 almost_list.append(item)
-            # missing / incomplete 不进入推荐
+            # missing 不进入推荐（V12: incomplete 已废弃，无必选食材 = available）
 
         # 10. 排序并截断
         available_list.sort(key=lambda x: x["score"], reverse=True)

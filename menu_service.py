@@ -607,6 +607,10 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             ordered_slots = list(missing.keys())
 
         for slot_name in ordered_slots:
+            # V12: Re-check if slot is still missing (may have been satisfied by a dish added earlier in this round)
+            latest_slots = analyze_meal_slots(meal_type, state, diners_count)
+            if latest_slots.get(slot_name, {}).get("missing_min", 0) <= 0:
+                continue
             slot_info = missing[slot_name]
             # 获取该槽位的候选菜
             all_candidates = gf.get_candidates(meal_type, exclude_ids=day_history)
@@ -884,14 +888,14 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                         contributes = False
 
                     if contributes:
-                        avail_status = avail_batch.get(did, {}).get("status", "incomplete")
+                        avail_status = avail_batch.get(did, {}).get("status", "available")
                         contributing_ai.append((mi_id, did, avail_status))
 
                 if not contributing_ai:
                     continue
 
                 # 按优先级排序：缺食材的先删 (missing > almost > available)
-                # priority: 0=missing, 1=almost, 2=available, 3=incomplete(无食材信息)
+                # priority: 0=missing, 1=almost, 2=available (V12: incomplete 已废弃)
                 def del_priority(item_tuple):
                     _, _, status = item_tuple
                     return {"missing": 0, "almost_available": 1, "available": 2}.get(status, 3)

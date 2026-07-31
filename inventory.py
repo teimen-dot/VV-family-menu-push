@@ -482,9 +482,10 @@ def check_dish_availability(dish_id, location, inventory_version=None):
     V5 Section 12-18: 统一菜品可用性检查服务（InventoryService）。
     所有模块（Dishes / Tomorrow / Purchase Request / Add Dish picker / AI scoring）必须调用此方法。
     返回: {status, required, available_required, missing_required, optional, inventory_version}
-    status: available / almost_available / missing / incomplete
+    status: available / almost_available / missing
 
-    V5 Section 13: required_ingredients 为空必须返回 "incomplete"，绝不能返回 "available"。
+    V12: required_ingredients 为空时返回 "available"（无必选食材 = 无约束 = 可制作）。
+    旧版 V5 的 "incomplete" 状态已废弃，因为它阻止了花卷/日式饺子等简单菜品被 AI Fill 选中。
     """
     if inventory_version is None:
         inventory_version = get_inventory_version(location)
@@ -504,11 +505,11 @@ def check_dish_availability(dish_id, location, inventory_version=None):
             (dish_id,)
         ).fetchall()
 
-        # V5 Section 13: required_ingredients 为空 → incomplete
+        # V12: required_ingredients 为空 → available（无约束 = 可制作）
         required_ings = [r for r in ings if r["required"]]
         if not required_ings:
             result = {
-                "status": "incomplete",
+                "status": "available",
                 "required": [],
                 "available_required": [],
                 "missing_required": [],
@@ -550,7 +551,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         missing_count = len(missing_required)
 
         if required_count == 0:
-            status = "incomplete"
+            status = "available"
         elif missing_count == 0:
             status = "available"
         elif required_count >= 2 and missing_count == 1:
