@@ -8,7 +8,7 @@
 import json
 import random
 from datetime import date, datetime, timedelta
-from db import get_db, log_event
+from db import get_db, log_event, get_config
 from rule_engine import (
     GapFiller, RuleEngine, NutritionAnalyzer, MealState,
     generate_afternoon_snack, get_dish_ingredients_map,
@@ -17,11 +17,55 @@ from rule_engine import (
     BREAKFAST_COMPANION_STAPLES,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
+from preference_service import get_preference_scores, record_vv_confirm
+
+
+# V11: Catalog cache — invalidates when catalog_version changes
+_catalog_cache = {"version": None, "pool": None}
+
+
+def _get_effective_diners_count(menu_id=None, menu_row=None):
+    """V11: 获取有效用餐人数，支持 banquet 模式。
+    banquet 模式下使用 banquet_total_diners；daily 模式下使用 diners 数组长度。
+    """
+    if menu_row is None and menu_id:
+        conn = get_db()
+        try:
+            menu_row = conn.execute(
+                "SELECT diners, meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+                (menu_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+
+    if not menu_row:
+        return 4
+
+    meal_mode = menu_row["meal_mode"] if "meal_mode" in menu_row.keys() else "daily"
+    if meal_mode == "banquet":
+        banquet_total = menu_row["banquet_total_diners"] if "banquet_total_diners" in menu_row.keys() else None
+        if banquet_total and banquet_total > 0:
+            return banquet_total
+
+    diners_json = menu_row["diners"]
+    if diners_json:
+        try:
+            diner_ids = json.loads(diners_json)
+            return max(len(diner_ids), 1)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    return menu_row["diners_count"] if menu_row["diners_count"] else 4
 
 
 def _load_pool():
     """V6: 从 SQLite 加载菜品池（Single Source of Truth），不再读 dish_pool.json。
-    只加载 is_active=1 的菜品。"""
+    只加载 is_active=1 的菜品。
+    V11: 使用 catalog_version 缓存，菜品管理器变更时自动失效。"""
+    catalog_version = get_config("catalog_version") or "1"
+    if _catalog_cache["version"] == catalog_version and _catalog_cache["pool"] is not None:
+        return _catalog_cache["pool"]
+
     conn = get_db()
     try:
         rows = conn.execute(
@@ -40,9 +84,18 @@ def _load_pool():
                 else:
                     d[field] = []
             dishes.append(d)
-        return {"dishes": dishes}
+        pool = {"dishes": dishes}
+        _catalog_cache["version"] = catalog_version
+        _catalog_cache["pool"] = pool
+        return pool
     finally:
         conn.close()
+
+
+def invalidate_catalog_cache():
+    """V11: 手动失效 catalog cache（菜品管理器调用）"""
+    _catalog_cache["version"] = None
+    _catalog_cache["pool"] = None
 
 
 def _store_menu_items(conn, menu_id, result):
@@ -81,6 +134,26 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     # 库存上下文
     inv_avail, inv_pri, inv_exp = get_inventory_ingredients(location)
 
+    # V10: 读取已有菜单的 diners_count（如果存在），确保晚餐按人数生成
+    # V11: 使用 _get_effective_diners_count 支持 banquet 模式
+    diners_count = 4
+    meal_mode = "daily"
+    conn_pre = get_db()
+    try:
+        existing = conn_pre.execute(
+            "SELECT diners, meal_mode, banquet_total_diners FROM menus WHERE date = ?",
+            (date_str,)
+        ).fetchone()
+        if existing:
+            diners_count = _get_effective_diners_count(menu_row=existing)
+            meal_mode = existing["meal_mode"] if existing["meal_mode"] else "daily"
+    finally:
+        conn_pre.close()
+
+    # V11: 获取 VV preference scores
+    all_dish_ids = [d["id"] for d in pool["dishes"]]
+    vv_prefs = get_preference_scores(all_dish_ids)
+
     context = {
         "history_3day": get_history_3day(),
         "history_7day": get_history_7day(),
@@ -88,21 +161,9 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         "priority_ingredients": inv_pri,
         "expiring_ingredients": inv_exp,
         "dish_ingredients": dish_ings,
+        "vv_preferences": vv_prefs,  # V11: VV confirm-based preference
+        "is_banquet": meal_mode == "banquet",  # V11: banquet mode flag
     }
-
-    # V10: 读取已有菜单的 diners_count（如果存在），确保晚餐按人数生成
-    diners_count = 4
-    conn_pre = get_db()
-    try:
-        existing = conn_pre.execute("SELECT diners FROM menus WHERE date = ?", (date_str,)).fetchone()
-        if existing and existing["diners"]:
-            try:
-                diner_ids = json.loads(existing["diners"])
-                diners_count = max(len(diner_ids), 1)
-            except (json.JSONDecodeError, TypeError):
-                pass
-    finally:
-        conn_pre.close()
 
     # 生成三餐
     gf = GapFiller(pool, seed=seed, dish_ingredients=dish_ings)
@@ -271,10 +332,10 @@ def add_dish_to_menu(menu_id, dish_id, meal_type):
         ).fetchone()
         sort = (row["max_sort"] or 0) + 1
 
-        # Owner 添加 = 自动锁定
+        # Owner 添加 = 自动锁定 + source=owner
         conn.execute(
-            "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, locked_by, locked_at, sort_order) "
-            "VALUES (?, ?, ?, 1, 'owner', ?, ?)",
+            "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, locked_by, locked_at, sort_order, source) "
+            "VALUES (?, ?, ?, 1, 'owner', ?, ?, 'owner')",
             (menu_id, dish_id, meal_type, datetime.now().isoformat(), sort)
         )
         conn.commit()
@@ -356,15 +417,24 @@ def lock_dish(menu_item_id, locked=True):
 
 def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
     """
-    V8: AI 补充缺少菜品 (AI Fill Gaps)：
+    V11: AI 补充缺少菜品 (AI Fill Gaps)：
     保留当前所有菜（owner + AI），先分析槽位缺口，只补 missing_min > 0 的槽位。
-    Available Now 优先；无 Available 不自动加入缺货菜；无候选返回 unmet_slot。
+    Available Now 优先；无 Available 不自动加入缺货菜；无候选返回 unmet_slot with reason。
     meal_type: 指定餐次，None = 所有餐次。
-    返回: (ok, msg, review) — review 包含 unmet_slots 信息。
+
+    V11 关键修复:
+    - 不再跳过空餐次（existing_ids 为空时也从零开始补齐）
+    - 返回 mutation results: {added, removed, unmet_slots, slot_analysis_before/after}
+    - INSERT 前重新验证 is_active
+    - 使用 _get_effective_diners_count 支持 banquet
+    - 使用 VV preference 排序
     """
     conn = get_db()
     try:
-        menu = conn.execute("SELECT date, location FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        menu = conn.execute(
+            "SELECT date, location, diners, meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+            (menu_id,)
+        ).fetchone()
         if not menu:
             return False, "菜单不存在", None
 
@@ -374,6 +444,11 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         dish_ings = get_dish_ingredients_map()
         inv_avail, inv_pri, inv_exp = get_inventory_ingredients(loc)
 
+        # V11: 获取有效人数 + VV preferences
+        diners_count = _get_effective_diners_count(menu_row=menu)
+        all_dish_ids = [d["id"] for d in pool["dishes"]]
+        vv_prefs = get_preference_scores(all_dish_ids)
+
         context = {
             "history_3day": get_history_3day(),
             "history_7day": get_history_7day(),
@@ -381,10 +456,15 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             "priority_ingredients": inv_pri,
             "expiring_ingredients": inv_exp,
             "dish_ingredients": dish_ings,
+            "vv_preferences": vv_prefs,
+            "is_banquet": (menu["meal_mode"] == "banquet") if menu["meal_mode"] else False,
         }
 
         gf = GapFiller(pool, seed=seed or 42, dish_ingredients=dish_ings)
         dish_map = {d["id"]: d for d in pool["dishes"]}
+
+        # V11: active dish IDs set for re-validation
+        active_dish_ids = set(dish_map.keys())
 
         # 获取当前菜单所有菜品
         all_items = conn.execute(
@@ -399,24 +479,14 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             if mt in meals_existing:
                 meals_existing[mt].append(item["dish_id"])
 
-        # 获取用餐人数
-        diners_count = 4  # 默认
-        try:
-            diner_row = conn.execute("SELECT diners FROM menus WHERE id = ?", (menu_id,)).fetchone()
-            if diner_row and diner_row["diners"]:
-                diner_ids = json.loads(diner_row["diners"])
-                diners_count = max(len(diner_ids), 1)
-        except Exception:
-            pass
-
         # 确定要处理的餐次
         target_meals = [meal_type] if meal_type else ["breakfast", "lunch", "dinner"]
 
         day_history = set()
         day_proteins = set()
-        new_items_added = 0
-        unmet_slots = []  # V8: 记录无法补齐的槽位
-        seen_unmet = set()  # V10: unmet_slots 去重集合
+        added_dishes = []  # V11: track mutations
+        unmet_slots = []
+        seen_unmet = set()
 
         for mt in ["breakfast", "lunch", "dinner"]:
             for did in meals_existing[mt]:
@@ -428,25 +498,40 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             if mt not in meals_existing:
                 continue
 
+            # V11 FIX: 不再跳过空餐次 — 从空 state 开始补齐
             existing_ids = [did for did in meals_existing[mt] if did in dish_map]
-            if not existing_ids:
-                continue
 
-            # 构建 MealState
+            # 构建 MealState (空也 OK)
             state = MealState()
             for did in existing_ids:
                 analysis = NutritionAnalyzer.analyze(dish_map[did])
                 state.add_dish(analysis, is_locked=True)
 
-            # V9: 所有餐次使用槽位分析 + Available Now 优先
+            # V11: 记录 slot analysis before
+            slots_before = analyze_meal_slots(mt, state, diners_count)
+
             added = _fill_missing_slots_v8(
                 conn, menu_id, mt, state, gf, dish_map, context,
                 day_history, day_proteins, diners_count, loc,
-                unmet_slots, seen_unmet
+                unmet_slots, seen_unmet, active_dish_ids, added_dishes
             )
-            new_items_added += added
 
         conn.commit()
+
+        # V11: 重新分析 slot analysis after
+        slot_analysis_after = {}
+        for mt in target_meals:
+            state_after = MealState()
+            items_after = conn.execute(
+                "SELECT dish_id FROM menu_items WHERE menu_id = ? AND meal_type = ?",
+                (menu_id, mt)
+            ).fetchall()
+            for r in items_after:
+                did = r["dish_id"]
+                if did in dish_map:
+                    analysis = NutritionAnalyzer.analyze(dish_map[did])
+                    state_after.add_dish(analysis, is_locked=True)
+            slot_analysis_after[mt] = analyze_meal_slots(mt, state_after, diners_count)
 
         # Final Review
         menu_data = get_menu_with_dishes(date_str)
@@ -461,22 +546,27 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             day_result[mt] = {"state": state}
 
         review = RuleEngine.final_review(day_result, diners_count)
-        review["unmet_slots"] = unmet_slots  # V8: 附加 unmet_slot 信息
+        review["unmet_slots"] = unmet_slots
+        review["added"] = [d["dish_id"] for d in added_dishes]
+        review["added_details"] = added_dishes
+        review["removed"] = []
+        review["slot_analysis_after"] = slot_analysis_after
 
         log_event("ai_fill_menu", "menu", str(menu_id), {
-            "new_items_added": new_items_added,
-            "review_passed": review["passed"],
+            "added": review["added"],
             "unmet_slots": unmet_slots,
+            "review_passed": review["passed"],
         })
 
-        return True, f"AI 补充了 {new_items_added} 道菜", review
+        return True, f"AI 补充了 {len(added_dishes)} 道菜", review
     finally:
         conn.close()
 
 
 def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, context,
                             day_history, day_proteins, diners_count, location,
-                            unmet_slots, seen_unmet=None):
+                            unmet_slots, seen_unmet=None,
+                            active_dish_ids=None, added_dishes=None):
     """
     V8/V9: 槽位分析 + Available Now 优先补齐。
     用于 breakfast / lunch / dinner。
@@ -484,16 +574,18 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
     V9: 晚餐按人数精确 target 补齐 (不再只补 minimum)。
     V10: unmet_slots 去重 — 同一个 (meal, slot) 只记录一次。
     V10: 幂等 — 所有槽位已满足时 0 change。
+    V11: INSERT 前重新验证 is_active；记录 added_dishes mutation。
+    V11: 无候选时返回 reason = no_available_candidate。
     返回: items_added (int)
     """
     items_added = 0
-    max_rounds = 8  # V9: 早餐最多7个槽位，安全上限设8
+    max_rounds = 8
 
-    # V10: unmet_slots 去重集合
     if seen_unmet is None:
         seen_unmet = set()
+    if added_dishes is None:
+        added_dishes = []
 
-    # V9: 早餐槽位补齐优先顺序
     BREAKFAST_SLOT_ORDER = [
         "porridge", "companion_staple", "egg", "tofu",
         "vegetable", "protein_main", "coarse_grain"
@@ -509,7 +601,6 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             break  # 所有槽位已满足 — V10: 幂等 STOP
 
         # Step 3: 逐个补齐缺失槽位
-        # V9: 早餐按固定优先顺序补齐
         if meal_type == "breakfast":
             ordered_slots = [s for s in BREAKFAST_SLOT_ORDER if s in missing]
         else:
@@ -521,14 +612,18 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             all_candidates = gf.get_candidates(meal_type, exclude_ids=day_history)
             slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
 
+            # V11: 过滤掉已删除的菜品（re-validate is_active）
+            if active_dish_ids:
+                slot_candidates = [c for c in slot_candidates if c["id"] in active_dish_ids]
+
             if not slot_candidates:
-                # V10: 去重 — 同一个 (meal, slot) 只记录一次
                 dedup_key = (meal_type, slot_name)
                 if dedup_key not in seen_unmet:
                     seen_unmet.add(dedup_key)
                     unmet_slots.append({
                         "meal": meal_type,
                         "slot": slot_name,
+                        "reason": "no_candidate",
                         "message": f"暂未找到合适的{slot_name}菜品，请手动添加 / No suitable {slot_name} found.",
                     })
                 continue
@@ -544,7 +639,6 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
 
             if available_candidates:
                 # 有 Available 候选 → 评分选最优
-                # ScoringEngine 已处理 Expiring > Use First > normal 排序
                 meal_ctx = dict(context)
                 meal_ctx["day_proteins"] = set(day_proteins)
                 meal_ctx["day_history"] = set(day_history)
@@ -556,6 +650,10 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 scored.sort(key=lambda x: x[0], reverse=True)
 
                 chosen = scored[0][1]
+
+                # V11: 最终 is_active 验证（防止旧 cache）
+                if active_dish_ids and chosen["id"] not in active_dish_ids:
+                    continue
 
                 # 添加到数据库
                 row = conn.execute(
@@ -573,6 +671,14 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 day_history.add(chosen["id"])
                 day_proteins.update(chosen.get("protein_types", []))
 
+                # V11: 记录 mutation
+                added_dishes.append({
+                    "dish_id": chosen["id"],
+                    "name_cn": chosen.get("name_cn", ""),
+                    "meal_type": meal_type,
+                    "slot_role": slot_name,
+                })
+
                 # 更新 state
                 state.add_dish(chosen, is_locked=False)
             else:
@@ -581,7 +687,6 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                     c for c in slot_candidates
                     if avail_batch.get(c["id"], {}).get("status") == "almost_available"
                 ]
-                # V10: 去重 — 同一个 (meal, slot) 只记录一次
                 dedup_key = (meal_type, slot_name)
                 if dedup_key not in seen_unmet:
                     seen_unmet.add(dedup_key)
@@ -589,6 +694,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                         unmet_slots.append({
                             "meal": meal_type,
                             "slot": slot_name,
+                            "reason": "no_available_candidate",
                             "almost_count": len(almost_candidates),
                             "almost_dishes": [
                                 {"id": c["id"], "name_cn": c["name_cn"],
@@ -607,6 +713,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                         unmet_slots.append({
                             "meal": meal_type,
                             "slot": slot_name,
+                            "reason": "no_available_candidate",
                             "message": (
                                 f"当前库存没有可直接制作的{slot_name}菜品，请手动添加。"
                                 f" / No {slot_name} is fully available. Please add manually."
@@ -635,9 +742,10 @@ _RECONCILE_SLOT_ROLES = {
 def reconcile_meal_for_diners(menu_id, location="shenzhen"):
     """
     V10: Diners 变化后重新调整菜单。
+    V11: 使用 _get_effective_diners_count 支持 banquet 模式。
     
     流程:
-      1. 读取 diners_count
+      1. 读取 diners_count（V11: 通过 _get_effective_diners_count）
       2. 获取精确 target（晚餐按人数）
       3. 分析 Owner Selected（source=owner / is_locked=1）
       4. 分析 AI items（source=ai / is_locked=0）
@@ -650,21 +758,19 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
     """
     conn = get_db()
     try:
-        menu = conn.execute("SELECT date, location, diners FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        menu = conn.execute(
+            "SELECT date, location, diners, meal_mode, banquet_total_diners "
+            "FROM menus WHERE id = ?",
+            (menu_id,)
+        ).fetchone()
         if not menu:
             return False, "菜单不存在", None
 
         date_str = menu["date"]
         loc = menu["location"] or location
 
-        # 获取用餐人数
-        diners_count = 4
-        try:
-            if menu["diners"]:
-                diner_ids = json.loads(menu["diners"])
-                diners_count = max(len(diner_ids), 1)
-        except Exception:
-            pass
+        # V11: 使用 _get_effective_diners_count 支持 banquet 模式
+        diners_count = _get_effective_diners_count(menu_row=menu)
 
         pool = _load_pool()
         dish_map = {d["id"]: d for d in pool["dishes"]}
@@ -870,21 +976,19 @@ def repair_menu(menu_id, location="shenzhen", seed=None):
 
 
 def confirm_menu(menu_id):
-    """V3: 确认菜单。Warning 不阻断 Confirm，VV 是唯一最终确认人。"""
+    """V3: 确认菜单。Warning 不阻断 Confirm，VV 是唯一最终确认人。
+    V11: 确认时记录 VV 偏好（record_vv_confirm），统计保留的菜品。"""
     conn = get_db()
     try:
-        menu = conn.execute("SELECT date, diners FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        menu = conn.execute(
+            "SELECT date, diners, meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+            (menu_id,)
+        ).fetchone()
         if not menu:
             return False, "菜单不存在"
 
-        # V9: 读取用餐人数用于晚餐精确目标
-        diners_count = 4
-        try:
-            if menu["diners"]:
-                diner_ids = json.loads(menu["diners"])
-                diners_count = max(len(diner_ids), 1)
-        except Exception:
-            pass
+        # V11: 使用 _get_effective_diners_count 支持 banquet 模式
+        diners_count = _get_effective_diners_count(menu_row=menu)
 
         menu_data = get_menu_with_dishes(menu["date"])
 
@@ -920,6 +1024,12 @@ def confirm_menu(menu_id):
             "warnings_count": len(warnings),
             "warnings": warnings
         })
+
+        # V11: 记录 VV 偏好 — 统计 Confirm 时保留的菜品
+        try:
+            record_vv_confirm(menu_id)
+        except Exception as e:
+            log_event("vv_preferences_error", "menu", str(menu_id), {"error": str(e)})
 
         if warnings:
             return True, f"菜单已确认（有 {len(warnings)} 项提示）", warnings

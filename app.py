@@ -328,6 +328,43 @@ def update_menu_diners(menu_id, diners_list):
         conn.close()
 
 
+def get_menu_meal_mode(menu_id):
+    """V11: 获取菜单的 meal_mode 和 banquet_total_diners"""
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+            (menu_id,)
+        ).fetchone()
+        if not row:
+            return {"meal_mode": "daily", "banquet_total_diners": None}
+        return {
+            "meal_mode": row["meal_mode"] or "daily",
+            "banquet_total_diners": row["banquet_total_diners"],
+        }
+    finally:
+        conn.close()
+
+
+def update_menu_meal_mode(menu_id, meal_mode, banquet_total_diners=None):
+    """V11: 更新菜单的 meal_mode 和 banquet_total_diners"""
+    conn = get_db()
+    try:
+        conn.execute(
+            "UPDATE menus SET meal_mode = ?, banquet_total_diners = ?, "
+            "updated_at = datetime('now') WHERE id = ?",
+            (meal_mode, banquet_total_diners if meal_mode == "banquet" else None, menu_id)
+        )
+        conn.commit()
+        log_event("meal_mode_updated", "menu", str(menu_id), {
+            "meal_mode": meal_mode,
+            "banquet_total_diners": banquet_total_diners,
+        })
+        return True
+    finally:
+        conn.close()
+
+
 def get_all_ingredients():
     """获取所有食材（含 aliases 和 ingredient_group）"""
     conn = get_db()
@@ -699,6 +736,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .diner-chip.active{background:#2c2620;color:#faf7f2;border-color:#2c2620}
 .diner-chip.active .diner-en{color:#a89888}
 .diner-en{font-size:13px;opacity:.7}
+.btn-stepper{width:40px;height:40px;border-radius:8px;border:1px solid #ddd5c8;background:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:44px}
+.btn-stepper:active{background:#f5f0e8}
 .purchase-task{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f0e8}
 .purchase-task:last-child{border-bottom:none}
 .purchase-task .info{flex:1;min-width:0}
@@ -812,6 +851,13 @@ def render_tomorrow(role="owner", location="shenzhen"):
     if not menu_diners:
         menu_diners = [d["id"] for d in all_diners if d["default_attends"]]
 
+    # V11: 获取 Meal Mode
+    meal_mode_info = {"meal_mode": "daily", "banquet_total_diners": None}
+    if menu.get("menu_id"):
+        meal_mode_info = get_menu_meal_mode(menu["menu_id"])
+    meal_mode = meal_mode_info["meal_mode"]
+    banquet_total = meal_mode_info["banquet_total_diners"] or 8
+
     # V3: 生成 Warning（不阻断 Confirm）— V8: 从 SQLite 读取（不再读 dish_pool.json）
     menu_warnings = []
     if menu.get("exists") and menu.get("menu_id"):
@@ -829,7 +875,9 @@ def render_tomorrow(role="owner", location="shenzhen"):
                         analysis = NutritionAnalyzer.analyze(dish_map[did])
                         state.add_dish(analysis, is_locked=item.get("is_locked", False))
                 day_result[mt] = {"state": state}
-            review = RuleEngine.final_review(day_result, len(menu_diners))
+            # V11: 使用 effective diners count (banquet 模式用 banquet_total)
+            effective_diners = banquet_total if meal_mode == "banquet" else len(menu_diners)
+            review = RuleEngine.final_review(day_result, effective_diners)
             menu_warnings = review.get("warnings", [])
         except Exception:
             pass
@@ -850,6 +898,29 @@ def render_tomorrow(role="owner", location="shenzhen"):
             active = "active" if d["id"] in menu_diners else ""
             diners_chips += f'<span class="diner-chip {active}" data-diner="{d["id"]}" onclick="toggleDiner(\'{d["id"]}\')">{d["name_cn"]} <span class="diner-en">{d["name_en"]}</span></span>'
         sections.append(f'<div class="diners-section"><div class="diners-title">用餐成员 Diners</div><div class="diners-row">{diners_chips}</div></div>')
+
+        # V11: Meal Mode 选择 (Daily / Banquet)
+        daily_active = "active" if meal_mode == "daily" else ""
+        banquet_active = "active" if meal_mode == "banquet" else ""
+        banquet_input_display = "block" if meal_mode == "banquet" else "none"
+        meal_mode_html = (
+            f'<div class="diners-section">'
+            f'<div class="diners-title">用餐模式 Meal Mode</div>'
+            f'<div class="diners-row">'
+            f'<span class="diner-chip {daily_active}" onclick="setMealMode(\'daily\')">日常 Daily</span>'
+            f'<span class="diner-chip {banquet_active}" onclick="setMealMode(\'banquet\')">家宴 Banquet</span>'
+            f'</div>'
+            f'<div id="banquet-input" style="display:{banquet_input_display};margin-top:8px;align-items:center;gap:10px">'
+            f'<span style="font-size:14px;color:#a89888">家宴总人数 Total Diners</span>'
+            f'<button class="btn-stepper" onclick="adjustBanquet(-1)">−</button>'
+            f'<input type="number" id="banquetTotal" value="{banquet_total}" min="2" max="30" '
+            f'style="width:60px;text-align:center;font-size:18px;border:1px solid #d4c8b8;border-radius:6px;padding:4px" '
+            f'onchange="setBanquetTotal(this.value)">'
+            f'<button class="btn-stepper" onclick="adjustBanquet(1)">+</button>'
+            f'</div>'
+            f'</div>'
+        )
+        sections.append(meal_mode_html)
 
         # V3: Warning UI（不阻断 Confirm）
         if menu_warnings:
@@ -898,7 +969,9 @@ def render_tomorrow(role="owner", location="shenzhen"):
                         if did in dm:
                             st.add_dish(NutritionAnalyzer.analyze(dm[did]), is_locked=item.get("is_locked", False))
                     # V9: 晚餐传 diners_count 用于精确人数目标
-                    slots = analyze_meal_slots(mt, st, len(menu_diners))
+                    # V11: banquet 模式使用 banquet_total
+                    effective_d = banquet_total if meal_mode == "banquet" else len(menu_diners)
+                    slots = analyze_meal_slots(mt, st, effective_d)
                     missing = {k: v for k, v in slots.items() if v["missing_min"] > 0}
                     if missing:
                         hint_parts = []
@@ -1030,6 +1103,8 @@ let menuId={menu.get("menu_id","null")};
 let currentLoc='{location}';
 let hasUnsavedChanges=false;
 let selectedDiners={json.dumps(menu_diners)};
+let currentMealMode='{meal_mode}';
+let banquetTotal={banquet_total};
 function toggleDiner(id){{
   let i=selectedDiners.indexOf(id);
   if(i>=0)selectedDiners.splice(i,1);
@@ -1049,6 +1124,41 @@ function toggleDiner(id){{
   }});
   // Reload to refresh menu
   setTimeout(()=>location.reload(),1000);
+}}
+// V11: Meal Mode toggle
+function setMealMode(mode){{
+  if(mode===currentMealMode)return;
+  currentMealMode=mode;
+  fetch('/api/tomorrow/meal-mode',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,meal_mode:mode,banquet_total_diners:mode==='banquet'?banquetTotal:null,location:currentLoc}})}}).then(r=>r.json()).then(res=>{{
+    if(res.ok){{
+      if(mode==='banquet'){{
+        document.getElementById('banquet-input').style.display='flex';
+      }}else{{
+        document.getElementById('banquet-input').style.display='none';
+      }}
+      // Update chip active states
+      document.querySelectorAll('.diners-section .diner-chip').forEach((c,idx)=>{{
+        c.classList.toggle('active',(mode==='daily'&&idx===0)||(mode==='banquet'&&idx===1));
+      }});
+      snack(mode==='banquet'?'已切换到家宴模式 Banquet mode':'已切换到日常模式 Daily mode');
+      setTimeout(()=>location.reload(),800);
+    }}
+  }});
+}}
+function adjustBanquet(delta){{
+  let input=document.getElementById('banquetTotal');
+  let v=parseInt(input.value)||8;
+  v=Math.max(2,Math.min(30,v+delta));
+  input.value=v;
+  setBanquetTotal(v);
+}}
+function setBanquetTotal(val){{
+  let v=parseInt(val)||8;
+  v=Math.max(2,Math.min(30,v));
+  banquetTotal=v;
+  fetch('/api/tomorrow/meal-mode',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,meal_mode:'banquet',banquet_total_diners:v,location:currentLoc}})}}).then(r=>r.json()).then(res=>{{
+    if(res.ok)snack('家宴总人数已更新: '+v+' Total diners updated');
+  }});
 }}
 // V7: Smart dish replacement modal
 let searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}};
@@ -2057,6 +2167,24 @@ class AppHandler(BaseHTTPRequestHandler):
             ok = update_menu_diners(body["menu_id"], body["diners"])
             if ok:
                 # V10: Diners 变化后自动 Reconcile AI 菜品
+                try:
+                    from menu_service import reconcile_meal_for_diners
+                    reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(
+                        body["menu_id"], location=body.get("location", "shenzhen")
+                    )
+                    self.send_json({"ok": True, "reconciled": True, "message": reconcile_msg})
+                except Exception as e:
+                    self.send_json({"ok": True, "reconcile_error": str(e)})
+            else:
+                self.send_json({"ok": False})
+
+        elif path == "/api/tomorrow/meal-mode":
+            # V11: 设置 Meal Mode (daily/banquet) + banquet_total_diners
+            meal_mode = body.get("meal_mode", "daily")
+            banquet_total = body.get("banquet_total_diners")
+            ok = update_menu_meal_mode(body["menu_id"], meal_mode, banquet_total)
+            if ok:
+                # V11: Meal Mode 变化后自动 Reconcile
                 try:
                     from menu_service import reconcile_meal_for_diners
                     reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(

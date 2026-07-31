@@ -668,6 +668,7 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
             "current": cur,
             "target_min": tgt,
             "missing_min": max(0, tgt - cur),
+            "excess": max(0, cur - tgt),  # V11: for reconcile
         }
     return result
 
@@ -785,6 +786,8 @@ class ScoringEngine:
     W_ONE_POT_BREAKFAST = -120  # 一餐型料理在早餐
     W_ONE_POT_LUNCH = -25       # 一餐型料理在午餐
     W_BREAKFAST_RICE = -40      # 早餐米饭惩罚
+    # V11: VV Preference (added via context.vv_preferences dict)
+    W_VV_PREFERENCE = 40         # max bonus from VV confirm-based preference
 
     def __init__(self, rng=None):
         self.rng = rng or random.Random()
@@ -959,6 +962,12 @@ class ScoringEngine:
         # === 老板常选 ===
         if dish_id in boss_fav:
             score += self.W_BOSS_FAVORITE
+
+        # V11: VV Preference — confirm-based ranking (only affects soft score, never breaks hard filters)
+        vv_prefs = ctx.get("vv_preferences", {})
+        if dish_id in vv_prefs:
+            pref_score = vv_prefs[dish_id]
+            score += min(pref_score, self.W_VV_PREFERENCE)
 
         # === 家宴场景 ===
         if ctx.get("is_banquet") and analysis["banquet"]:

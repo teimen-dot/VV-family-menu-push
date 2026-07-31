@@ -33,6 +33,29 @@ def slugify(en_name):
     return slug if slug else "unnamed"
 
 
+def _increment_catalog_version(conn):
+    """V11: 递增 catalog_version config key，触发 menu_service 缓存失效。
+    在 conn.commit() 前调用，确保在同一事务内。"""
+    v_row = conn.execute("SELECT value FROM config WHERE key = 'catalog_version'").fetchone()
+    old_v = int(v_row["value"]) if v_row and v_row["value"] else 1
+    new_v = str(old_v + 1)
+    conn.execute(
+        "INSERT INTO config (key, value) VALUES ('catalog_version', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = ?",
+        (new_v, new_v)
+    )
+    return new_v
+
+
+def _invalidate_menu_cache():
+    """V11: 调用 menu_service 的 cache invalidation"""
+    try:
+        from menu_service import invalidate_catalog_cache
+        invalidate_catalog_cache()
+    except Exception:
+        pass
+
+
 def load_dish_pool():
     with open(DISH_POOL_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
@@ -1744,12 +1767,17 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                     quick_soup, slow_soup, manual_only_for_breakfast,
                     dish_id
                 ))
+                # V11: 递增 catalog_version → 触发 cache invalidation
+                _increment_catalog_version(conn)
                 conn.commit()
                 log_event("dish_edited", "dishes", dish_id, {
                     "old_name": old_name, "new_name": name_cn, "via": "photo_manager"
                 })
             finally:
                 conn.close()
+
+            # V11: 失效 menu_service catalog cache
+            _invalidate_menu_cache()
 
             # 同步 photo manifest（重命名照片映射）
             manifest = load_manifest()
@@ -1837,12 +1865,17 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                     json.dumps(meal_tags, ensure_ascii=False), 1 if banquet else 0,
                     quick_soup, slow_soup, manual_only_for_breakfast
                 ))
+                # V11: 递增 catalog_version → 触发 cache invalidation
+                _increment_catalog_version(conn)
                 conn.commit()
                 log_event("dish_added", "dishes", new_id, {
                     "name_cn": name_cn, "name_en": name_en, "via": "photo_manager"
                 })
             finally:
                 conn.close()
+
+            # V11: 失效 menu_service catalog cache
+            _invalidate_menu_cache()
 
             new_slug = slugify(name_en)
             print(f"  [OK] 添加菜品 (SQLite): {name_cn} / {name_en} -> {category_id}")
@@ -1878,6 +1911,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                     "UPDATE dishes SET is_active = 0, deleted_at = datetime('now') WHERE id = ?",
                     (dish_id,)
                 )
+                # V11: 递增 catalog_version → 触发 cache invalidation
+                _increment_catalog_version(conn)
                 conn.commit()
 
                 log_event("dish_soft_deleted", "dishes", dish_id, {
@@ -1885,6 +1920,9 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 })
             finally:
                 conn.close()
+
+            # V11: 失效 menu_service catalog cache
+            _invalidate_menu_cache()
 
             # 删除照片
             manifest = load_manifest()
@@ -1926,9 +1964,14 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                         c.get("order", c.get("sort_order", 0)),
                         1 if c.get("active", True) else 0,
                     ))
+                # V11: 递增 catalog_version（分类变化影响过滤）
+                _increment_catalog_version(conn)
                 conn.commit()
             finally:
                 conn.close()
+
+            # V11: 失效 menu_service catalog cache
+            _invalidate_menu_cache()
 
             print(f"  [OK] 保存分类设置 (SQLite, {len(categories)} 个分类)")
             self._json_response(200, {"success": True})
@@ -1954,9 +1997,14 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                             "INSERT INTO custom_tags_def (label) VALUES (?)",
                             (label,)
                         )
+                # V11: 递增 catalog_version（标签变化影响过滤）
+                _increment_catalog_version(conn)
                 conn.commit()
             finally:
                 conn.close()
+
+            # V11: 失效 menu_service catalog cache
+            _invalidate_menu_cache()
 
             print(f"  [OK] 保存自定义标签 (SQLite, {len(custom_tags)} 个)")
             self._json_response(200, {"success": True})

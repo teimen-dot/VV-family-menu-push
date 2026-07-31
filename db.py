@@ -94,6 +94,22 @@ def init_db():
     # V8 迁移：dishes 表增加 meal_roles（多选角色字段）
     _safe_add_column(c, "dishes", "meal_roles", "TEXT DEFAULT '[]'")
 
+    # ========== V11: dish_preference_stats - VV 常选菜统计 ==========
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS dish_preference_stats (
+            dish_id                 TEXT PRIMARY KEY,
+            vv_confirm_count        INTEGER DEFAULT 0,
+            vv_confirm_count_30d    INTEGER DEFAULT 0,
+            last_confirmed_at       TEXT,
+            last_selected_at        TEXT,
+            FOREIGN KEY (dish_id) REFERENCES dishes(id)
+        )
+    """)
+
+    # V11: menus 表增加 meal_mode + banquet_total_diners
+    _safe_add_column(c, "menus", "meal_mode", "TEXT DEFAULT 'daily'")
+    _safe_add_column(c, "menus", "banquet_total_diners", "INTEGER")
+
     # ========== 3. ingredients - 食材库 ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS ingredients (
