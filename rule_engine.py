@@ -273,6 +273,8 @@ class MealState:
         # V9: 基于 meal_roles 的精确槽位计数（不依赖 ingredients）
         self.egg_dish_count = 0
         self.tofu_dish_count = 0
+        # V11.1: 一餐型料理标志 — 在场时蛋白质/蔬菜/主食槽位全部满足
+        self.has_one_pot_meal = False
 
     def add_dish(self, analysis, is_locked=False):
         """添加一道菜到状态中。无论 locked 还是 AI 选的，只计算一次。"""
@@ -318,6 +320,8 @@ class MealState:
         if "tofu_dish" in roles:
             self.tofu_dish_count += 1
         if "one_pot_meal" in roles or cat == "one_pot_meal":
+            # V11.1: 一餐型料理 = 完整一餐，蛋白质/蔬菜/主食全部满足
+            self.has_one_pot_meal = True
             # 一餐型料理同时贡献蛋白质和主食
             if "protein_main" not in roles and cat not in ("protein_main", "egg_tofu"):
                 self.protein_count += 1
@@ -408,16 +412,18 @@ class RuleEngine:
         """
         warnings = []
 
-        if state.porridge_slot < 1:
-            warnings.append("早餐缺粥 / No porridge")
-        if state.companion_staple_slot < 1:
-            warnings.append("早餐缺搭配主食 / No companion staple (mantou/jiaozi/huajuan)")
-        if state.coarse_grain_slot < 1:
-            warnings.append("早餐缺粗粮 / No coarse grain")
-        if len(state.proteins) < 1:
-            warnings.append("早餐缺蛋白质 / No protein")
-        if state.vegetable_count < 2:
-            warnings.append(f"早餐蔬菜不足: {state.vegetable_count}种 / Insufficient vegetables ({state.vegetable_count}, need >=2)")
+        # V11.1: 一餐型料理覆盖 粥/搭配主食/粗粮/蛋白质/蔬菜
+        if not state.has_one_pot_meal:
+            if state.porridge_slot < 1:
+                warnings.append("早餐缺粥 / No porridge")
+            if state.companion_staple_slot < 1:
+                warnings.append("早餐缺搭配主食 / No companion staple (mantou/jiaozi/huajuan)")
+            if state.coarse_grain_slot < 1:
+                warnings.append("早餐缺粗粮 / No coarse grain")
+            if len(state.proteins) < 1:
+                warnings.append("早餐缺蛋白质 / No protein")
+            if state.vegetable_count < 2:
+                warnings.append(f"早餐蔬菜不足: {state.vegetable_count}种 / Insufficient vegetables ({state.vegetable_count}, need >=2)")
         # V3 新增
         if state.egg_slot < 1:
             warnings.append("早餐还没有鸡蛋 / No egg for breakfast")
@@ -443,12 +449,14 @@ class RuleEngine:
         """
         warnings = []
 
-        if len(state.proteins) < 1:
-            warnings.append("午餐缺蛋白质 / No protein for lunch")
-        if state.vegetable_count < 1:
-            warnings.append("午餐缺蔬菜 / No vegetables for lunch")
-        if state.carb_count < 1:
-            warnings.append("午餐缺主食 / No carb for lunch")
+        # V11.1: 一餐型料理覆盖 蛋白质/蔬菜/主食
+        if not state.has_one_pot_meal:
+            if len(state.proteins) < 1:
+                warnings.append("午餐缺蛋白质 / No protein for lunch")
+            if state.vegetable_count < 1:
+                warnings.append("午餐缺蔬菜 / No vegetables for lunch")
+            if state.carb_count < 1:
+                warnings.append("午餐缺主食 / No carb for lunch")
         # V3 新增
         if state.quick_soup_slot < 1:
             warnings.append("午餐还没有快手汤 / No quick soup for lunch")
@@ -474,14 +482,20 @@ class RuleEngine:
 
         if state.dish_count < 3:
             warnings.append(f"晚餐菜品不足: {state.dish_count}道 / Insufficient dishes ({state.dish_count}, need >=3)")
-        if state.protein_count < target["protein_main"]:
-            warnings.append(f"晚餐蛋白质不足: {state.protein_count}/{target['protein_main']} / Insufficient protein ({state.protein_count}/{target['protein_main']}, diners={diners_count})")
-        if state.vegetable_dish_count < target["vegetable_dish"]:
-            warnings.append(f"晚餐蔬菜不足: {state.vegetable_dish_count}/{target['vegetable_dish']} / Insufficient vegetable dishes ({state.vegetable_dish_count}/{target['vegetable_dish']}, diners={diners_count})")
-        if state.carb_count < 1:
-            warnings.append("晚餐缺主食 / No carb for dinner")
-        if state.carb_count > 1:
-            warnings.append(f"晚餐主食过多: {state.carb_count}道 / Too many carbs ({state.carb_count})")
+        # V11.1: 一餐型料理覆盖 蛋白质/蔬菜/主食
+        if not state.has_one_pot_meal:
+            if state.protein_count < target["protein_main"]:
+                warnings.append(f"晚餐蛋白质不足: {state.protein_count}/{target['protein_main']} / Insufficient protein ({state.protein_count}/{target['protein_main']}, diners={diners_count})")
+            if state.vegetable_dish_count < target["vegetable_dish"]:
+                warnings.append(f"晚餐蔬菜不足: {state.vegetable_dish_count}/{target['vegetable_dish']} / Insufficient vegetable dishes ({state.vegetable_dish_count}/{target['vegetable_dish']}, diners={diners_count})")
+            if state.carb_count < 1:
+                warnings.append("晚餐缺主食 / No carb for dinner")
+            if state.carb_count > 1:
+                warnings.append(f"晚餐主食过多: {state.carb_count}道 / Too many carbs ({state.carb_count})")
+            # 弱主食
+            if state.carb_types and not state.has_strong_carb:
+                warnings.append(f"晚餐主食偏弱 / Weak carb: {list(state.carb_types)}")
+
         # V3 新增
         if state.slow_soup_slot < 1:
             warnings.append("晚餐还没有煲汤 / No slow-cooked soup for dinner")
@@ -494,10 +508,6 @@ class RuleEngine:
         spicy_count = state.tastes.count("spicy")
         if spicy_count > 1:
             warnings.append(f"晚餐辣味较多: {spicy_count}道 / Too many spicy dishes ({spicy_count})")
-
-        # 弱主食
-        if state.carb_types and not state.has_strong_carb:
-            warnings.append(f"晚餐主食偏弱 / Weak carb: {list(state.carb_types)}")
 
         return True, [], warnings
 
@@ -568,10 +578,14 @@ class RuleEngine:
         V3: 包含 tofu/egg/quick_soup/slow_soup 新槽位。
         V9: 早餐 egg_slot/tofu_slot 基于 meal_roles（非 ingredients）；
              晚餐按 2/3/4 人精确定量。
+        V11.1: 一餐型料理在场 → 蛋白质/蔬菜/主食视为已满足（汤仍需检查）。
         满足 → STOP，不再加菜。
         不满足 → 继续补缺口。
         """
         if meal_type == "breakfast":
+            if state.has_one_pot_meal:
+                # 一餐型料理覆盖 粥/搭配主食/粗粮/蛋白质/蔬菜，仍需 egg + tofu
+                return state.egg_slot >= 1 and state.tofu_slot >= 1
             return (
                 state.porridge_slot >= 1
                 and state.companion_staple_slot >= 1
@@ -582,6 +596,8 @@ class RuleEngine:
                 and state.tofu_slot >= 1
             )
         elif meal_type == "lunch":
+            if state.has_one_pot_meal:
+                return state.quick_soup_slot >= 1
             return (
                 len(state.proteins) >= 1
                 and state.vegetable_dish_count >= 1
@@ -591,6 +607,8 @@ class RuleEngine:
         elif meal_type == "dinner":
             # V9: 按人数精确定量
             target = RuleEngine._dinner_target(diners_count)
+            if state.has_one_pot_meal:
+                return state.slow_soup_slot >= target["slow_soup"]
             return (
                 state.protein_count >= target["protein_main"]
                 and state.vegetable_dish_count >= target["vegetable_dish"]
@@ -670,6 +688,18 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
             "missing_min": max(0, tgt - cur),
             "excess": max(0, cur - tgt),  # V11: for reconcile
         }
+
+    # V11.1: 一餐型料理在场 → 蛋白质/蔬菜/主食槽位全部满足（汤除外）
+    if state.has_one_pot_meal:
+        _one_pot_satisfied = {
+            "protein_main", "vegetable_dish", "vegetable",
+            "staple", "porridge", "companion_staple", "coarse_grain",
+        }
+        for slot in result:
+            if slot in _one_pot_satisfied:
+                result[slot]["missing_min"] = 0
+                result[slot]["current"] = max(result[slot]["current"], result[slot]["target_min"])
+
     return result
 
 
