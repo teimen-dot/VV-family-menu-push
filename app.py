@@ -140,78 +140,6 @@ def update_menu_diners(menu_id, diners_list):
         conn.close()
 
 
-def get_allergy_alerts(dish_ids, diner_ids=None):
-    """检查菜品是否含有某位用餐者过敏的食材。
-    返回: {dish_id: [{diner_id, diner_name, allergen}]}
-    """
-    if not dish_ids:
-        return {}
-    conn = get_db()
-    try:
-        # 获取所有过敏信息
-        alerts = conn.execute(
-            "SELECT da.diner_id, d.name_cn as diner_name, d.name_en as diner_name_en, "
-            "da.allergen, da.severity "
-            "FROM dietary_alerts da JOIN diners d ON da.diner_id = d.id"
-        ).fetchall()
-
-        if not alerts:
-            return {}
-
-        # 如果指定了用餐成员，只检查这些成员
-        if diner_ids:
-            alerts = [a for a in alerts if a["diner_id"] in diner_ids]
-
-        if not alerts:
-            return {}
-
-        # 获取菜品食材
-        placeholders = ",".join("?" * len(dish_ids))
-        dish_ings = conn.execute(
-            f"SELECT di.dish_id, di.ingredient_id, i.name_cn as ing_name "
-            f"FROM dish_ingredients di JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
-            f"WHERE di.dish_id IN ({placeholders})",
-            dish_ids
-        ).fetchall()
-
-        # 检查每道菜的食材是否匹配过敏源
-        result = {}
-        for di in dish_ings:
-            for alert in alerts:
-                allergen = alert["allergen"].lower()
-                ing_name = (di["ing_name"] or "").lower()
-                ing_id = (di["ingredient_id"] or "").lower()
-
-                # 匹配逻辑：食材ID或名称包含过敏源关键词
-                matched = False
-                if allergen in ("shellfish", "甲壳类"):
-                    shellfish_keywords = ["shrimp", "prawn", "crab", "lobster", "虾", "蟹", "龙虾", "皮皮虾"]
-                    matched = any(kw in ing_id or kw in ing_name for kw in shellfish_keywords)
-                elif allergen in ("seafood", "海鲜"):
-                    seafood_keywords = ["shrimp", "prawn", "crab", "lobster", "fish", "cod", "mackerel",
-                                        "salmon", "tuna", "oyster", "clam", "scallop", "urchin",
-                                        "虾", "蟹", "鱼", "蚝", "蛤", "带子", "海胆", "刺身", "寿司"]
-                    matched = any(kw in ing_id or kw in ing_name for kw in seafood_keywords)
-                else:
-                    matched = allergen in ing_id or allergen in ing_name
-
-                if matched:
-                    did = di["dish_id"]
-                    if did not in result:
-                        result[did] = []
-                    result[did].append({
-                        "diner_id": alert["diner_id"],
-                        "diner_name": alert["diner_name"],
-                        "diner_name_en": alert["diner_name_en"],
-                        "allergen": alert["allergen"],
-                        "severity": alert["severity"],
-                    })
-
-        return result
-    finally:
-        conn.close()
-
-
 def get_all_ingredients():
     """获取所有食材（含 aliases 和 ingredient_group）"""
     conn = get_db()
@@ -581,8 +509,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .diner-chip.active{background:#2c2620;color:#faf7f2;border-color:#2c2620}
 .diner-chip.active .diner-en{color:#a89888}
 .diner-en{font-size:10px;opacity:.7}
-.badge-allergy{background:#fff3cd;color:#856404;border:1px solid #ffeaa7;font-size:10px;padding:2px 6px;border-radius:4px;margin-left:4px;white-space:nowrap}
-.allergy-note{background:#fff8e1;border:1px solid #ffe082;border-radius:6px;padding:6px 10px;margin-top:4px;font-size:11px;color:#856404}
 .purchase-task{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f0e8}
 .purchase-task:last-child{border-bottom:none}
 .purchase-task .info{flex:1;min-width:0}
@@ -682,21 +608,12 @@ def render_tomorrow(role="owner", location="shenzhen"):
         "dinner": ("#c0504c", "晚餐", "Dinner"),
     }
 
-    # 获取用餐成员和过敏信息
+    # 获取用餐成员（仅用于人数计算，不参与过敏判断）
     all_diners = get_all_diners()
     menu_diners = get_menu_diners(menu["menu_id"]) if menu.get("menu_id") else []
     # 默认使用 default_attends=1 的成员
     if not menu_diners:
         menu_diners = [d["id"] for d in all_diners if d["default_attends"]]
-
-    # 收集所有菜品ID用于过敏检测
-    all_dish_ids = []
-    for mt in ["breakfast", "lunch", "afternoon_snack", "dinner"]:
-        for d in menu["meals"].get(mt, []):
-            did = d.get("dish_id", "")
-            if did and did.startswith("dish_"):
-                all_dish_ids.append(did)
-    allergy_alerts = get_allergy_alerts(all_dish_ids, menu_diners) if all_dish_ids else {}
 
     # V3: 生成 Warning（不阻断 Confirm）
     menu_warnings = []
@@ -813,31 +730,12 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 if role == "owner":
                     item_actions = f'<div class="item-actions"><button class="item-btn" onclick="openDishSearch(\'{mt}\',{d["menu_item_id"]})" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" title="删除 Delete">×</button></div>'
 
-                # 过敏提醒
-                allergy_badge = ""
-                allergy_note = ""
-                dish_alerts = allergy_alerts.get(d.get("dish_id", ""), [])
-                if dish_alerts:
-                    # 去重：同一过敏源只显示一次
-                    seen = set()
-                    unique_alerts = []
-                    for a in dish_alerts:
-                        key = (a["diner_id"], a["allergen"])
-                        if key not in seen:
-                            seen.add(key)
-                            unique_alerts.append(a)
-                    alert_names = ", ".join(f'{a["diner_name"]} {a["allergen"]}' for a in unique_alerts)
-                    alert_names_en = ", ".join(f'{a["diner_name_en"]} {a["allergen"]}' for a in unique_alerts)
-                    allergy_badge = f'<span class="badge-allergy">⚠️ {alert_names}</span>'
-                    allergy_note = f'<div class="allergy-note">⚠️ 忌口提醒：{alert_names_en} — 主人可选择保留 Allergy Alert — Keep This Dish is allowed</div>'
-
                 items_html += f"""<div class="meal-item">
 {img_html}{no_img}
 <div class="info">
-<div class="dish-name">{source_badge}{archived_badge}{shortage_badge}{d["name_cn"]}{allergy_badge}</div>
+<div class="dish-name">{source_badge}{archived_badge}{shortage_badge}{d["name_cn"]}</div>
 <div class="dish-name-en">{d["name_en"] or ""}</div>
 <div class="dish-meta">{cat_badge} {" · ".join(d.get("protein_types", []) or [])} {("· " + " ".join((d.get("vegetables") or [])[:2])) if d.get("vegetables") else ""}</div>
-{allergy_note}
 </div>{item_actions}</div>"""
 
             sections.append(f"""<div class="meal-section">
@@ -905,7 +803,7 @@ function toggleDiner(id){{
   fetch('/api/tomorrow/diners',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,diners:selectedDiners}})}}).then(r=>r.json()).then(res=>{{
     if(res.ok){{snack('用餐成员已更新 Diners updated');}}
   }});
-  // Reload to update allergy alerts
+  // Reload to refresh menu
   setTimeout(()=>location.reload(),800);
 }}
 // V5: Dish search modal (replaces prompt-based number selection)

@@ -65,7 +65,7 @@ def init_db():
             cooking_methods         TEXT DEFAULT '[]',
             can_serve_warm          INTEGER DEFAULT 0,
             custom_tags             TEXT DEFAULT '[]',
-            allergens               TEXT DEFAULT '[]',
+            allergens               TEXT DEFAULT '[]',  -- DEPRECATED: 不再用于过敏判断，保留旧数据
             dietary_tags            TEXT DEFAULT '[]',
             quick_soup              INTEGER DEFAULT 0,
             slow_soup               INTEGER DEFAULT 0,
@@ -85,6 +85,10 @@ def init_db():
     _safe_add_column(c, "dishes", "quick_soup", "INTEGER DEFAULT 0")
     _safe_add_column(c, "dishes", "slow_soup", "INTEGER DEFAULT 0")
     _safe_add_column(c, "dishes", "manual_only_for_breakfast", "INTEGER DEFAULT 0")
+
+    # V6 迁移：dishes 表增加 is_active + deleted_at（Soft Delete）
+    _safe_add_column(c, "dishes", "is_active", "INTEGER DEFAULT 1")
+    _safe_add_column(c, "dishes", "deleted_at", "TEXT")
 
     # ========== 3. ingredients - 食材库 ==========
     c.execute("""
@@ -199,19 +203,26 @@ def init_db():
 
     # ========== 9. menu_items - 菜单中的菜品 ==========
     # dish_id: 新数据存 dishes.id；历史迁移数据存原始文本（无 FK 约束以兼容）
+    # V6: custom_name 用于手动添加的非菜品库菜品；dish_id 或 custom_name 至少一个非空
     c.execute("""
         CREATE TABLE IF NOT EXISTS menu_items (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             menu_id         INTEGER NOT NULL,
-            dish_id         TEXT NOT NULL,
+            dish_id         TEXT,
+            custom_name     TEXT,
             meal_type       TEXT NOT NULL,
             is_locked       INTEGER DEFAULT 0,
             locked_by       TEXT,
             locked_at       TEXT,
             sort_order      INTEGER DEFAULT 0,
+            source          TEXT DEFAULT 'ai',
             FOREIGN KEY (menu_id) REFERENCES menus(id)
         )
     """)
+
+    # V6 迁移：为已存在的 menu_items 表添加新列（幂等）
+    _safe_add_column(c, "menu_items", "custom_name", "TEXT")
+    _safe_add_column(c, "menu_items", "source", "TEXT DEFAULT 'ai'")
 
     # ========== 10. selections - 老板点菜记录 ==========
     c.execute("""
@@ -258,7 +269,7 @@ def init_db():
         )
     """)
 
-    # ========== 13. dietary_alerts - 忌口/过敏 ==========
+    # ========== 13. dietary_alerts - DEPRECATED: 忌口/过敏（保留旧数据，Runtime/API/UI/AI 不再读取） ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS dietary_alerts (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
