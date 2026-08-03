@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8f4">
+  <meta name="description" content="家庭菜单管家">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/ui/styles.css">
+  <title>家庭菜单 Family Menu</title>
+</head>
+<body data-role="__ROLE__" data-location="__LOCATION__">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/tomorrow" aria-label="家庭菜单首页">
+        <span class="brand-mark" aria-hidden="true">M</span>
+        <span><strong>家庭菜单</strong><small>Family menu</small></span>
+      </a>
+      <div class="header-actions">
+        <div class="kitchen-switch" role="group" aria-label="切换厨房">
+          <button class="kitchen-button" data-location="shenzhen" type="button">深圳 Shenzhen</button>
+          <button class="kitchen-button" data-location="hongkong" type="button">香港 Hong Kong</button>
+        </div>
+        <span class="role-badge" id="role-badge"></span>
+      </div>
+    </div>
+  </header>
+  <div class="kitchen-context" role="status" aria-live="polite">
+    <div class="kitchen-context-inner"><span class="context-pin" aria-hidden="true"></span><span class="context-label">当前厨房 <b>Kitchen</b>:</span><strong id="current-kitchen"></strong></div>
+  </div>
+  <nav class="primary-nav" aria-label="主导航">
+    <div class="nav-inner">
+      <a class="nav-item" data-route="tomorrow" href="/tomorrow"><span>明日</span><small>Tomorrow</small></a>
+      <a class="nav-item" data-route="pantry" href="/pantry"><span>食材</span><small>Pantry</small></a>
+      <a class="nav-item" data-route="dishes" href="/dishes"><span>菜品</span><small>Dishes</small></a>
+      <a class="nav-item" data-route="history" href="/history"><span>历史</span><small>History</small></a>
+    </div>
+  </nav>
+  <main id="main" class="page-shell" tabindex="-1">
+    <div class="loading-state" id="loading"><div></div><div></div><div></div></div>
+    <div id="app-view" aria-live="polite"></div>
+  </main>
+  <div class="toast" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+  <script src="/ui/app.js" defer></script>
+</body>
+</html>

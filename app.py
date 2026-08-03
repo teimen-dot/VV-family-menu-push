@@ -40,6 +40,7 @@ PORT = 8090
 HOST = server_host()
 PHOTOS_DIR = photo_dir(BASE_DIR)
 PWA_DIR = os.path.join(BASE_DIR, "pwa", "family")
+UI_DIR = os.path.join(BASE_DIR, "family_ui")
 LOCATIONS = {"shenzhen": "深圳 Shenzhen", "hongkong": "香港 Hong Kong"}
 
 OWNER_ONLY_POST_PATHS = {
@@ -82,6 +83,35 @@ def post_path_allowed(role, path):
     if path in PANTRY_POST_PATHS or path in {"/api/dishes/availability", "/api/dishes/recommend"}:
         return True
     return role == "owner"
+
+
+def render_family_ui(role, location):
+    """Render the new UI shell; all business data is loaded from authenticated APIs."""
+    with open(os.path.join(UI_DIR, "index.html"), encoding="utf-8") as handle:
+        content = handle.read()
+    return content.replace("__ROLE__", role).replace("__LOCATION__", location)
+
+
+def get_ui_context(role, location):
+    tomorrow = get_tomorrow_date()
+    menu = get_menu_with_dishes(tomorrow)
+    diners = get_all_diners()
+    selected = get_menu_diners(menu["menu_id"]) if menu.get("menu_id") else []
+    if not selected:
+        selected = [d["id"] for d in diners if d["default_attends"]]
+    mode = get_menu_meal_mode(menu["menu_id"]) if menu.get("menu_id") else {
+        "meal_mode": "daily", "banquet_total_diners": None
+    }
+    return {
+        "role": role,
+        "location": location,
+        "location_label": LOCATIONS.get(location, location),
+        "diners": diners,
+        "selected_diners": selected,
+        "meal_mode": mode["meal_mode"],
+        "banquet_total_diners": mode["banquet_total_diners"],
+        "warnings": [],
+    }
 
 
 def health_result():
@@ -2031,6 +2061,10 @@ class AppHandler(BaseHTTPRequestHandler):
             self.serve_pwa_asset(path[1:])
             return
 
+        if path in ("/ui/styles.css", "/ui/app.js"):
+            self.serve_ui_asset(path.rsplit("/", 1)[-1])
+            return
+
         if role == "unknown":
             self.send_forbidden()
             return
@@ -2042,18 +2076,18 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
         elif path == "/" or path == "/tomorrow":
-            self.send_html(render_tomorrow(role, location))
+            self.send_html(render_family_ui(role, location))
         elif path == "/pantry":
-            self.send_html(render_pantry(role, location))
+            self.send_html(render_family_ui(role, location))
         elif path == "/pantry/submit":
             # V6: pantry submit 已合并到主页面，重定向
             self.send_response(302)
             self.send_header("Location", "/pantry")
             self.end_headers()
         elif path == "/dishes":
-            self.send_html(render_dishes(role, location))
+            self.send_html(render_family_ui(role, location))
         elif path == "/history":
-            self.send_html(render_history(role, location))
+            self.send_html(render_family_ui(role, location))
 
         # API 路由
         elif path == "/api/dishes":
@@ -2104,6 +2138,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(get_categories())
         elif path == "/api/diners":
             self.send_json(get_all_diners())
+        elif path == "/api/ui-context":
+            self.send_json(get_ui_context(role, location))
         else:
             self.send_error(404, "Not Found")
 
@@ -2361,6 +2397,26 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=86400" if filename.endswith(".png") else "no-cache")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve_ui_asset(self, filename):
+        if filename not in {"styles.css", "app.js"}:
+            self.send_error(404)
+            return
+        path = os.path.join(UI_DIR, filename)
+        try:
+            with open(path, "rb") as handle:
+                data = handle.read()
+        except OSError:
+            self.send_error(404)
+            return
+        content_type = "text/css; charset=utf-8" if filename.endswith(".css") else "application/javascript; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
