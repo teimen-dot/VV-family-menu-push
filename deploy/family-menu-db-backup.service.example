@@ -9,11 +9,8 @@ User=root
 Group=root
 WorkingDirectory=/opt/family-menu/app
 EnvironmentFile=/etc/family-menu.env
-Environment=BACKUP_DIR=/opt/family-menu/backups/db-daily
-Environment=BACKUP_RETENTION=14
-Environment=BACKUP_DB_COMPRESS=true
 UMask=0077
-ExecStart=/usr/bin/python3 /opt/family-menu/app/backup_data.py db
+ExecStart=/usr/bin/env BACKUP_DIR=/opt/family-menu/backups/db-daily BACKUP_RETENTION=14 BACKUP_DB_COMPRESS=true /usr/bin/python3 /opt/family-menu/app/backup_data.py db
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

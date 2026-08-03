@@ -9,10 +9,8 @@ User=root
 Group=root
 WorkingDirectory=/opt/family-menu/app
 EnvironmentFile=/etc/family-menu.env
-Environment=BACKUP_DIR=/opt/family-menu/backups/photos-daily
-Environment=BACKUP_RETENTION=7
 UMask=0077
-ExecStart=/usr/bin/python3 /opt/family-menu/app/backup_data.py photos
+ExecStart=/usr/bin/env BACKUP_DIR=/opt/family-menu/backups/photos-daily BACKUP_RETENTION=7 /usr/bin/python3 /opt/family-menu/app/backup_data.py photos
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
