@@ -1,18 +1,21 @@
 # HANDOFF.md — 家庭菜单系统交接笔记
 
 > 最后更新：2026-08-03
-> 适用状态：Task A/B/C1/C2.1/C2.2/C2.2.1 后的当前真实架构
+> 适用状态：Task A/B/C1/C2.1/C2.2/C2.2.1/C2.2.2/C2.3 后的当前真实架构
 
 ## 当前阶段闸门
 
 - **C2.2 双域名 HTTPS：通过。**
 - **C2.2 浏览器产品验收：通过。** Family、Worker、Admin、移动端布局和 PWA 均已人工验收。
 - **C2.2.1 Owner/Worker 权限与账号收尾：通过。**
-- **不得自动开始 C2.3。** C2.3 才负责最终数据同步、正式数据源切换、备份 timer、真实 PushPlus 凭证及首次受控推送。
-- 当前必须保持：`APP_ENV=development`、`PUSH_ENABLED=false`、PushPlus token/topic 为空。
-- Mac `family_menu.db` 仍是唯一正式可写真相源；腾讯云数据库仍是测试快照。
+- **C2.2.2 新 Family UI：通过。** 新 UI 已接入真实 API/SQLite，不使用 mock 或 localStorage 业务数据。
+- **C2.3 正式数据切换与备份：通过。** 腾讯云 SQLite 已成为唯一正式可写真相源。
+- 当前必须保持：`APP_ENV=production`、`PUSH_ENABLED=false`、PushPlus token/topic 为空。
+- Mac 数据源已于 2026-08-03 HKT 冻结；冻结快照保留在 `/private/tmp/family-menu-c2.3-final-20260803-170236/`，本地 8080/8090 不恢复。
+- 正式数据库 SHA-256：`f8446e0bb42ed74eef97621d4092dd757520bbd8b45bac20e0579bcd70b318a4`。
+- 正式数据数量：211 dishes、202 active、20 menus、99 menu_items、34 pantry、789 events、0 push_logs。
 
-## 当前真实生产候选架构
+## 当前真实生产架构
 
 ```text
 Internet
@@ -90,7 +93,7 @@ SQLite     /opt/family-menu/data/family_menu.db
 - 图片元数据来自 `dishes.image`，文件来自 `photos/`。
 - `menu_data.json`、`dish_pool.json`、`photo_manifest.json` 不参与正式 H5、Manager 或 Push runtime。
 - 普通菜品删除是 Soft Delete：`is_active=0`，保留 `dishes.image` 和图片文件。
-- C2.3 前不要把腾讯云测试快照当作正式可写真相源。
+- 腾讯云 `/opt/family-menu/data/family_menu.db` 是唯一正式可写真相源；Mac 数据库只作冻结归档。
 
 ## PushPlus 与调度状态
 
@@ -107,7 +110,7 @@ VV Confirm
 当前安全状态：
 
 ```text
-APP_ENV=development
+APP_ENV=production
 PUSH_ENABLED=false
 PUSHPLUS_TOKEN=
 PUSHPLUS_TOPIC=
@@ -117,8 +120,8 @@ H5_BASE_URL=https://menu.ourmenu.site
 - 不得发送真实或测试 PushPlus。
 - GitHub `main` 中四个 legacy workflow 的 `schedule` 已移除，正式 schedule 总数为 0；仅保留手动入口用于历史/诊断。
 - 2026-08-02 至 2026-08-03 的五条错误通知已逐条确认来自旧 GitHub Actions schedule，不是 SQLite PushService。
-- Mac launchd/cron 未发现推送任务；Lighthouse 未启用 reminder/backup timer 或相关 cron/process。
-- 19:00、20:00 reminder 只允许在 C2.3 最后阶段、首次真实 Push 验证后启用。
+- Mac launchd/cron 未发现推送任务；Lighthouse 未启用 reminder，DB/photos backup timers 已启用。
+- 19:00、20:00 reminder 尚未启用；只允许在后续首次真实 Push 验证且用户明确指定启用日期后启用。
 - 不再使用 10:30 daily push、21:00 reminder 或 GitHub Actions production scheduler。
 
 ## PWA 与移动端
@@ -135,6 +138,8 @@ family-menu-app.service    active/enabled
 family-menu-admin.service  active/enabled
 nginx.service              active/enabled
 certbot.timer              active/enabled
+family-menu-db-backup.timer active/enabled
+family-menu-photos-backup.timer active/enabled
 ```
 
 未安装或未启用：
@@ -142,8 +147,6 @@ certbot.timer              active/enabled
 ```text
 family-menu-reminder-19.timer
 family-menu-reminder-20.timer
-family-menu-backup.timer
-family-menu-photos-backup.timer
 ```
 
 ## 已完成验收
@@ -160,18 +163,14 @@ family-menu-photos-backup.timer
 - `nginx -t`、SQLite `quick_check`、应用日志检查通过。
 - 浏览器人工验收已确认 Family、Worker、Admin、手机布局和 PWA 正常。
 
-## C2.3 前仍需明确授权
+## 上线后仍需单独授权
 
-C2.3 尚未开始。只有用户明确下达 C2.3 指令后，才可执行：
+当前网站和备份已正式上线，PushPlus 与 reminder 仍保持关闭。后续必须另开 Gate：
 
-1. 停止 Mac 正式写入。
-2. 使用 SQLite Backup API 创建最终数据库快照。
-3. 最终同步 DB 与 photos，并核对数量/完整性。
-4. 将腾讯云切换为唯一可写真相源。
-5. 启用 DB/photos 备份 timer 与恢复演练。
-6. 由 root 写入真实 PushPlus token/topic。
-7. 保持 `PUSH_ENABLED=false` 先验证 Confirm、Preview、图片和 payload。
-8. 再切 `APP_ENV=production`、`PUSH_ENABLED=true`，执行一次人工受控推送。
-9. 核对实际通知、`push_logs` 和重复保护后，最后启用 19:00/20:00 reminder。
+1. 用户检查并接受新 UI。
+2. 由 root 安全写入真实 PushPlus token/topic，仍保持 `PUSH_ENABLED=false`。
+3. 使用正式 PushService 执行一次受控测试消息。
+4. 用户确认只收到一条且内容正确后，才允许设置 `PUSH_ENABLED=true`。
+5. 最后询问 19:00/20:00 reminder 从今天还是明天启用；未得到回答不得启用。
 
-任何一步失败，应立即关闭 Push、停止 reminder，并按 `DEPLOYMENT.md` 回滚；不得回退到旧 JSON 双数据源或旧 GitHub schedule 架构。
+任何一步失败，应立即关闭 Push、停止 reminder，并按回滚文档处理；不得回退到旧 JSON 双数据源或旧 GitHub schedule 架构。
