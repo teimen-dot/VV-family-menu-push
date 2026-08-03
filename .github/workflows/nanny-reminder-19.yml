@@ -1,9 +1,8 @@
 name: Nanny Reminder 19:00
 
 on:
-  schedule:
-    # UTC 11:00 = 北京时间/香港时间 19:00
-    - cron: '0 11 * * *'
+  # Task C1: production schedule moved to the Lighthouse systemd timer.
+  # Manual trigger remains only for repository history/diagnostics.
   workflow_dispatch:
 
 jobs:

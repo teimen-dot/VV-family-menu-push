@@ -1,9 +1,7 @@
 name: VV Reminder 21:00
 
 on:
-  schedule:
-    # UTC 13:00 = 北京时间/香港时间 21:00
-    - cron: '0 13 * * *'
+  # Task A: 21:00 VV reminder disabled; manual trigger retained as legacy.
   workflow_dispatch:
 
 jobs:
