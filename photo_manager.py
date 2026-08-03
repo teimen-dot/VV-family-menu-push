@@ -15,13 +15,34 @@ import base64
 import webbrowser
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+from photo_security import (
+    PhotoValidationError, resolve_photo_path, safe_slug, validate_image_bytes,
+)
+from runtime_config import app_env, max_upload_bytes, photo_dir, server_host
 
 # ========== 路径配置 ==========
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DISH_POOL_FILE = os.path.join(BASE_DIR, "dish_pool.json")
-MANIFEST_FILE = os.path.join(BASE_DIR, "photo_manifest.json")
-PHOTOS_DIR = os.path.join(BASE_DIR, "photos")
+PHOTOS_DIR = photo_dir(BASE_DIR)
+PWA_DIR = os.path.join(BASE_DIR, "pwa", "admin")
+HOST = server_host()
+MAX_UPLOAD_BYTES = max_upload_bytes()
 PORT = 8080
+
+
+def health_result():
+    try:
+        from db import get_db
+        conn = get_db()
+        try:
+            db_ok = conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        finally:
+            conn.close()
+        photos_ok = os.path.isdir(PHOTOS_DIR) and os.access(PHOTOS_DIR, os.R_OK | os.W_OK)
+        if not db_ok or not photos_ok:
+            raise RuntimeError("health check failed")
+        return 200, {"status": "ok", "database": "ok", "photos": "ok"}
+    except Exception:
+        return 503, {"status": "error", "database": "error", "photos": "error"}
 
 
 def slugify(en_name):
@@ -56,32 +77,71 @@ def _invalidate_menu_cache():
         pass
 
 
-def load_dish_pool():
-    with open(DISH_POOL_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_dish_pool(pool):
-    with open(DISH_POOL_FILE, "w", encoding="utf-8") as f:
-        json.dump(pool, f, ensure_ascii=False, indent=2)
-
-
-def load_manifest():
-    if os.path.exists(MANIFEST_FILE):
-        with open(MANIFEST_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def save_manifest(manifest):
-    with open(MANIFEST_FILE, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
-
-
 def ensure_dirs():
     os.makedirs(PHOTOS_DIR, exist_ok=True)
-    if not os.path.exists(MANIFEST_FILE):
-        save_manifest({})
+
+
+def store_photo_for_dish(zh_name, slug, image_data):
+    """Write one image and atomically register it in SQLite dishes.image."""
+    extension = validate_image_bytes(image_data, MAX_UPLOAD_BYTES)
+    filename = f"{safe_slug(slug)}{extension}"
+    filepath = os.path.join(PHOTOS_DIR, filename)
+    from db import get_db
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, image FROM dishes WHERE name_cn=? AND is_active=1", (zh_name,)
+        ).fetchone()
+        if not row:
+            raise ValueError("找不到 active 菜品")
+        old_file = row["image"] or ""
+        with open(filepath, "wb") as f:
+            f.write(image_data)
+        conn.execute(
+            "UPDATE dishes SET image=?,image_uploaded=1,updated_at=datetime('now') WHERE id=?",
+            (filename, row["id"]),
+        )
+        _increment_catalog_version(conn)
+        conn.commit()
+    except Exception:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        raise
+    finally:
+        conn.close()
+    if old_file and old_file != filename:
+        old_path = os.path.join(PHOTOS_DIR, old_file)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    _invalidate_menu_cache()
+    return filename
+
+
+def soft_delete_dish(dish_id):
+    """Archive a dish while preserving its image and historical visibility."""
+    from db import get_db, log_event
+    conn = get_db()
+    try:
+        dish = conn.execute(
+            "SELECT name_cn, image FROM dishes WHERE id = ?", (dish_id,)
+        ).fetchone()
+        if not dish:
+            return False, "菜品不存在"
+        conn.execute(
+            "UPDATE dishes SET is_active=0,deleted_at=datetime('now'),updated_at=datetime('now') "
+            "WHERE id=?",
+            (dish_id,),
+        )
+        _increment_catalog_version(conn)
+        conn.commit()
+        name_cn = dish["name_cn"]
+    finally:
+        conn.close()
+    _invalidate_menu_cache()
+    log_event("dish_soft_deleted", "dishes", dish_id, {
+        "name_cn": name_cn, "deleted_via": "photo_manager", "image_preserved": True
+    })
+    return True, name_cn
 
 
 def generate_dish_id(pool):
@@ -99,8 +159,7 @@ def generate_dish_id(pool):
 
 
 def get_all_dishes():
-    """V7: 从 SQLite 读菜品 (is_active=1)，photo manifest 用于 has_photo/photo_file
-    SQLite 是唯一真相源，dish_pool.json 已废弃为只读快照。"""
+    """V7: 从 SQLite 读取 active 菜品及 dishes.image。"""
     from db import get_db
     conn = get_db()
     try:
@@ -117,12 +176,11 @@ def get_all_dishes():
             ORDER BY d.category_id, d.name_cn
         """).fetchall()
 
-        manifest = load_manifest()
         result = []
         for r in rows:
             name_cn = r["name_cn"] or ""
-            has_photo = name_cn in manifest
-            photo_file = manifest.get(name_cn, {}).get("file", "") if has_photo else (r["image"] or "")
+            photo_file = r["image"] or ""
+            has_photo = bool(photo_file)
 
             # 解析 JSON 字段
             def _parse(v):
@@ -198,7 +256,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="菜品管理">
+<meta name="theme-color" content="#007aff">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <title>菜品管理器 v2.0</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -669,6 +734,34 @@ body {
   padding: 60px 20px;
   color: #8e8e93;
   font-size: 15px;
+}
+@media (max-width:767px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .header { padding: 12px 10px; }
+  .header-inner { gap: 8px; }
+  .header-actions { gap: 5px; }
+  .search-box, .filter-bar { padding-left: 10px; padding-right: 10px; }
+  .container { padding: 12px 10px calc(40px + env(safe-area-inset-bottom)); }
+  .category-section { margin-bottom: 22px; }
+  .category-title { width: 100%; margin-bottom: 8px; }
+  .dish-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .dish-card { min-width: 0; border-width: 1px; border-radius: 9px; }
+  .dish-photo-area { aspect-ratio: 1 / 1; }
+  .dish-info { padding: 6px; min-width: 0; }
+  .dish-zh {
+    display: -webkit-box;
+    min-height: 2.6em;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+  }
+  .dish-en, .card-badges { display: none; }
+  .has-photo-badge { top: 4px; right: 4px; padding: 1px 4px; font-size: 9px; }
+  .card-actions button { padding: 7px 1px; font-size: 10px; }
 }
 </style>
 </head>
@@ -1600,12 +1693,16 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/" or path == "/index.html":
             self._serve_html()
+        elif path == "/health":
+            self._serve_health()
         elif path == "/api/dishes":
             self._serve_dishes()
         elif path == "/api/categories":
             self._serve_categories()
         elif path == "/api/custom_tags":
             self._serve_custom_tags()
+        elif path in ("/manifest.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/favicon.png"):
+            self._serve_pwa_asset(path[1:])
         elif path.startswith("/photos/"):
             self._serve_photo(path)
         else:
@@ -1635,7 +1732,30 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         body = HTML_PAGE.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_pwa_asset(self, filename):
+        allowed = {
+            "manifest.webmanifest": "application/manifest+json; charset=utf-8",
+            "apple-touch-icon.png": "image/png",
+            "icon-192.png": "image/png",
+            "icon-512.png": "image/png",
+            "favicon.png": "image/png",
+        }
+        content_type = allowed.get(filename)
+        filepath = os.path.join(PWA_DIR, filename)
+        if not content_type or not os.path.isfile(filepath):
+            self._json_response(404, {"error": "Not found"})
+            return
+        with open(filepath, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=86400" if filename.endswith(".png") else "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1647,14 +1767,28 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         self._json_response(200, get_categories())
 
     def _serve_custom_tags(self):
-        pool = load_dish_pool()
-        tags = pool.get("custom_tags_def", [])
-        self._json_response(200, tags)
+        from db import get_db
+        conn = get_db()
+        try:
+            tags = [dict(row) for row in conn.execute("SELECT id, label FROM custom_tags_def ORDER BY id")]
+            self._json_response(200, tags)
+        finally:
+            conn.close()
+
+    def _serve_health(self):
+        status, payload = health_result()
+        self._json_response(status, payload)
 
     def _serve_photo(self, path):
-        filename = os.path.basename(path)
-        filepath = os.path.join(PHOTOS_DIR, filename)
-        if not os.path.exists(filepath):
+        filename = path[len("/photos/"):]
+        try:
+            filepath = resolve_photo_path(PHOTOS_DIR, filename)
+        except PhotoValidationError:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not os.path.isfile(filepath):
             self.send_response(404)
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -1662,7 +1796,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         with open(filepath, "rb") as f:
             body = f.read()
         self.send_response(200)
-        self.send_header("Content-Type", "image/jpeg")
+        extension = os.path.splitext(filepath)[1].lower()
+        self.send_header("Content-Type", "image/png" if extension == ".png" else "image/jpeg")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
@@ -1684,24 +1819,16 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"success": False, "error": "缺少参数"})
                 return
 
-            image_data = base64.b64decode(image_b64)
-            filename = f"{slug}.jpg"
-            filepath = os.path.join(PHOTOS_DIR, filename)
-
-            with open(filepath, "wb") as f:
-                f.write(image_data)
-
-            manifest = load_manifest()
-            from datetime import date as _date
-            manifest[zh_name] = {
-                "file": filename,
-                "uploaded": _date.today().isoformat(),
-            }
-            save_manifest(manifest)
+            if len(image_b64) > ((MAX_UPLOAD_BYTES * 4 // 3) + 16):
+                raise PhotoValidationError("image payload too large")
+            image_data = base64.b64decode(image_b64, validate=True)
+            filename = store_photo_for_dish(zh_name, slug, image_data)
 
             print(f"  [OK] 照片已保存: {filename} ({len(image_data) // 1024}KB) -> {zh_name}")
             self._json_response(200, {"success": True, "file": filename})
 
+        except (PhotoValidationError, ValueError, base64.binascii.Error) as e:
+            self._json_response(400, {"success": False, "error": str(e)})
         except Exception as e:
             print(f"  [ERROR] 上传失败: {e}")
             self._json_response(500, {"success": False, "error": str(e)})
@@ -1779,18 +1906,13 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             # V11: 失效 menu_service catalog cache
             _invalidate_menu_cache()
 
-            # 同步 photo manifest（重命名照片映射）
-            manifest = load_manifest()
-            has_photo = False
-            photo_file = ""
-            if old_name != name_cn and old_name in manifest:
-                manifest[name_cn] = manifest.pop(old_name)
-                save_manifest(manifest)
-                has_photo = True
-                photo_file = manifest[name_cn].get("file", "")
-            elif name_cn in manifest:
-                has_photo = True
-                photo_file = manifest[name_cn].get("file", "")
+            conn = get_db()
+            try:
+                image_row = conn.execute("SELECT image FROM dishes WHERE id=?", (dish_id,)).fetchone()
+                photo_file = image_row["image"] or "" if image_row else ""
+                has_photo = bool(photo_file)
+            finally:
+                conn.close()
 
             new_slug = slugify(name_en)
             print(f"  [OK] 编辑菜品 (SQLite): {old_name} -> {name_cn}")
@@ -1895,45 +2017,11 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"success": False, "error": "缺少 id"})
                 return
 
-            # V7: Soft Delete — SQLite 是唯一真相源
-            from db import get_db, log_event
-            conn = get_db()
-            try:
-                dish = conn.execute("SELECT name_cn FROM dishes WHERE id = ?", (dish_id,)).fetchone()
-                if not dish:
-                    self._json_response(404, {"success": False, "error": f"菜品不存在: {dish_id}"})
-                    return
-
-                name_cn = dish["name_cn"]
-
-                # Soft Delete: is_active = 0, deleted_at = timestamp
-                conn.execute(
-                    "UPDATE dishes SET is_active = 0, deleted_at = datetime('now') WHERE id = ?",
-                    (dish_id,)
-                )
-                # V11: 递增 catalog_version → 触发 cache invalidation
-                _increment_catalog_version(conn)
-                conn.commit()
-
-                log_event("dish_soft_deleted", "dishes", dish_id, {
-                    "name_cn": name_cn, "deleted_via": "photo_manager"
-                })
-            finally:
-                conn.close()
-
-            # V11: 失效 menu_service catalog cache
-            _invalidate_menu_cache()
-
-            # 删除照片
-            manifest = load_manifest()
-            if name_cn in manifest:
-                photo_file = manifest[name_cn].get("file", "")
-                if photo_file:
-                    photo_path = os.path.join(PHOTOS_DIR, photo_file)
-                    if os.path.exists(photo_path):
-                        os.remove(photo_path)
-                del manifest[name_cn]
-                save_manifest(manifest)
+            ok, result = soft_delete_dish(dish_id)
+            if not ok:
+                self._json_response(404, {"success": False, "error": result})
+                return
+            name_cn = result
 
             print(f"  [OK] 菜品已下架(Soft Delete): {name_cn}")
             self._json_response(200, {"success": True, "soft_delete": True})
@@ -2017,6 +2105,7 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -2025,14 +2114,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
 def main():
     ensure_dirs()
 
-    if not os.path.exists(DISH_POOL_FILE):
-        print(f"[ERROR] 找不到 {DISH_POOL_FILE}")
-        print("  请确保在项目根目录下运行此脚本")
-        return
-
     dishes = get_all_dishes()
-    manifest = load_manifest()
-    photo_count = len(manifest)
+    photo_count = sum(1 for dish in dishes if dish.get("has_photo"))
 
     print("=" * 55)
     print("  🍳 菜品管理器 v2.0（结构化字段 + 分类/标签管理）")
@@ -2041,18 +2124,18 @@ def main():
     print(f"  已传照片: {photo_count} 道")
     print(f"  待传照片: {len(dishes) - photo_count} 道")
     print(f"  照片目录: {PHOTOS_DIR}")
-    print(f"  映射文件: {MANIFEST_FILE}")
-    print(f"  菜谱文件: {DISH_POOL_FILE}")
+    print("  图片元数据: SQLite dishes.image")
     print("-" * 55)
-    print(f"  浏览器打开: http://localhost:{PORT}")
+    print(f"  浏览器打开: http://{HOST}:{PORT}")
     print("  操作完成后关闭此窗口即可")
     print("  之后执行 ./sync.sh 同步到 GitHub")
     print("=" * 55)
     print()
 
-    webbrowser.open(f"http://localhost:{PORT}")
+    if app_env() == "development" and os.environ.get("BROWSER", "true").lower() == "true":
+        webbrowser.open(f"http://{HOST}:{PORT}")
 
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), PhotoManagerHandler)
+    server = ThreadingHTTPServer((HOST, PORT), PhotoManagerHandler)
     server.daemon_threads = True
     try:
         server.serve_forever()

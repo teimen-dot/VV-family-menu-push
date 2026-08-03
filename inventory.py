@@ -13,11 +13,9 @@
 
 import os
 import json
-import urllib.request
 from datetime import date, datetime, timedelta
 from db import get_db, log_event, get_config, set_config
-
-PUSHPLUS_API = "https://www.pushplus.plus/send"
+from push_service import PushPlusClient, PushError
 
 # ============================================================
 # V10: 食材别名归一化 (Canonical Ingredient ID Normalization)
@@ -896,29 +894,10 @@ def update_purchase_status(request_id, status, resolved_by=None, notes=None):
 # ============================================================
 
 def send_pushplus(token, topic, title, content):
-    """通过 PushPlus API 发送消息"""
-    payload = {
-        "token": token,
-        "title": title,
-        "content": content,
-        "template": "markdown",
-    }
-    if topic:
-        payload["topic"] = topic
-
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        PUSHPLUS_API,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            return result.get("code") == 200
-    except Exception as e:
+        PushPlusClient(token, topic).send(title, content)
+        return True
+    except PushError as e:
         print(f"[ERROR] PushPlus 通知失败: {e}")
         return False
 
@@ -963,8 +942,8 @@ def notify_purchase_requests(request_ids, location="shenzhen"):
         title = f"采购通知 - {menu_date} - {len(rows)}项"
 
         # 发送 PushPlus
-        token = os.environ.get("PUSHPLUS_TOKEN", get_config("pushplus_token", ""))
-        topic = os.environ.get("PUSHPLUS_TOPIC", get_config("pushplus_topic", "home-menu"))
+        token = os.environ.get("PUSHPLUS_TOKEN", "")
+        topic = os.environ.get("PUSHPLUS_TOPIC", "home-menu")
 
         if not token:
             print("[WARN] 未配置 PUSHPLUS_TOKEN，跳过通知")

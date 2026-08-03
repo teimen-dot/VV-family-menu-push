@@ -59,7 +59,7 @@ def _get_effective_diners_count(menu_id=None, menu_row=None):
 
 
 def _load_pool():
-    """V6: 从 SQLite 加载菜品池（Single Source of Truth），不再读 dish_pool.json。
+    """V6: 从 SQLite 加载菜品池（Single Source of Truth）。
     只加载 is_active=1 的菜品。
     V11: 使用 catalog_version 缓存，菜品管理器变更时自动失效。"""
     catalog_version = get_config("catalog_version") or "1"
@@ -312,6 +312,10 @@ def get_menu_with_dishes(date_str):
             "exists": True,
             "menu_id": menu["id"],
             "status": menu["status"],
+            "confirmed_at": menu["confirmed_at"],
+            "pushed_at": menu["pushed_at"],
+            "push_status": menu["push_status"] if "push_status" in menu.keys() else "not_sent",
+            "push_error": menu["push_error"] if "push_error" in menu.keys() else None,
             "location": location,
             "meals": meals,
             "shortages": shortage_map,
@@ -325,6 +329,11 @@ def add_dish_to_menu(menu_id, dish_id, meal_type):
     """添加一道菜到菜单的指定餐次。Owner 添加的菜自动锁定。"""
     conn = get_db()
     try:
+        active = conn.execute(
+            "SELECT 1 FROM dishes WHERE id=? AND is_active=1", (dish_id,)
+        ).fetchone()
+        if not active:
+            return False
         # 获取当前最大 sort_order
         row = conn.execute(
             "SELECT MAX(sort_order) as max_sort FROM menu_items WHERE menu_id = ? AND meal_type = ?",
@@ -374,6 +383,11 @@ def replace_dish_in_menu(menu_id, menu_item_id, new_dish_id):
     """替换菜单中的一道菜。替换后的菜自动锁定为 owner 选择。"""
     conn = get_db()
     try:
+        active = conn.execute(
+            "SELECT 1 FROM dishes WHERE id=? AND is_active=1", (new_dish_id,)
+        ).fetchone()
+        if not active:
+            return False, "目标菜品不存在或已下架"
         item = conn.execute(
             "SELECT is_locked, meal_type, sort_order FROM menu_items WHERE id = ? AND menu_id = ?",
             (menu_item_id, menu_id)
@@ -1016,12 +1030,18 @@ def confirm_menu(menu_id):
         conn.execute(
             "UPDATE menus SET status = 'confirmed', confirmed_at = ?, "
             "auto_confirmed = 0, "
-            "notes_zh = ?, notes_en = ? WHERE id = ?",
+            "notes_zh = ?, notes_en = ?, push_status = 'not_sent', "
+            "push_error = NULL, confirmed_revision = NULL WHERE id = ?",
             (datetime.now().isoformat(),
              "; ".join(warnings) if warnings else "",
              "",
              menu_id)
         )
+        conn.commit()
+        # Freeze the exact confirmed content revision before any delivery attempt.
+        from push_service import load_menu_for_push, menu_revision
+        revision = menu_revision(load_menu_for_push(menu_id))
+        conn.execute("UPDATE menus SET confirmed_revision = ? WHERE id = ?", (revision, menu_id))
         conn.commit()
         log_event("menu_confirmed", "menu", str(menu_id), {
             "by": "vv",
@@ -1057,7 +1077,8 @@ def revert_to_draft(menu_id):
             return False, f"当前状态 {menu['status']} 不支持回退"
 
         conn.execute(
-            "UPDATE menus SET status = 'draft', confirmed_at = NULL WHERE id = ?",
+            "UPDATE menus SET status = 'draft', confirmed_at = NULL, "
+            "confirmed_revision = NULL, push_status = 'not_sent', push_error = NULL WHERE id = ?",
             (menu_id,)
         )
         conn.commit()
@@ -1070,27 +1091,9 @@ def revert_to_draft(menu_id):
 
 
 def push_menu(menu_id):
-    """V3: 推送菜单。只有 VV confirmed 的菜单才能推送。"""
-    conn = get_db()
-    try:
-        menu = conn.execute("SELECT status, date FROM menus WHERE id = ?", (menu_id,)).fetchone()
-        if not menu:
-            return False, "菜单不存在"
-        if menu["status"] != "confirmed":
-            return False, f"菜单状态为 {menu['status']}，只有 VV confirmed 才能推送"
-
-        conn.execute(
-            "UPDATE menus SET status = 'pushed', pushed_at = ? WHERE id = ?",
-            (datetime.now().isoformat(), menu_id)
-        )
-        conn.commit()
-        log_event("menu_pushed", "menu", str(menu_id), {
-            "pushed_by": "system",
-            "trigger": "vv_confirmed"
-        })
-        return True, "菜单已推送"
-    finally:
-        conn.close()
+    """兼容旧调用；实际发送与状态持久化统一由 PushService 完成。"""
+    from push_service import push_confirmed_menu
+    return push_confirmed_menu(menu_id)
 
 
 def ensure_tomorrow_menu(location="shenzhen", seed=None):

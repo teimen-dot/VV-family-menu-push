@@ -32,10 +32,70 @@ from menu_service import (
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
     get_tomorrow_date, revert_to_draft, push_menu,
 )
+from photo_security import PhotoValidationError, resolve_photo_path
+from runtime_config import photo_dir, server_host, validate_app_startup
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = 8090
+HOST = server_host()
+PHOTOS_DIR = photo_dir(BASE_DIR)
+PWA_DIR = os.path.join(BASE_DIR, "pwa", "family")
 LOCATIONS = {"shenzhen": "深圳 Shenzhen", "hongkong": "香港 Hong Kong"}
+
+OWNER_ONLY_POST_PATHS = {
+    "/api/ingredients/add",
+    "/api/tomorrow/add",
+    "/api/tomorrow/remove",
+    "/api/tomorrow/replace",
+    "/api/tomorrow/ai-fill",
+    "/api/tomorrow/repair",
+    "/api/tomorrow/confirm",
+    "/api/tomorrow/revert",
+    "/api/tomorrow/push",
+    "/api/tomorrow/diners",
+    "/api/tomorrow/meal-mode",
+    "/api/purchase/update",
+}
+PANTRY_POST_PATHS = {
+    "/api/pantry/submit",
+    "/api/pantry/add",
+    "/api/pantry/same-as-last",
+    "/api/pantry/update_status",
+    "/api/pantry/remove",
+}
+
+
+def authenticated_role(username):
+    """Map the trusted Nginx-authenticated username to an application role."""
+    owner = os.environ.get("OWNER_AUTH_USERNAME", "").strip()
+    worker = os.environ.get("WORKER_AUTH_USERNAME", "").strip()
+    if username and owner and username == owner:
+        return "owner"
+    if username and worker and username == worker:
+        return "worker"
+    return "unknown"
+
+
+def post_path_allowed(role, path):
+    if role not in ("owner", "worker"):
+        return False
+    if path in PANTRY_POST_PATHS or path in {"/api/dishes/availability", "/api/dishes/recommend"}:
+        return True
+    return role == "owner"
+
+
+def health_result():
+    try:
+        conn = get_db()
+        try:
+            result = conn.execute("PRAGMA quick_check").fetchone()[0]
+        finally:
+            conn.close()
+        if result != "ok":
+            raise RuntimeError("database check failed")
+        return 200, {"status": "ok", "database": "ok"}
+    except Exception:
+        return 503, {"status": "error", "database": "error"}
 
 
 # ============================================================
@@ -388,13 +448,14 @@ def get_all_ingredients():
 
 
 def _load_dish_name_map():
-    """加载 dish_pool.json 建立中文菜名→英文名映射（用于历史菜单英文补全）"""
+    """从 SQLite 建立中文菜名→英文名映射（包含已下架历史菜）。"""
+    conn = get_db()
     try:
-        with open(os.path.join(BASE_DIR, "dish_pool.json"), "r", encoding="utf-8") as f:
-            pool = json.load(f)
-        return {d["name_cn"]: d.get("name_en", "") for d in pool.get("dishes", []) if d.get("name_cn")}
-    except Exception:
-        return {}
+        return {row["name_cn"]: row["name_en"] or "" for row in conn.execute(
+            "SELECT name_cn, name_en FROM dishes WHERE name_cn IS NOT NULL"
+        )}
+    finally:
+        conn.close()
 
 
 def _split_text_dishes(text):
@@ -749,9 +810,21 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .act-purchased{background:#d4edda;color:#155724}
 .ing-group-header{font-size:15px;font-weight:600;color:#5a4a3a;padding:8px 0 4px;border-bottom:1px solid #f5f0e8;margin-top:4px}
 .ing-group-header:first-child{margin-top:0}
+@media (max-width:767px){
+html,body{max-width:100%;overflow-x:hidden}
+body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+.content,.card,.pantry-item,.pantry-item>*{min-width:0;max-width:100%}
+.pantry-item{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch;gap:10px}
+.pantry-item>.pantry-name{width:100%;min-width:0}
+.pantry-item .name{white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.pantry-item .name-en{white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.pantry-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%;min-width:0}
+.pantry-status-group{display:contents}
+.st-btn,.pantry-used-up{width:100%;min-width:0;min-height:48px;padding:6px 3px;justify-content:center;text-align:center;white-space:normal;line-height:1.15;overflow-wrap:normal}
+}
 """
 
-def page_head(title, active_nav="", location="shenzhen"):
+def page_head(title, active_nav="", location="shenzhen", role="owner"):
     loc_btns = ""
     for loc_id, loc_label in LOCATIONS.items():
         cls = "active" if loc_id == location else ""
@@ -771,8 +844,14 @@ def page_head(title, active_nav="", location="shenzhen"):
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="家庭菜单">
+<meta name="theme-color" content="#2c2620">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <title>{title}</title>
 <style>{CSS}</style>
 </head>
@@ -833,8 +912,9 @@ def get_location_from_cookie(cookie_header):
 
 def render_tomorrow(role="owner", location="shenzhen"):
     tomorrow = get_tomorrow_date()
-    # 确保菜单存在
-    ensure_tomorrow_menu(location)
+    # Viewing as Worker must never create or regenerate menu data.
+    if role == "owner":
+        ensure_tomorrow_menu(location)
     menu = get_menu_with_dishes(tomorrow)
 
     meal_colors = {
@@ -858,7 +938,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
     meal_mode = meal_mode_info["meal_mode"]
     banquet_total = meal_mode_info["banquet_total_diners"] or 8
 
-    # V3: 生成 Warning（不阻断 Confirm）— V8: 从 SQLite 读取（不再读 dish_pool.json）
+    # V3: 生成 Warning（不阻断 Confirm）— V8: 从 SQLite 读取
     menu_warnings = []
     if menu.get("exists") and menu.get("menu_id"):
         try:
@@ -892,35 +972,35 @@ def render_tomorrow(role="owner", location="shenzhen"):
         status_text = {"draft": "待确认 Pending", "confirmed": "已确认 Confirmed", "pushed": "已推送 Pushed"}.get(menu["status"], menu["status"])
         sections.append(f'<div class="card"><p>状态 Status: <span class="status-tag {status_cls}">{status_text}</span></p><p style="margin-top:4px;font-size:14px">日期 Date: {menu["date"]} | {LOCATIONS.get(menu["location"], menu["location"])}</p></div>')
 
-        # 用餐成员选择
-        diners_chips = ""
-        for d in all_diners:
-            active = "active" if d["id"] in menu_diners else ""
-            diners_chips += f'<span class="diner-chip {active}" data-diner="{d["id"]}" onclick="toggleDiner(\'{d["id"]}\')">{d["name_cn"]} <span class="diner-en">{d["name_en"]}</span></span>'
-        sections.append(f'<div class="diners-section"><div class="diners-title">用餐成员 Diners</div><div class="diners-row">{diners_chips}</div></div>')
+        if role == "owner":
+            # Owner-only menu configuration controls.
+            diners_chips = ""
+            for d in all_diners:
+                active = "active" if d["id"] in menu_diners else ""
+                diners_chips += f'<span class="diner-chip {active}" data-diner="{d["id"]}" onclick="toggleDiner(\'{d["id"]}\')">{d["name_cn"]} <span class="diner-en">{d["name_en"]}</span></span>'
+            sections.append(f'<div class="diners-section"><div class="diners-title">用餐成员 Diners</div><div class="diners-row">{diners_chips}</div></div>')
 
-        # V11: Meal Mode 选择 (Daily / Banquet)
-        daily_active = "active" if meal_mode == "daily" else ""
-        banquet_active = "active" if meal_mode == "banquet" else ""
-        banquet_input_display = "block" if meal_mode == "banquet" else "none"
-        meal_mode_html = (
-            f'<div class="diners-section">'
-            f'<div class="diners-title">用餐模式 Meal Mode</div>'
-            f'<div class="diners-row">'
-            f'<span class="diner-chip {daily_active}" onclick="setMealMode(\'daily\')">日常 Daily</span>'
-            f'<span class="diner-chip {banquet_active}" onclick="setMealMode(\'banquet\')">家宴 Banquet</span>'
-            f'</div>'
-            f'<div id="banquet-input" style="display:{banquet_input_display};margin-top:8px;align-items:center;gap:10px">'
-            f'<span style="font-size:14px;color:#a89888">家宴总人数 Total Diners</span>'
-            f'<button class="btn-stepper" onclick="adjustBanquet(-1)">−</button>'
-            f'<input type="number" id="banquetTotal" value="{banquet_total}" min="2" max="30" '
-            f'style="width:60px;text-align:center;font-size:18px;border:1px solid #d4c8b8;border-radius:6px;padding:4px" '
-            f'onchange="setBanquetTotal(this.value)">'
-            f'<button class="btn-stepper" onclick="adjustBanquet(1)">+</button>'
-            f'</div>'
-            f'</div>'
-        )
-        sections.append(meal_mode_html)
+            daily_active = "active" if meal_mode == "daily" else ""
+            banquet_active = "active" if meal_mode == "banquet" else ""
+            banquet_input_display = "block" if meal_mode == "banquet" else "none"
+            meal_mode_html = (
+                f'<div class="diners-section">'
+                f'<div class="diners-title">用餐模式 Meal Mode</div>'
+                f'<div class="diners-row">'
+                f'<span class="diner-chip {daily_active}" onclick="setMealMode(\'daily\')">日常 Daily</span>'
+                f'<span class="diner-chip {banquet_active}" onclick="setMealMode(\'banquet\')">家宴 Banquet</span>'
+                f'</div>'
+                f'<div id="banquet-input" style="display:{banquet_input_display};margin-top:8px;align-items:center;gap:10px">'
+                f'<span style="font-size:14px;color:#a89888">家宴总人数 Total Diners</span>'
+                f'<button class="btn-stepper" onclick="adjustBanquet(-1)">−</button>'
+                f'<input type="number" id="banquetTotal" value="{banquet_total}" min="2" max="30" '
+                f'style="width:60px;text-align:center;font-size:18px;border:1px solid #d4c8b8;border-radius:6px;padding:4px" '
+                f'onchange="setBanquetTotal(this.value)">'
+                f'<button class="btn-stepper" onclick="adjustBanquet(1)">+</button>'
+                f'</div>'
+                f'</div>'
+            )
+            sections.append(meal_mode_html)
 
         # V3: Warning UI（不阻断 Confirm）
         if menu_warnings:
@@ -1054,7 +1134,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
 {slot_hint}<div class="meal-items">{items_html}</div></div>""")
 
         # 采购任务区（可操作）
-        if purchase_reqs:
+        if purchase_reqs and role == "owner":
             reqs_html = ""
             for r in purchase_reqs:
                 ing_name = r.get("ingredient_name") or r["ingredient_id"]
@@ -1342,7 +1422,7 @@ async function markPurchased(reqId){{
 }}
 </script>"""
 
-    return f"""{page_head("明日菜单 · Tomorrow", "tomorrow", location)}
+    return f"""{page_head("明日菜单 · Tomorrow", "tomorrow", location, role)}
 <div class="content">{body}</div>
 <div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()">
 <div class="modal" style="max-height:85vh">
@@ -1379,7 +1459,7 @@ def render_dishes(role="owner", location="shenzhen"):
     avail_tabs_html += '<div class="filter-tab" data-avail="almost">差少量 Almost Available</div>'
     avail_tabs_html += "</div>"
 
-    return f"""{page_head("菜品库 · Dishes", "dishes", location)}
+    return f"""{page_head("菜品库 · Dishes", "dishes", location, role)}
 <div class="search-bar"><input type="text" id="search" placeholder="搜索菜名 Search dishes..." oninput="loadDishes()"></div>
 {cat_tabs_html}
 {avail_tabs_html}
@@ -1537,13 +1617,13 @@ def render_pantry(role="nanny", location="shenzhen"):
             # Expiring Soon button
             ex_cls = "active-expiring" if st == "expiring" else ""
             items_html += f"""<div class="pantry-item" id="pi-{ing_id}">
-<div><div class="name">{item["name_cn"]}</div><div class="name-en">{name_en}</div></div>
+<div class="pantry-name"><div class="name">{item["name_cn"]}</div><div class="name-en">{name_en}</div></div>
 <div class="pantry-controls">
 <div class="pantry-status-group">
-<span class="st-btn {pf_cls}" onclick="toggleStatus('{ing_id}','priority_use')">优先用 Use First</span>
-<span class="st-btn {ex_cls}" onclick="toggleStatus('{ing_id}','expiring')">快过期 Expiring Soon</span>
+<span class="st-btn {pf_cls}" onclick="toggleStatus('{ing_id}','priority_use')">优先用<br>Use First</span>
+<span class="st-btn {ex_cls}" onclick="toggleStatus('{ing_id}','expiring')">快过期<br>Expiring Soon</span>
 </div>
-<span class="pantry-used-up" onclick="usedUp('{ing_id}')">用完 Used Up</span>
+<span class="pantry-used-up" onclick="usedUp('{ing_id}')">用完<br>Used Up</span>
 </div></div>"""
 
         sections.append(f'<div class="card">{items_html}</div>')
@@ -1598,7 +1678,7 @@ def render_pantry(role="nanny", location="shenzhen"):
     sections.append('<div id="saveIndicator" style="text-align:center;padding:8px;color:#a89888;font-size:14px;display:none">✓ 已保存 Saved</div>')
 
     body = "\n".join(sections)
-    return f"""{page_head("食材库存 · Pantry", "pantry", location)}
+    return f"""{page_head("食材库存 · Pantry", "pantry", location, role)}
 <div class="content">{body}</div>
 {PAGE_FOOT}
 <script>
@@ -1724,7 +1804,7 @@ def render_pantry_submit(role="nanny", location="shenzhen"):
         "other": "其他 Other",
     }
 
-    return f"""{page_head("管理库存 · Manage Pantry", "pantry", location)}
+    return f"""{page_head("管理库存 · Manage Pantry", "pantry", location, role)}
 <div class="content">
 <div class="card"><p>当前厨房 Kitchen: <strong>{LOCATIONS.get(location, location)}</strong> | 当前库存 <strong>{pantry_count}</strong> 项</p></div>
 
@@ -1914,7 +1994,7 @@ def render_history(role="owner", location="shenzhen"):
 
         body = "\n".join(entries)
 
-    return f"""{page_head("历史菜单 · History", "history", location)}
+    return f"""{page_head("历史菜单 · History", "history", location, role)}
 <div class="content">{body}</div>
 {PAGE_FOOT}"""
 
@@ -1924,27 +2004,51 @@ def render_history(role="owner", location="shenzhen"):
 # ============================================================
 
 class AppHandler(BaseHTTPRequestHandler):
+    def request_role(self):
+        return authenticated_role(self.headers.get("X-Authenticated-User", ""))
+
+    def send_forbidden(self):
+        self.send_json({"error": "forbidden", "message": "Owner permission required"}, 403)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
         qs = parse_qs(parsed.query)
         location = get_location_from_cookie(self.headers.get("Cookie", ""))
-        role = qs.get("role", ["owner"])[0]
+        role = self.request_role()
+
+        if path == "/health":
+            status, payload = health_result()
+            self.send_json(payload, status)
+            return
 
         # 静态资源
         if path.startswith("/photos/"):
             self.serve_photo(path[8:])
             return
 
+        if path in ("/manifest.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/favicon.png"):
+            self.serve_pwa_asset(path[1:])
+            return
+
+        if role == "unknown":
+            self.send_forbidden()
+            return
+
         # 页面路由
-        if path == "/" or path == "/tomorrow":
+        if path == "/" and role == "worker":
+            self.send_response(302)
+            self.send_header("Location", "/pantry")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+        elif path == "/" or path == "/tomorrow":
             self.send_html(render_tomorrow(role, location))
         elif path == "/pantry":
-            self.send_html(render_pantry(qs.get("role", ["nanny"])[0], location))
+            self.send_html(render_pantry(role, location))
         elif path == "/pantry/submit":
             # V6: pantry submit 已合并到主页面，重定向
             self.send_response(302)
-            self.send_header("Location", f"/pantry?role={qs.get('role', ['nanny'])[0]}")
+            self.send_header("Location", "/pantry")
             self.end_headers()
         elif path == "/dishes":
             self.send_html(render_dishes(role, location))
@@ -1979,7 +2083,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(get_all_ingredients())
         elif path == "/api/tomorrow":
             tomorrow = get_tomorrow_date()
-            ensure_tomorrow_menu(location)
+            if role == "owner":
+                ensure_tomorrow_menu(location)
             self.send_json(get_menu_with_dishes(tomorrow))
         elif path == "/api/history":
             days = int(qs.get("days", ["30"])[0])
@@ -2006,6 +2111,13 @@ class AppHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         location = get_location_from_cookie(self.headers.get("Cookie", ""))
+        role = self.request_role()
+        if role == "unknown":
+            self.send_forbidden()
+            return
+        if not post_path_allowed(role, path):
+            self.send_forbidden()
+            return
         body = self.read_json()
 
         if path == "/api/pantry/submit":
@@ -2147,7 +2259,18 @@ class AppHandler(BaseHTTPRequestHandler):
             else:
                 ok, msg = result
                 warnings = []
-            self.send_json({"ok": ok, "error": msg if not ok else None, "warnings": warnings, "message": msg})
+            if ok:
+                from push_service import push_confirmed_menu
+                push_ok, push_msg = push_confirmed_menu(body["menu_id"])
+                self.send_json({
+                    "ok": push_ok, "confirmed": True, "pushed": push_ok,
+                    "error": None if push_ok else push_msg,
+                    "warnings": warnings,
+                    "message": push_msg,
+                })
+            else:
+                self.send_json({"ok": False, "confirmed": False, "pushed": False,
+                                "error": msg, "warnings": warnings, "message": msg})
 
         elif path == "/api/tomorrow/revert":
             # V3: Confirmed → Edit Menu → Reconfirm flow
@@ -2200,8 +2323,12 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not Found")
 
     def serve_photo(self, filename):
-        filepath = os.path.join(BASE_DIR, "photos", filename)
-        if os.path.exists(filepath):
+        try:
+            filepath = resolve_photo_path(PHOTOS_DIR, filename)
+        except PhotoValidationError:
+            self.send_error(404, "Photo not found")
+            return
+        if os.path.isfile(filepath):
             with open(filepath, "rb") as f:
                 data = f.read()
             self.send_response(200)
@@ -2215,10 +2342,33 @@ class AppHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, "Photo not found")
 
+    def serve_pwa_asset(self, filename):
+        allowed = {
+            "manifest.webmanifest": "application/manifest+json; charset=utf-8",
+            "apple-touch-icon.png": "image/png",
+            "icon-192.png": "image/png",
+            "icon-512.png": "image/png",
+            "favicon.png": "image/png",
+        }
+        content_type = allowed.get(filename)
+        filepath = os.path.join(PWA_DIR, filename)
+        if not content_type or not os.path.isfile(filepath):
+            self.send_error(404, "Not Found")
+            return
+        with open(filepath, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "public, max-age=86400" if filename.endswith(".png") else "no-cache")
+        self.end_headers()
+        self.wfile.write(data)
+
     def send_html(self, content):
         data = content.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -2227,6 +2377,7 @@ class AppHandler(BaseHTTPRequestHandler):
         data = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
@@ -2242,10 +2393,11 @@ class AppHandler(BaseHTTPRequestHandler):
 
 
 def main():
+    validate_app_startup()
     # 确保明天菜单存在
     ensure_tomorrow_menu("shenzhen")
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), AppHandler)
-    print(f"[OK] H5 应用已启动: http://localhost:{PORT}")
+    server = ThreadingHTTPServer((HOST, PORT), AppHandler)
+    print(f"[OK] H5 应用已启动: http://{HOST}:{PORT}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

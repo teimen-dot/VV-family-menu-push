@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "family_menu.db")
+DB_PATH = os.environ.get("FAMILY_MENU_DB_PATH", os.path.join(BASE_DIR, "family_menu.db"))
 
 
 def get_db():
@@ -19,6 +19,7 @@ def get_db():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -106,10 +107,6 @@ def init_db():
         )
     """)
 
-    # V11: menus 表增加 meal_mode + banquet_total_diners
-    _safe_add_column(c, "menus", "meal_mode", "TEXT DEFAULT 'daily'")
-    _safe_add_column(c, "menus", "banquet_total_diners", "INTEGER")
-
     # ========== 3. ingredients - 食材库 ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS ingredients (
@@ -125,6 +122,7 @@ def init_db():
 
     # V4 迁移：为已存在的 ingredients 表添加 is_common 列（幂等）
     _safe_add_column(c, "ingredients", "is_common", "INTEGER DEFAULT 0")
+    _safe_add_column(c, "ingredients", "ingredient_group", "TEXT")
 
     # ========== 4. dish_ingredients - 菜品-食材关联 ==========
     c.execute("""
@@ -199,9 +197,6 @@ def init_db():
         )
     """)
 
-    # V4: menus 表增加 inventory_snapshot_id 列
-    _safe_add_column(c, "menus", "inventory_snapshot_id", "INTEGER")
-
     # ========== 8. menus - 每日菜单（按真实日期） ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS menus (
@@ -220,6 +215,16 @@ def init_db():
             updated_at      TEXT DEFAULT (datetime('now'))
         )
     """)
+
+    # Existing menu migrations must run after menus exists (also supports fresh test DBs).
+    _safe_add_column(c, "menus", "inventory_snapshot_id", "INTEGER")
+    _safe_add_column(c, "menus", "meal_mode", "TEXT DEFAULT 'daily'")
+    _safe_add_column(c, "menus", "banquet_total_diners", "INTEGER")
+
+    # Task A: confirmation and delivery are separate states.
+    _safe_add_column(c, "menus", "push_status", "TEXT DEFAULT 'not_sent'")
+    _safe_add_column(c, "menus", "push_error", "TEXT")
+    _safe_add_column(c, "menus", "confirmed_revision", "TEXT")
 
     # ========== 9. menu_items - 菜单中的菜品 ==========
     # dish_id: 新数据存 dishes.id；历史迁移数据存原始文本（无 FK 约束以兼容）
@@ -243,6 +248,25 @@ def init_db():
     # V6 迁移：为已存在的 menu_items 表添加新列（幂等）
     _safe_add_column(c, "menu_items", "custom_name", "TEXT")
     _safe_add_column(c, "menu_items", "source", "TEXT DEFAULT 'ai'")
+
+    # Task A: one durable delivery record per confirmed menu content revision.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS push_logs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_id         INTEGER NOT NULL,
+            menu_revision   TEXT NOT NULL,
+            date            TEXT NOT NULL,
+            location        TEXT NOT NULL,
+            channel         TEXT NOT NULL DEFAULT 'pushplus',
+            status          TEXT NOT NULL,
+            pushed_at       TEXT,
+            error           TEXT,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (menu_id) REFERENCES menus(id),
+            UNIQUE(menu_id, menu_revision, channel)
+        )
+    """)
 
     # ========== 10. selections - 老板点菜记录 ==========
     c.execute("""

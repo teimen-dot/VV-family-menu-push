@@ -1,0 +1,76 @@
+# Final HTTPS template. Replace menu.DOMAIN and admin.DOMAIN before installation.
+# The certificate shown is one SAN certificate whose first name is menu.DOMAIN.
+server {
+    listen 80;
+    server_name menu.DOMAIN admin.DOMAIN;
+
+    location ^~ /.well-known/acme-challenge/ {
+        auth_basic off;
+        root /var/www/html;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# Family H5 and API. Dish photos are intentionally public for PushPlus/WeChat.
+server {
+    listen 443 ssl http2;
+    server_name menu.DOMAIN;
+
+    ssl_certificate /etc/letsencrypt/live/menu.DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/menu.DOMAIN/privkey.pem;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # Enable only after HTTPS is verified end-to-end:
+    # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location ^~ /photos/ {
+        auth_basic off;
+        alias /opt/family-menu/photos/;
+        autoindex off;
+        disable_symlinks on;
+        limit_except GET { deny all; }
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location / {
+        auth_basic "Family Menu";
+        auth_basic_user_file /etc/nginx/auth/family-menu-family.htpasswd;
+        proxy_pass http://127.0.0.1:8090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        # Always overwrite any browser-supplied identity header with Basic Auth.
+        proxy_set_header X-Authenticated-User $remote_user;
+    }
+}
+
+# Admin is a separate authenticated host. Its native /api/ and /photos/ paths
+# require no rewriting and remain behind Admin Basic Auth.
+server {
+    listen 443 ssl http2;
+    server_name admin.DOMAIN;
+
+    ssl_certificate /etc/letsencrypt/live/menu.DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/menu.DOMAIN/privkey.pem;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    location / {
+        auth_basic "Family Menu Admin";
+        auth_basic_user_file /etc/nginx/auth/family-menu-admin.htpasswd;
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        client_max_body_size 9m;
+    }
+}
