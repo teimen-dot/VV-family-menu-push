@@ -2,6 +2,8 @@
 """C2.2.2 new Family UI integration and permission regression tests."""
 
 import importlib
+import gzip
+import importlib.util
 import os
 import sqlite3
 import tempfile
@@ -69,6 +71,18 @@ class NewFamilyUiTests(unittest.TestCase):
         self.assertIn("grid-template-columns: repeat(3, minmax(0, 1fr))", css)
         self.assertIn("if (!owner)", js)
         self.assertIn("credentials: 'same-origin'", js)
+
+    def test_compressed_database_backup_is_valid(self):
+        path = os.path.join(os.path.dirname(__file__), "backup_data.py")
+        spec = importlib.util.spec_from_file_location("c222_backup_data", path)
+        backup_data = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(backup_data)
+        destination = backup_data.backup_database(self.db_path, self.tmp.name, compress=True)
+        self.assertTrue(destination.endswith(".db.gz"))
+        restored = os.path.join(self.tmp.name, "restored.db")
+        with gzip.open(destination, "rb") as source, open(restored, "wb") as target:
+            target.write(source.read())
+        self.assertEqual(backup_data.quick_check(restored), "ok")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Family Menu photos archive daily at 03:30 HKT
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Hong_Kong
+Persistent=false
+AccuracySec=1min
+Unit=family-menu-photos-backup.service
+
+[Install]
+WantedBy=timers.target

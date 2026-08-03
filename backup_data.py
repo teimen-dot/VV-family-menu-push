@@ -3,6 +3,7 @@
 
 import argparse
 import glob
+import gzip
 import os
 import shlex
 import sqlite3
@@ -29,7 +30,7 @@ def quick_check(path):
         conn.close()
 
 
-def backup_database(source, backup_dir, now=None):
+def backup_database(source, backup_dir, now=None, compress=False):
     os.makedirs(backup_dir, exist_ok=True)
     destination = os.path.join(backup_dir, f"family_menu_{_timestamp(now)}.db")
     source_conn = sqlite3.connect(source)
@@ -41,6 +42,17 @@ def backup_database(source, backup_dir, now=None):
         source_conn.close()
     if quick_check(destination) != "ok":
         raise RuntimeError("backup quick_check failed")
+    if compress:
+        compressed = destination + ".gz"
+        with open(destination, "rb") as source_file, gzip.open(compressed + ".tmp", "wb") as target_file:
+            while True:
+                chunk = source_file.read(1024 * 1024)
+                if not chunk:
+                    break
+                target_file.write(chunk)
+        os.replace(compressed + ".tmp", compressed)
+        os.remove(destination)
+        destination = compressed
     return destination
 
 
@@ -93,10 +105,11 @@ def main():
     args = parser.parse_args()
     backup_dir = os.environ.get("BACKUP_DIR", "/opt/family-menu/backups")
     retention = int(os.environ.get("BACKUP_RETENTION", "14"))
+    compress_db = os.environ.get("BACKUP_DB_COMPRESS", "false").lower() == "true"
     artifacts = []
     if args.mode in ("db", "all"):
-        artifacts.append(backup_database(DB_PATH, backup_dir))
-        apply_retention(backup_dir, "family_menu_*.db", retention)
+        artifacts.append(backup_database(DB_PATH, backup_dir, compress=compress_db))
+        apply_retention(backup_dir, "family_menu_*.db.gz" if compress_db else "family_menu_*.db", retention)
     if args.mode in ("photos", "all"):
         artifacts.append(backup_photos(photo_dir(BASE_DIR), backup_dir))
         apply_retention(backup_dir, "photos_*.tar.gz", retention)

@@ -1,0 +1,21 @@
+[Unit]
+Description=Family Menu daily SQLite backup
+After=local-fs.target
+RequiresMountsFor=/opt/family-menu/data /opt/family-menu/backups
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/family-menu/app
+EnvironmentFile=/etc/family-menu.env
+Environment=BACKUP_DIR=/opt/family-menu/backups/db-daily
+Environment=BACKUP_RETENTION=14
+Environment=BACKUP_DB_COMPRESS=true
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/family-menu/app/backup_data.py db
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ReadWritePaths=/opt/family-menu/backups
