@@ -17,6 +17,35 @@
   const jsonList = value => { try { return Array.isArray(value) ? value : JSON.parse(value || '[]'); } catch (_) { return []; } };
   const image = dish => dish.image ? `/photos/${encodeURIComponent(dish.image)}` : '';
 
+  function splitHistoricalCombo(item) {
+    if (!item?.is_historical_combo) return [item];
+    return String(item.name_cn || item.custom_name || '')
+      .replaceAll('＋', '+')
+      .split('+')
+      .map(name => name.trim())
+      .filter(Boolean)
+      .map(name => {
+        const primary = name.split(/\s+\/\s+/)[0].trim();
+        const exact = state.dishes.find(d => d.name_cn === primary);
+        const nearby = exact || state.dishes.find(d => d.name_cn.includes(primary) || primary.includes(d.name_cn));
+        return {
+          ...item,
+          dish_id: nearby?.id || '',
+          name_cn: name,
+          name_en: nearby?.name_en || '',
+          image: nearby?.image || '',
+          meal_roles: nearby?.meal_roles || [],
+          custom_tags: nearby?.custom_tags || [],
+          source: 'historical',
+          virtual_historical_item: true,
+        };
+      });
+  }
+
+  function displayItems(items) {
+    return (items || []).flatMap(splitHistoricalCombo);
+  }
+
   function notify(message, isError = false) {
     clearTimeout(toastTimer);
     toast.textContent = message;
@@ -80,17 +109,23 @@
   }
 
   async function renderTomorrow() {
-    const [menu, context] = await Promise.all([api('/api/tomorrow'), api('/api/ui-context')]);
-    state.menu = menu; state.context = context;
+    const [menu, context, dishes] = await Promise.all([api('/api/tomorrow'), api('/api/ui-context'), api('/api/dishes')]);
+    state.menu = menu; state.context = context; state.dishes = dishes;
     const statusLabel = {draft: '待确认 Pending', confirmed: '已确认 Confirmed', pushed: '已推送 Pushed'}[menu.status] || menu.status;
     const diners = context.diners.map(d => `<button class="person ${context.selected_diners.includes(d.id) ? 'selected' : ''}" data-diner="${esc(d.id)}" aria-pressed="${context.selected_diners.includes(d.id)}"><span class="person-avatar">${esc((d.name_en || d.name_cn).slice(0,1))}</span>${pair(d.name_cn, d.name_en)}</button>`).join('');
-    const mealLabels = {breakfast:['早餐','Breakfast'], lunch:['午餐','Lunch'], dinner:['晚餐','Dinner']};
+    const mealLabels = {breakfast:['早餐','Breakfast'], lunch:['午餐','Lunch'], afternoon_snack:['下午茶','Afternoon Tea'], dinner:['晚餐','Dinner']};
     const meals = Object.entries(mealLabels).map(([key, labels]) => {
-      const items = menu.meals?.[key] || [];
-      return `<section class="meal-section" data-meal="${key}"><header class="meal-header"><div class="meal-title"><span class="meal-accent ${key === 'breakfast' ? 'amber' : key === 'lunch' ? 'blue' : 'red'}"></span><div>${pair(labels[0], labels[1], 'h2')}<p>${items.length} 道 dishes</p></div></div>${owner ? `<div class="meal-actions"><button class="text-button" data-action="add" data-meal="${key}">添加 Add</button><button class="text-button" data-action="fill" data-meal="${key}">智能补充 AI Fill</button></div>` : ''}</header><div class="dish-grid">${items.length ? items.map(item => dishCard(item, owner)).join('') : '<div class="empty-state"><strong>暂无菜品 No dishes</strong></div>'}</div></section>`;
+      const rawItems = menu.meals?.[key] || [];
+      const items = displayItems(rawItems);
+      const accent = key === 'breakfast' ? 'amber' : key === 'lunch' ? 'blue' : key === 'afternoon_snack' ? 'green' : 'red';
+      const controls = owner ? `<div class="meal-actions"><button class="text-button add-button" data-action="add" data-meal="${key}">添加 Add</button>${key === 'afternoon_snack' ? '' : `<button class="text-button fill-button" data-action="fill" data-meal="${key}">智能补充 AI Fill</button>`}</div>` : '';
+      return `<section class="meal-section ${key === 'afternoon_snack' ? 'optional' : ''}" data-meal="${key}"><header class="meal-header"><div class="meal-title"><span class="meal-accent ${accent}"></span><div>${pair(labels[0], labels[1], 'h2')}<p>${items.length ? `${items.length} 道 dishes` : '可选 Optional'}</p></div></div>${controls}</header><div class="dish-grid">${items.length ? items.map(item => dishCard(item, owner && !item.virtual_historical_item)).join('') : '<div class="empty-state"><div class="empty-icon">+</div><div><strong>暂无安排 No dishes</strong><p>需要时可添加菜品。</p></div></div>'}</div></section>`;
     }).join('');
+    const warnings = [...(context.warnings || [])];
+    if (menu.review_issues) warnings.push(menu.review_issues);
+    const banquetTotal = context.banquet_total_diners || 8;
     view.innerHTML = `<section class="page-heading"><div><p class="eyebrow">${esc(menu.date)}</p><h1>明日菜单</h1><p>Tomorrow menu for ${esc(context.location_label)}</p></div><div class="status-chip"><span></span>${esc(statusLabel)}</div></section>
-      <div class="desktop-layout"><aside class="planner-panel"><section class="settings-block"><div class="section-label"><span>用餐成员 Diners</span><small>${context.selected_diners.length} 人</small></div><div class="people-grid">${diners}</div></section><section class="settings-block compact"><div class="section-label"><span>用餐模式 Meal mode</span></div><div class="segmented"><button data-mode="daily" class="${context.meal_mode === 'daily' ? 'selected' : ''}">日常 Daily</button><button data-mode="banquet" class="${context.meal_mode === 'banquet' ? 'selected' : ''}">家宴 Banquet</button></div></section>${context.warnings.length ? `<section class="nutrition-card"><div class="nutrition-heading"><div><small>菜单提示 Review</small><h2>${context.warnings.length} 项需要留意</h2></div></div>${context.warnings.map(w => `<p>${esc(w)}</p>`).join('')}</section>` : ''}${owner ? `<div class="desktop-confirm"><button class="secondary-button" data-action="repair">重新生成 Regenerate</button><button class="primary-button" data-action="confirm">确认菜单 Confirm</button><p>确认会保存，但当前 PushPlus 已关闭</p></div>` : ''}</aside><div class="menu-content">${meals}</div></div>`;
+      <div class="desktop-layout"><aside class="planner-panel"><section class="settings-block"><div class="section-label"><span>用餐成员 Diners</span><small>${context.selected_diners.length} 人</small></div><div class="people-grid">${diners}</div></section><section class="settings-block compact ${context.meal_mode === 'banquet' ? 'banquet-active' : ''}"><div class="section-label"><span>用餐模式 Meal mode</span></div><div class="segmented"><button data-mode="daily" class="${context.meal_mode === 'daily' ? 'selected' : ''}">日常 Daily</button><button data-mode="banquet" class="${context.meal_mode === 'banquet' ? 'selected' : ''}">家宴 Banquet</button></div>${context.meal_mode === 'banquet' ? `<div class="banquet-count"><span>家宴总人数 Banquet diners</span><div class="stepper"><button data-banquet-step="-1">−</button><strong id="banquet-total">${banquetTotal}</strong><button data-banquet-step="1">+</button></div></div>` : ''}</section>${warnings.length ? `<section class="nutrition-card"><div class="nutrition-heading"><div><small>菜单提示 Review</small><h2>${warnings.length} 项需要留意</h2></div></div>${warnings.map(w => `<p>${esc(w)}</p>`).join('')}</section>` : ''}${owner ? `<div class="desktop-confirm"><button class="secondary-button" data-action="repair">重新生成 Regenerate</button><button class="primary-button" data-action="confirm">确认菜单 Confirm</button></div>` : ''}</aside><div class="menu-content">${meals}</div></div>${owner ? `<div class="mobile-action-bar"><button class="secondary-button" data-action="repair">重新生成</button><button class="primary-button" data-action="confirm">确认菜单</button></div>` : ''}`;
     bindTomorrow();
   }
 
@@ -103,6 +138,12 @@
       await post('/api/tomorrow/diners', {menu_id: state.menu.menu_id, diners: next, location: locationName}); await renderTomorrow();
     });
     document.querySelectorAll('[data-mode]').forEach(button => button.onclick = async () => { await post('/api/tomorrow/meal-mode', {menu_id: state.menu.menu_id, meal_mode: button.dataset.mode, banquet_total_diners: button.dataset.mode === 'banquet' ? 8 : null, location: locationName}); await renderTomorrow(); });
+    document.querySelectorAll('[data-banquet-step]').forEach(button => button.onclick = async () => {
+      const current = Number(document.querySelector('#banquet-total').textContent);
+      const total = Math.max(1, Math.min(30, current + Number(button.dataset.banquetStep)));
+      await post('/api/tomorrow/meal-mode', {menu_id: state.menu.menu_id, meal_mode: 'banquet', banquet_total_diners: total, location: locationName});
+      await renderTomorrow();
+    });
     document.querySelectorAll('[data-action]').forEach(button => button.onclick = () => menuAction(button));
   }
 
@@ -136,7 +177,7 @@
     const search = document.querySelector('#pantry-search'); search.oninput = () => { const q = search.value.trim().toLowerCase(); const match = ingredients.find(i => `${i.name_cn} ${i.name_en || ''}`.toLowerCase().includes(q)); document.querySelector('#pantry-search-feedback').innerHTML = q && match ? `<button data-found="${esc(match.ingredient_id)}">加入 ${esc(match.name_cn)}</button>` : q ? '没有匹配食材 No match' : ''; const found = document.querySelector('[data-found]'); if (found) found.onclick = () => pantryPost('/api/pantry/add', {ingredient_id: found.dataset.found, location: locationName}); };
   }
 
-  function pantryRow(item) { return `<div class="ingredient-row"><div>${pair(item.name_cn, item.name_en, 'strong')}</div><div class="stock-actions"><button class="${item.status === 'priority_use' ? 'selected' : ''}" data-status="priority_use" data-id="${esc(item.ingredient_id)}">优先用<br>Use first</button><button class="${item.status === 'expiring' ? 'soon' : ''}" data-status="expiring" data-id="${esc(item.ingredient_id)}">快过期<br>Expiring</button><button class="used" data-remove-ing="${esc(item.ingredient_id)}">用完<br>Used up</button></div></div>`; }
+  function pantryRow(item) { return `<div class="ingredient-row" data-state="${esc(item.status)}"><div>${pair(item.name_cn, item.name_en, 'strong')}</div><div class="stock-actions"><button class="${item.status === 'priority_use' ? 'selected' : ''}" data-status="priority_use" data-id="${esc(item.ingredient_id)}">优先用<br>Use first</button><button class="${item.status === 'expiring' ? 'selected soon' : ''}" data-status="expiring" data-id="${esc(item.ingredient_id)}">快过期<br>Expiring</button><button class="used" data-remove-ing="${esc(item.ingredient_id)}">用完<br>Used up</button></div></div>`; }
   async function pantryPost(path, payload) { try { await post(path, payload); notify('已保存 Saved'); await renderPantry(); } catch (error) { notify(error.message, true); } }
 
   async function renderDishes() {
@@ -151,7 +192,7 @@
 
   async function renderHistory() {
     const menus = await api('/api/history');
-    view.innerHTML = `${heading('历史菜单','History','查看 SQLite 中保存的历史菜单', `<div class="view-count">${menus.length}<small>天</small></div>`)}<div class="history-list">${menus.map(menu => `<article class="history-card"><header><div><h2>${esc(menu.date)}</h2><small>${esc(menu.location)}</small></div><span class="history-status ${menu.status === 'confirmed' ? 'confirmed' : ''}">${esc(menu.status)}</span></header><div class="history-meals">${[['breakfast','早餐'],['lunch','午餐'],['dinner','晚餐']].map(([key,label]) => `<div><b>${label}</b><p>${(menu.meals?.[key] || []).map(d => `${esc(d.name_cn)}${d.name_en ? `<small>${esc(d.name_en)}</small>` : ''}`).join('<br>') || '未安排'}</p></div>`).join('')}</div></article>`).join('')}</div>`;
+    view.innerHTML = `${heading('历史菜单','History','查看 SQLite 中保存的历史菜单', `<div class="view-count"><b class="count-number">${menus.length}</b><small>天 days</small></div>`)}<div class="history-list">${menus.map(menu => `<article class="history-card"><header><div><h2>${esc(menu.date)}</h2><small>${esc(menu.location)}</small></div><span class="history-status ${menu.status === 'confirmed' ? 'confirmed' : ''}">${esc(menu.status)}</span></header><div class="history-meals">${[['breakfast','早餐'],['lunch','午餐'],['afternoon_snack','下午茶'],['dinner','晚餐']].map(([key,label]) => `<div><b>${label}</b><p>${(menu.meals?.[key] || []).map(d => `<span class="history-dish">${image(d) ? `<img src="${image(d)}" alt="" loading="lazy" onerror="this.remove()">` : '<span class="history-placeholder" aria-hidden="true"></span>'}<span>${esc(d.name_cn)}${d.name_en ? `<small>${esc(d.name_en)}</small>` : ''}</span></span>`).join('') || '未安排'}</p></div>`).join('')}</div></article>`).join('')}</div>`;
   }
 
   async function loadRoute() {

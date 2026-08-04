@@ -369,6 +369,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
 .person .lang-en { font-size: 9px; }
 .dish-card > .no-img { align-self: stretch; }
 .history-meals small { display: block; color: var(--muted); font-size: 10px; }
+.history-dish { display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 9px; margin: 7px 0; }
+.history-dish > img, .history-placeholder { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; background: #edf1ee; }
 .picker-item .no-img { width: 78px; height: 78px; min-height: 0; border-radius: 11px; }
 
 @media (max-width: 700px) {
@@ -380,6 +382,8 @@ button:focus-visible, input:focus-visible, a:focus-visible { outline: 3px solid 
   .stock-actions button { min-width: 0; padding-inline: 4px; white-space: normal; }
   .ingredient-row { grid-template-columns: minmax(0, 1fr); }
   .history-meals { grid-template-columns: 1fr; }
+  .mobile-action-bar + * { scroll-margin-bottom: 90px; }
+  body:has(.mobile-action-bar) .page-shell { padding-bottom: 112px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
