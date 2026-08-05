@@ -12,6 +12,14 @@ def push_enabled():
     return app_env() == "production" and os.environ.get("PUSH_ENABLED", "false").strip().lower() == "true"
 
 
+def push_on_confirm_enabled():
+    return push_enabled() and os.environ.get("PUSH_ON_CONFIRM", "false").strip().lower() == "true"
+
+
+def push_schedule_enabled():
+    return os.environ.get("PUSH_SCHEDULE_ENABLED", "false").strip().lower() == "true"
+
+
 def server_host():
     return os.environ.get("HOST", "127.0.0.1").strip() or "127.0.0.1"
 
@@ -52,3 +60,6 @@ def validate_production_h5_url(value):
 def validate_app_startup():
     if app_env() == "production":
         validate_production_h5_url(os.environ.get("H5_BASE_URL", ""))
+        session_secret = os.environ.get("SESSION_SECRET", "").strip()
+        if len(session_secret) < 32:
+            raise ValueError("生产环境 SESSION_SECRET 必须设置且至少 32 字符")

@@ -12,7 +12,8 @@ from db import get_db, log_event, get_config
 from rule_engine import (
     GapFiller, RuleEngine, NutritionAnalyzer, MealState,
     generate_afternoon_snack, get_dish_ingredients_map,
-    get_history_3day, get_history_7day, get_inventory_ingredients,
+    get_inventory_ingredients,
+    get_history_3day, get_history_7day,
     analyze_meal_slots, filter_candidates_for_slot,
     BREAKFAST_COMPANION_STAPLES,
 )
@@ -132,7 +133,7 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     dish_ings = get_dish_ingredients_map()
 
     # 库存上下文
-    inv_avail, inv_pri, inv_exp = get_inventory_ingredients(location)
+    inv_avail, inv_pri, inv_exp = get_available_ingredient_ids(location)
 
     # V10: 读取已有菜单的 diners_count（如果存在），确保晚餐按人数生成
     # V11: 使用 _get_effective_diners_count 支持 banquet 模式
@@ -153,6 +154,7 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     # V11: 获取 VV preference scores
     all_dish_ids = [d["id"] for d in pool["dishes"]]
     vv_prefs = get_preference_scores(all_dish_ids)
+    dish_availability = check_dishes_availability_batch(all_dish_ids, location)
 
     context = {
         "history_3day": get_history_3day(),
@@ -161,6 +163,7 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         "priority_ingredients": inv_pri,
         "expiring_ingredients": inv_exp,
         "dish_ingredients": dish_ings,
+        "dish_availability": {dish_id: value["status"] for dish_id, value in dish_availability.items()},
         "vv_preferences": vv_prefs,  # V11: VV confirm-based preference
         "is_banquet": meal_mode == "banquet",  # V11: banquet mode flag
     }
@@ -993,17 +996,34 @@ def repair_menu(menu_id, location="shenzhen", seed=None):
         conn.close()
 
 
-def confirm_menu(menu_id):
+def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include_transition=False):
     """V3: 确认菜单。Warning 不阻断 Confirm，VV 是唯一最终确认人。
-    V11: 确认时记录 VV 偏好（record_vv_confirm），统计保留的菜品。"""
+    V11: 确认时记录 VV 偏好（record_vv_confirm），统计保留的菜品。
+    同一菜单仅允许从 draft 首次进入 confirmed，重复请求不产生新确认版本。"""
+    def result(ok, message, warnings=None, transitioned=False):
+        values = (ok, message, warnings or [])
+        return values + (transitioned,) if include_transition else values
+
     conn = get_db()
     try:
+        conn.execute("BEGIN IMMEDIATE")
         menu = conn.execute(
-            "SELECT date, diners, meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+            "SELECT date, location, status, diners, meal_mode, banquet_total_diners "
+            "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
         if not menu:
-            return False, "菜单不存在"
+            conn.rollback()
+            return result(False, "菜单不存在")
+        if expected_location and menu["location"] != expected_location:
+            conn.rollback()
+            return result(False, "菜单厨房与当前厨房不一致")
+        if menu["status"] in ("confirmed", "pushed"):
+            conn.rollback()
+            return result(True, "该菜单已经确认，未重复确认", transitioned=False)
+        if menu["status"] != "draft":
+            conn.rollback()
+            return result(False, f"当前状态 {menu['status']} 不支持确认")
 
         # V11: 使用 _get_effective_diners_count 支持 banquet 模式
         diners_count = _get_effective_diners_count(menu_row=menu)
@@ -1044,7 +1064,7 @@ def confirm_menu(menu_id):
         conn.execute("UPDATE menus SET confirmed_revision = ? WHERE id = ?", (revision, menu_id))
         conn.commit()
         log_event("menu_confirmed", "menu", str(menu_id), {
-            "by": "vv",
+            "by": triggered_by,
             "warnings_count": len(warnings),
             "warnings": warnings
         })
@@ -1056,8 +1076,8 @@ def confirm_menu(menu_id):
             log_event("vv_preferences_error", "menu", str(menu_id), {"error": str(e)})
 
         if warnings:
-            return True, f"菜单已确认（有 {len(warnings)} 项提示）", warnings
-        return True, "菜单已确认", []
+            return result(True, f"菜单已确认（有 {len(warnings)} 项提示）", warnings, transitioned=True)
+        return result(True, "菜单已确认", transitioned=True)
     finally:
         conn.close()
 
