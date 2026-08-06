@@ -1051,7 +1051,7 @@ def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include
             "UPDATE menus SET status = 'confirmed', confirmed_at = ?, "
             "auto_confirmed = 0, "
             "notes_zh = ?, notes_en = ?, push_status = 'not_sent', "
-            "push_error = NULL, confirmed_revision = NULL WHERE id = ?",
+            "push_error = NULL, pushed_at = NULL, confirmed_revision = NULL WHERE id = ?",
             (datetime.now().isoformat(),
              "; ".join(warnings) if warnings else "",
              "",
@@ -1098,7 +1098,8 @@ def revert_to_draft(menu_id):
 
         conn.execute(
             "UPDATE menus SET status = 'draft', confirmed_at = NULL, "
-            "confirmed_revision = NULL, push_status = 'not_sent', push_error = NULL WHERE id = ?",
+            "confirmed_revision = NULL, push_status = 'not_sent', push_error = NULL, "
+            "pushed_at = NULL WHERE id = ?",
             (menu_id,)
         )
         conn.commit()

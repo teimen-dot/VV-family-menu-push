@@ -6,6 +6,8 @@ __pycache__/
 server.log
 backups/
 *.db
+*.db-wal
+*.db-shm
 attachments/
 HANDOFF.md
 fix_data.py

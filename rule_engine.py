@@ -61,7 +61,9 @@ COOKING_METHOD_NORMALIZE = {
 WEAK_CARB_TYPES = {"other", "dim_sum"}
 
 # 早餐搭配主食四选一
-BREAKFAST_COMPANION_STAPLES = {"mantou", "jiaozi", "sourdough", "huajuan"}
+BREAKFAST_COMPANION_STAPLES = {
+    "mantou", "jiaozi", "sourdough", "huajuan", "breakfast_staple_carb"
+}
 
 # 早餐搭配主食菜名关键词（当 breakfast_staple_type 字段为空时按菜名识别）
 COMPANION_STAPLE_NAME_KEYWORDS = {
@@ -125,6 +127,14 @@ class NutritionAnalyzer:
                 if any(kw in name_cn for kw in keywords):
                     breakfast_staple_type = staple_id
                     break
+        meal_tags = dish.get("meal_tags", [])
+        if isinstance(meal_tags, str):
+            try:
+                meal_tags = json.loads(meal_tags)
+            except (json.JSONDecodeError, TypeError):
+                meal_tags = []
+        if not breakfast_staple_type and cat == "staple_carb" and "breakfast" in meal_tags:
+            breakfast_staple_type = "breakfast_staple_carb"
         is_soup = (cat == "soup")
         is_fruit = (cat == "fruit_snack")
         cooking_methods = NutritionAnalyzer.normalize_cooking_methods(
@@ -166,6 +176,15 @@ class NutritionAnalyzer:
             meal_roles = NutritionAnalyzer._derive_meal_roles(
                 cat, is_quick_soup, is_slow_soup, has_tofu, has_egg, name_cn
             )
+        else:
+            meal_roles = list(dict.fromkeys(meal_roles))
+
+        # Egg and soy-product slots are independent and must match actual dish data.
+        meal_roles = [role for role in meal_roles if role not in ("egg_dish", "tofu_dish")]
+        if has_egg:
+            meal_roles.append("egg_dish")
+        if has_tofu:
+            meal_roles.append("tofu_dish")
 
         return {
             "proteins": proteins,
@@ -182,7 +201,7 @@ class NutritionAnalyzer:
             "name_en": dish.get("name_en", ""),
             "id": dish.get("id", ""),
             "category_id": cat,
-            "meal_tags": dish.get("meal_tags", []),
+            "meal_tags": meal_tags,
             # V3 新增字段
             "has_tofu": has_tofu,
             "has_egg": has_egg,
@@ -428,7 +447,7 @@ class RuleEngine:
         if state.egg_slot < 1:
             warnings.append("早餐还没有鸡蛋 / No egg for breakfast")
         if state.tofu_slot < 1:
-            warnings.append("早餐还没有豆腐 / No tofu for breakfast")
+            warnings.append("早餐还没有豆制品 / No soy product for breakfast")
 
         # 早餐不应有米饭/炒饭
         if "rice" in state.carb_types:
@@ -846,6 +865,7 @@ class ScoringEngine:
         exp_ings = ctx.get("expiring_ingredients", set())
         boss_fav = ctx.get("boss_favorites", set())
         dish_ings = ctx.get("dish_ingredients", {}).get(analysis["id"], set())
+        availability_status = ctx.get("dish_availability", {}).get(analysis["id"], "incomplete")
 
         score = 0
 
@@ -859,10 +879,9 @@ class ScoringEngine:
                 score += self.W_ONE_POT_LUNCH
 
         # === 库存评分 ===
-        if dish_ings:
+        if dish_ings and availability_status == "available":
             matched = dish_ings & inv_ings
-            if matched:
-                score += self.W_INVENTORY_MATCH
+            score += self.W_INVENTORY_MATCH
             if matched & pri_ings:
                 score += self.W_PRIORITY_USE
             if matched & exp_ings:

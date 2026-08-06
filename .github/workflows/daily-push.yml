@@ -1,12 +1,7 @@
 name: Daily Menu Push
 
 on:
-  # 定时触发：UTC 02:30 = 北京时间/香港时间 10:30
-  # 修改推送时间：修改下面 cron 表达式
-  # 例如 UTC 00:00 = 北京时间 08:00 → cron: '0 0 * * *'
-  schedule:
-    - cron: '30 2 * * *'
-  # 手动触发（用于测试）
+  # Task A: legacy 10:30 JSON push disabled. Manual trigger retained for audit only.
   workflow_dispatch:
 
 jobs:

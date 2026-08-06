@@ -1,0 +1,23 @@
+[Unit]
+Description=Family Menu Admin and Photo Manager
+After=network.target
+RequiresMountsFor=/opt/family-menu/data /opt/family-menu/photos
+
+[Service]
+Type=simple
+User=family-menu
+Group=family-menu
+WorkingDirectory=/opt/family-menu/app
+EnvironmentFile=/etc/family-menu.env
+ExecStart=/usr/bin/python3 /opt/family-menu/app/photo_manager.py
+Restart=on-failure
+RestartSec=3
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/family-menu/data /opt/family-menu/photos /opt/family-menu/logs
+
+[Install]
+WantedBy=multi-user.target

@@ -13,81 +13,11 @@
 
 import os
 import json
-import urllib.request
+import re
+import unicodedata
 from datetime import date, datetime, timedelta
 from db import get_db, log_event, get_config, set_config
-
-PUSHPLUS_API = "https://www.pushplus.plus/send"
-
-# ============================================================
-# V10: 食材别名归一化 (Canonical Ingredient ID Normalization)
-# ============================================================
-
-# 别名 → 规范 ingredient_id 映射
-# 所有 availability 判断前统一归一化
-INGREDIENT_ALIASES = {
-    # Egg
-    "egg": "鸡蛋",
-    "Egg": "鸡蛋",
-    "Chicken Egg": "鸡蛋",
-    "蛋": "鸡蛋",
-    "鸡蛋": "鸡蛋",
-    # Tofu
-    "tofu": "tofu",
-    "Tofu": "tofu",
-    "豆腐": "tofu",
-    "silken_tofu": "silken_tofu",
-    "Silken Tofu": "silken_tofu",
-    "嫩豆腐": "silken_tofu",
-    # Chicken
-    "chicken": "chicken",
-    "Chicken": "chicken",
-    "鸡肉": "chicken",
-    # Beef
-    "beef": "beef",
-    "Beef": "beef",
-    "牛肉": "beef",
-    # Shrimp
-    "shrimp": "shrimp",
-    "Shrimp": "shrimp",
-    "虾": "shrimp",
-    # Fish
-    "fish": "fish",
-    "Fish": "fish",
-    "鱼": "fish",
-    # Pork
-    "pork": "猪肉",
-    "Pork": "猪肉",
-    "猪肉": "猪肉",
-    # Rice
-    "rice": "rice",
-    "Rice": "rice",
-    "米饭": "rice",
-    # Corn
-    "corn": "corn",
-    "Corn": "corn",
-    "玉米": "corn",
-    # Sweet potato
-    "sweet_potato": "红薯",
-    "Sweet Potato": "红薯",
-    "红薯": "红薯",
-    "番薯": "红薯",
-    # Chinese yam
-    "yam": "yam",
-    "Chinese Yam": "yam",
-    "山药": "yam",
-    "淮山": "淮山",
-}
-
-
-def normalize_ingredient_id(raw_id):
-    """V10: 将食材别名归一化为规范 ingredient_id。
-    raw ingredient → normalize alias → canonical ingredient_id
-    """
-    if not raw_id:
-        return raw_id
-    return INGREDIENT_ALIASES.get(raw_id, raw_id)
-
+from push_service import PushPlusClient, PushError
 
 # ============================================================
 # V5: inventory_version 追踪与 availability 缓存
@@ -129,6 +59,16 @@ def _invalidate_availability_cache(location):
 # V4: Current Pantry 增量维护
 # ============================================================
 
+def _record_pantry_usage(conn, location, ingredient_id, action_at, added):
+    """Persist one real pantry action, independently for each kitchen."""
+    conn.execute(
+        "INSERT INTO pantry_usage_stats(location,ingredient_id,add_count,last_action_at) "
+        "VALUES(?,?,?,?) ON CONFLICT(location,ingredient_id) DO UPDATE SET "
+        "add_count=pantry_usage_stats.add_count+excluded.add_count, "
+        "last_action_at=excluded.last_action_at",
+        (location, ingredient_id, 1 if added else 0, action_at),
+    )
+
 def save_pantry_changes(location, items, submitted_by="nanny"):
     """
     V4: 保存库存变更（增量模式）。
@@ -167,6 +107,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
                         (status, now, location, ing_id)
                     )
                     updated += 1
+                    _record_pantry_usage(conn, location, ing_id, now, added=False)
                 # else: 未变化，不操作
             else:
                 # 新增 → INSERT
@@ -178,6 +119,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
                     (location, ing_id, status, now, now)
                 )
                 added += 1
+                _record_pantry_usage(conn, location, ing_id, now, added=True)
 
         # 用户删除的项 → is_active = 0
         removed_ids = set(current_map.keys()) - submitted_ids
@@ -189,6 +131,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
                 (now, location, ing_id)
             )
             removed += 1
+            _record_pantry_usage(conn, location, ing_id, now, added=False)
 
         conn.commit()
 
@@ -355,6 +298,10 @@ def add_ingredient_to_pantry(location, ingredient_id, status="available", submit
     conn = get_db()
     try:
         now = datetime.now().isoformat()
+        was_active = conn.execute(
+            "SELECT 1 FROM current_pantry WHERE location=? AND ingredient_id=? AND is_active=1",
+            (location, ingredient_id),
+        ).fetchone()
         conn.execute(
             "INSERT INTO current_pantry (location, ingredient_id, status, is_active, created_at, updated_at) "
             "VALUES (?, ?, ?, 1, ?, ?) "
@@ -362,6 +309,7 @@ def add_ingredient_to_pantry(location, ingredient_id, status="available", submit
             "status = excluded.status, is_active = 1, updated_at = excluded.updated_at",
             (location, ingredient_id, status, now, now)
         )
+        _record_pantry_usage(conn, location, ingredient_id, now, added=not was_active)
         conn.commit()
 
         # V5: 递增版本 + 清缓存
@@ -386,11 +334,13 @@ def remove_ingredient_from_pantry(location, ingredient_id, submitted_by="nanny")
     """
     conn = get_db()
     try:
+        now = datetime.now().isoformat()
         conn.execute(
-            "UPDATE current_pantry SET is_active = 0, updated_at = datetime('now') "
+            "UPDATE current_pantry SET is_active = 0, updated_at = ? "
             "WHERE location = ? AND ingredient_id = ?",
-            (location, ingredient_id)
+            (now, location, ingredient_id)
         )
+        _record_pantry_usage(conn, location, ingredient_id, now, added=False)
         conn.commit()
 
         _increment_inventory_version(conn, location)
@@ -414,21 +364,40 @@ def update_ingredient_status(location, ingredient_id, status, submitted_by="nann
     """
     conn = get_db()
     try:
-        conn.execute(
-            "UPDATE current_pantry SET status = ?, updated_at = datetime('now') "
+        now = datetime.now().isoformat()
+        cursor = conn.execute(
+            "UPDATE current_pantry SET status = ?, updated_at = ? "
             "WHERE location = ? AND ingredient_id = ? AND is_active = 1",
-            (status, location, ingredient_id)
+            (status, now, location, ingredient_id)
+        )
+        if cursor.rowcount != 1:
+            conn.rollback()
+            return {"ok": False, "error": "ingredient not in pantry"}
+        _record_pantry_usage(conn, location, ingredient_id, now, added=False)
+        _increment_inventory_version(conn, location)
+        counts = conn.execute(
+            "SELECT COUNT(*) AS pantry_count, "
+            "SUM(CASE WHEN status='expiring' THEN 1 ELSE 0 END) AS expiring_count "
+            "FROM current_pantry WHERE location=? AND is_active=1",
+            (location,),
+        ).fetchone()
+        conn.execute(
+            "INSERT INTO events (event_type,entity_type,entity_id,details) VALUES (?,?,?,?)",
+            (
+                "pantry_status_updated", "current_pantry", ingredient_id,
+                json.dumps({
+                    "location": location, "ingredient_id": ingredient_id,
+                    "status": status, "submitted_by": submitted_by,
+                }, ensure_ascii=False),
+            ),
         )
         conn.commit()
-
-        _increment_inventory_version(conn, location)
         _invalidate_availability_cache(location)
-
-        log_event("pantry_status_updated", "current_pantry", ingredient_id, {
-            "location": location, "ingredient_id": ingredient_id,
-            "status": status, "submitted_by": submitted_by
-        })
-        return {"ok": True}
+        return {
+            "ok": True, "ingredient_id": ingredient_id, "status": status,
+            "pantry_count": counts["pantry_count"],
+            "expiring_count": counts["expiring_count"] or 0,
+        }
     finally:
         conn.close()
 
@@ -477,54 +446,97 @@ def is_ingredient_in_pantry(location, ingredient_id):
         conn.close()
 
 
+_ACTIVE_PANTRY_STATUSES = {"available", "priority_use", "expiring"}
+
+
+def _normalize_exact_ingredient_value(value):
+    """Normalize for full-value equality only; never perform substring/fuzzy matching."""
+    if value is None:
+        return ""
+    normalized = unicodedata.normalize("NFKC", str(value)).strip().casefold()
+    return re.sub(r"\s+", " ", normalized)
+
+
+def _parse_alias_values(raw_aliases):
+    try:
+        values = json.loads(raw_aliases or "[]")
+    except (TypeError, ValueError):
+        values = []
+    if not isinstance(values, list):
+        return set()
+    return {_normalize_exact_ingredient_value(value) for value in values if value}
+
+
+def _ingredient_match(required, pantry):
+    """Return an explicit match method or None using ID, declared aliases, then exact names."""
+    if required["ingredient_id"] == pantry["ingredient_id"]:
+        return "ingredient_id"
+
+    required_id = _normalize_exact_ingredient_value(required["ingredient_id"])
+    pantry_id = _normalize_exact_ingredient_value(pantry["ingredient_id"])
+    required_names = {
+        _normalize_exact_ingredient_value(required.get("name_cn")),
+        _normalize_exact_ingredient_value(required.get("name_en")),
+    } - {""}
+    pantry_names = {
+        _normalize_exact_ingredient_value(pantry.get("name_cn")),
+        _normalize_exact_ingredient_value(pantry.get("name_en")),
+    } - {""}
+    required_aliases = required.get("alias_values", set())
+    pantry_aliases = pantry.get("alias_values", set())
+
+    required_terms = required_names | {required_id}
+    pantry_terms = pantry_names | {pantry_id}
+    if (required_aliases & pantry_terms) or (pantry_aliases & required_terms) or (required_aliases & pantry_aliases):
+        return "explicit_alias"
+    if required_names & pantry_names:
+        return "exact_name"
+    return None
+
+
 def check_dish_availability(dish_id, location, inventory_version=None):
     """
     V5 Section 12-18: 统一菜品可用性检查服务（InventoryService）。
     所有模块（Dishes / Tomorrow / Purchase Request / Add Dish picker / AI scoring）必须调用此方法。
     返回: {status, required, available_required, missing_required, optional, inventory_version}
-    status: available / almost_available / missing
-
-    V12: required_ingredients 为空时返回 "available"（无必选食材 = 无约束 = 可制作）。
-    旧版 V5 的 "incomplete" 状态已废弃，因为它阻止了花卷/日式饺子等简单菜品被 AI Fill 选中。
+    status: available / almost_available / missing / incomplete
+    A dish is available only when every required ingredient matches the active pantry
+    by exact ingredient_id, an explicit alias, or an exact normalized full name.
     """
     if inventory_version is None:
         inventory_version = get_inventory_version(location)
 
-    # V5 Section 21: 缓存 key 包含 location + inventory_version + dish_id
-    cache_key = f"{location}_{inventory_version}_{dish_id}"
+    catalog_version = get_config("catalog_version", "1")
+    cache_key = f"{location}_{inventory_version}_{catalog_version}_{dish_id}"
     if cache_key in _availability_cache:
         return _availability_cache[cache_key]
 
     conn = get_db()
     try:
+        dish_row = conn.execute(
+            "SELECT category_id,meal_tags,is_active,image FROM dishes WHERE id=?", (dish_id,)
+        ).fetchone()
         ings = conn.execute(
-            "SELECT di.ingredient_id, di.required, i.name_cn, i.name_en "
+            "SELECT di.ingredient_id, di.required, i.name_cn, i.name_en, i.aliases "
             "FROM dish_ingredients di "
-            "JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
+            "LEFT JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
             "WHERE di.dish_id = ?",
             (dish_id,)
         ).fetchall()
 
-        # V12: required_ingredients 为空 → available（无约束 = 可制作）
-        required_ings = [r for r in ings if r["required"]]
-        if not required_ings:
-            result = {
-                "status": "available",
-                "required": [],
-                "available_required": [],
-                "missing_required": [],
-                "optional": [dict(r) for r in ings if not r["required"]],
-                "inventory_version": inventory_version,
-            }
-            _availability_cache[cache_key] = result
-            return result
-
-        available_ings, _, _ = get_current_pantry_ids(location)
-
-        # V10: 归一化库存食材 ID（alias → canonical）
-        normalized_pantry = set()
-        for pid in available_ings:
-            normalized_pantry.add(normalize_ingredient_id(pid))
+        pantry_rows = conn.execute(
+            "SELECT cp.ingredient_id, cp.status, i.name_cn, i.name_en, i.aliases "
+            "FROM current_pantry cp JOIN ingredients i ON i.ingredient_id=cp.ingredient_id "
+            "WHERE cp.location=? AND cp.is_active=1",
+            (location,),
+        ).fetchall()
+        active_pantry = []
+        for row in pantry_rows:
+            if row["status"] not in _ACTIVE_PANTRY_STATUSES:
+                continue
+            item = dict(row)
+            item["alias_values"] = _parse_alias_values(item.get("aliases"))
+            active_pantry.append(item)
 
         required = []
         available_required = []
@@ -532,15 +544,27 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         optional = []
 
         for ing in ings:
-            # V10: 归一化菜品食材 ID
-            norm_id = normalize_ingredient_id(ing["ingredient_id"])
             ing_data = {"ingredient_id": ing["ingredient_id"],
-                        "name_cn": ing["name_cn"],
+                        "name_cn": ing["name_cn"] or ing["ingredient_id"],
                         "name_en": ing["name_en"] if ing["name_en"] else ""}
             if ing["required"]:
                 required.append(ing_data)
-                if norm_id in normalized_pantry or ing["ingredient_id"] in available_ings:
-                    available_required.append(ing_data)
+                required_match = dict(ing)
+                required_match["alias_values"] = _parse_alias_values(required_match.get("aliases"))
+                match = next(
+                    ((pantry, method) for pantry in active_pantry
+                     if (method := _ingredient_match(required_match, pantry))),
+                    None,
+                )
+                if match:
+                    pantry, method = match
+                    matched = dict(ing_data)
+                    matched.update({
+                        "matched_pantry_id": pantry["ingredient_id"],
+                        "matched_pantry_name_cn": pantry.get("name_cn") or pantry["ingredient_id"],
+                        "match_method": method,
+                    })
+                    available_required.append(matched)
                 else:
                     missing_required.append(ing_data)
             else:
@@ -549,12 +573,28 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         # V6 Section 27: 4 种状态判定（重新定义）
         required_count = len(required)
         missing_count = len(missing_required)
+        missing_fields = []
+        if not dish_row:
+            missing_fields.append("dish")
+        else:
+            if not dish_row["category_id"]:
+                missing_fields.append("category")
+            try:
+                meal_tags = json.loads(dish_row["meal_tags"] or "[]")
+            except (json.JSONDecodeError, TypeError):
+                meal_tags = []
+            if not meal_tags:
+                missing_fields.append("meal_tags")
+            if not dish_row["image"]:
+                missing_fields.append("image")
+        if required_count == 0:
+            missing_fields.append("required_ingredients")
 
         if required_count == 0:
-            status = "available"
+            status = "incomplete"
         elif missing_count == 0:
             status = "available"
-        elif required_count >= 2 and missing_count == 1:
+        elif missing_count <= 2:
             status = "almost_available"
         else:
             status = "missing"
@@ -565,6 +605,9 @@ def check_dish_availability(dish_id, location, inventory_version=None):
             "available_required": available_required,
             "missing_required": missing_required,
             "optional": optional,
+            "data_complete": required_count > 0,
+            "missing_fields": missing_fields,
+            "available_now": status == "available",
             "inventory_version": inventory_version,
         }
         _availability_cache[cache_key] = result
@@ -613,13 +656,20 @@ def check_dish_availability_debug(dish_id, location):
     }
 
 
-def get_common_ingredients_static():
-    """V4 Section 13-15: 获取常用食材（is_common 字段，独立于当前库存）"""
+def get_common_ingredients_static(location, limit=15):
+    """Return this kitchen's top ingredients by durable pantry usage."""
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT ingredient_id, name_cn, name_en FROM ingredients "
-            "WHERE is_common = 1 ORDER BY name_cn"
+            "SELECT i.ingredient_id,i.name_cn,i.name_en,s.add_count,s.last_action_at,"
+            "CASE WHEN cp.is_active=1 THEN 1 ELSE 0 END AS in_pantry "
+            "FROM pantry_usage_stats s JOIN ingredients i ON i.ingredient_id=s.ingredient_id "
+            "LEFT JOIN current_pantry cp ON cp.location=s.location "
+            "AND cp.ingredient_id=s.ingredient_id "
+            "WHERE s.location=? AND s.add_count>0 "
+            "ORDER BY s.add_count DESC,in_pantry DESC,s.last_action_at DESC,i.ingredient_id "
+            "LIMIT ?",
+            (location, max(0, min(int(limit), 15))),
         ).fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -722,42 +772,29 @@ def check_shortages(dish_ids, location, target_date=None):
     if not dish_ids:
         return []
 
+    availability = check_dishes_availability_batch(dish_ids, location)
     conn = get_db()
     try:
-        # 获取菜品所需食材
         placeholders = ",".join("?" * len(dish_ids))
-        rows = conn.execute(
-            f"SELECT di.dish_id, di.ingredient_id, d.name_cn as dish_name, "
-            f"i.name_cn as ingredient_name "
-            f"FROM dish_ingredients di "
-            f"JOIN dishes d ON di.dish_id = d.id "
-            f"JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
-            f"WHERE di.dish_id IN ({placeholders}) AND di.required = 1",
-            dish_ids
-        ).fetchall()
-
-        # 获取库存
-        available, _, _ = get_available_ingredient_ids(location, target_date)
-        # V10: 归一化库存 ID
-        normalized_available = set()
-        for pid in available:
-            normalized_available.add(normalize_ingredient_id(pid))
-
-        shortages = []
-        for r in rows:
-            norm_id = normalize_ingredient_id(r["ingredient_id"])
-            if norm_id not in normalized_available and r["ingredient_id"] not in available:
-                shortages.append({
-                    "dish_id": r["dish_id"],
-                    "dish_name": r["dish_name"],
-                    "ingredient_id": r["ingredient_id"],
-                    "ingredient_name": r["ingredient_name"],
-                    "missing": True
-                })
-
-        return shortages
+        names = {
+            row["id"]: row["name_cn"]
+            for row in conn.execute(
+                f"SELECT id,name_cn FROM dishes WHERE id IN ({placeholders})", dish_ids
+            )
+        }
     finally:
         conn.close()
+    shortages = []
+    for dish_id, result in availability.items():
+        for ingredient in result["missing_required"]:
+            shortages.append({
+                "dish_id": dish_id,
+                "dish_name": names.get(dish_id, dish_id),
+                "ingredient_id": ingredient["ingredient_id"],
+                "ingredient_name": ingredient["name_cn"],
+                "missing": True,
+            })
+    return shortages
 
 
 def check_menu_shortages(menu_id, location):
@@ -896,29 +933,10 @@ def update_purchase_status(request_id, status, resolved_by=None, notes=None):
 # ============================================================
 
 def send_pushplus(token, topic, title, content):
-    """通过 PushPlus API 发送消息"""
-    payload = {
-        "token": token,
-        "title": title,
-        "content": content,
-        "template": "markdown",
-    }
-    if topic:
-        payload["topic"] = topic
-
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        PUSHPLUS_API,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            return result.get("code") == 200
-    except Exception as e:
+        PushPlusClient(token, topic).send(title, content)
+        return True
+    except PushError as e:
         print(f"[ERROR] PushPlus 通知失败: {e}")
         return False
 
@@ -963,8 +981,8 @@ def notify_purchase_requests(request_ids, location="shenzhen"):
         title = f"采购通知 - {menu_date} - {len(rows)}项"
 
         # 发送 PushPlus
-        token = os.environ.get("PUSHPLUS_TOKEN", get_config("pushplus_token", ""))
-        topic = os.environ.get("PUSHPLUS_TOPIC", get_config("pushplus_topic", "home-menu"))
+        token = os.environ.get("PUSHPLUS_TOKEN", "")
+        topic = os.environ.get("PUSHPLUS_TOPIC", "home-menu")
 
         if not token:
             print("[WARN] 未配置 PUSHPLUS_TOKEN，跳过通知")

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Family Menu SQLite backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Hong_Kong
+Persistent=true
+RandomizedDelaySec=10m
+Unit=family-menu-backup.service
+
+[Install]
+WantedBy=timers.target

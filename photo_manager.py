@@ -15,13 +15,36 @@ import base64
 import webbrowser
 from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
+from photo_security import (
+    PhotoValidationError, resolve_photo_path, safe_slug, validate_image_bytes,
+)
+from runtime_config import app_env, max_upload_bytes, photo_dir, server_host
+from ingredient_service import add_or_get_ingredient, update_ingredient_names
 
 # ========== 路径配置 ==========
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DISH_POOL_FILE = os.path.join(BASE_DIR, "dish_pool.json")
-MANIFEST_FILE = os.path.join(BASE_DIR, "photo_manifest.json")
-PHOTOS_DIR = os.path.join(BASE_DIR, "photos")
+PHOTOS_DIR = photo_dir(BASE_DIR)
+PWA_DIR = os.path.join(BASE_DIR, "pwa", "admin")
+HOST = server_host()
+MAX_UPLOAD_BYTES = max_upload_bytes()
 PORT = 8080
+ADMIN_UI_VERSION = "20260805-required-ingredients-v2"
+
+
+def health_result():
+    try:
+        from db import get_db
+        conn = get_db()
+        try:
+            db_ok = conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        finally:
+            conn.close()
+        photos_ok = os.path.isdir(PHOTOS_DIR) and os.access(PHOTOS_DIR, os.R_OK | os.W_OK)
+        if not db_ok or not photos_ok:
+            raise RuntimeError("health check failed")
+        return 200, {"status": "ok", "database": "ok", "photos": "ok"}
+    except Exception:
+        return 503, {"status": "error", "database": "error", "photos": "error"}
 
 
 def slugify(en_name):
@@ -56,32 +79,97 @@ def _invalidate_menu_cache():
         pass
 
 
-def load_dish_pool():
-    with open(DISH_POOL_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_dish_pool(pool):
-    with open(DISH_POOL_FILE, "w", encoding="utf-8") as f:
-        json.dump(pool, f, ensure_ascii=False, indent=2)
-
-
-def load_manifest():
-    if os.path.exists(MANIFEST_FILE):
-        with open(MANIFEST_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
-
-
-def save_manifest(manifest):
-    with open(MANIFEST_FILE, "w", encoding="utf-8") as f:
-        json.dump(manifest, f, ensure_ascii=False, indent=2)
+def _sync_required_ingredients(conn, dish_id, required_ingredients):
+    """Replace required ingredients from exact IDs/names in the same dish transaction."""
+    resolved = []
+    for value in required_ingredients or []:
+        raw = value.get("ingredient_id") or value.get("name") if isinstance(value, dict) else value
+        raw = str(raw or "").strip()
+        if not raw:
+            continue
+        row = conn.execute(
+            "SELECT ingredient_id FROM ingredients WHERE ingredient_id=?", (raw,)
+        ).fetchone()
+        if row:
+            ingredient_id = row["ingredient_id"]
+        else:
+            ingredient, _ = add_or_get_ingredient(conn, raw)
+            ingredient_id = ingredient["ingredient_id"]
+        if ingredient_id not in resolved:
+            resolved.append(ingredient_id)
+    conn.execute("DELETE FROM dish_ingredients WHERE dish_id=?", (dish_id,))
+    conn.executemany(
+        "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES(?,?,1)",
+        [(dish_id, ingredient_id) for ingredient_id in resolved],
+    )
+    return resolved
 
 
 def ensure_dirs():
     os.makedirs(PHOTOS_DIR, exist_ok=True)
-    if not os.path.exists(MANIFEST_FILE):
-        save_manifest({})
+
+
+def store_photo_for_dish(zh_name, slug, image_data):
+    """Write one image and atomically register it in SQLite dishes.image."""
+    extension = validate_image_bytes(image_data, MAX_UPLOAD_BYTES)
+    filename = f"{safe_slug(slug)}{extension}"
+    filepath = os.path.join(PHOTOS_DIR, filename)
+    from db import get_db
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id, image FROM dishes WHERE name_cn=? AND is_active=1", (zh_name,)
+        ).fetchone()
+        if not row:
+            raise ValueError("找不到 active 菜品")
+        old_file = row["image"] or ""
+        with open(filepath, "wb") as f:
+            f.write(image_data)
+        conn.execute(
+            "UPDATE dishes SET image=?,image_uploaded=1,updated_at=datetime('now') WHERE id=?",
+            (filename, row["id"]),
+        )
+        _increment_catalog_version(conn)
+        conn.commit()
+    except Exception:
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        raise
+    finally:
+        conn.close()
+    if old_file and old_file != filename:
+        old_path = os.path.join(PHOTOS_DIR, old_file)
+        if os.path.exists(old_path):
+            os.remove(old_path)
+    _invalidate_menu_cache()
+    return filename
+
+
+def soft_delete_dish(dish_id):
+    """Archive a dish while preserving its image and historical visibility."""
+    from db import get_db, log_event
+    conn = get_db()
+    try:
+        dish = conn.execute(
+            "SELECT name_cn, image FROM dishes WHERE id = ?", (dish_id,)
+        ).fetchone()
+        if not dish:
+            return False, "菜品不存在"
+        conn.execute(
+            "UPDATE dishes SET is_active=0,deleted_at=datetime('now'),updated_at=datetime('now') "
+            "WHERE id=?",
+            (dish_id,),
+        )
+        _increment_catalog_version(conn)
+        conn.commit()
+        name_cn = dish["name_cn"]
+    finally:
+        conn.close()
+    _invalidate_menu_cache()
+    log_event("dish_soft_deleted", "dishes", dish_id, {
+        "name_cn": name_cn, "deleted_via": "photo_manager", "image_preserved": True
+    })
+    return True, name_cn
 
 
 def generate_dish_id(pool):
@@ -99,14 +187,14 @@ def generate_dish_id(pool):
 
 
 def get_all_dishes():
-    """V7: 从 SQLite 读菜品 (is_active=1)，photo manifest 用于 has_photo/photo_file
-    SQLite 是唯一真相源，dish_pool.json 已废弃为只读快照。"""
+    """V7: 从 SQLite 读取 active 菜品及 dishes.image。"""
     from db import get_db
     conn = get_db()
     try:
         rows = conn.execute("""
             SELECT d.id, d.name_cn, d.name_en, d.category_id, d.meal_tags, d.banquet,
                    d.protein_types, d.vegetables, d.vegetable_count, d.carb_type,
+                   d.breakfast_staple_type, d.meal_roles,
                    d.meal_components, d.taste, d.cooking_methods, d.can_serve_warm,
                    d.custom_tags, d.needs_review, d.quick_soup, d.slow_soup,
                    d.manual_only_for_breakfast, d.image,
@@ -117,12 +205,18 @@ def get_all_dishes():
             ORDER BY d.category_id, d.name_cn
         """).fetchall()
 
-        manifest = load_manifest()
+        ingredient_rows = conn.execute(
+            "SELECT dish_id,ingredient_id FROM dish_ingredients WHERE required=1 ORDER BY id"
+        ).fetchall()
+        required_map = {}
+        for ingredient in ingredient_rows:
+            required_map.setdefault(ingredient["dish_id"], []).append(ingredient["ingredient_id"])
+
         result = []
         for r in rows:
             name_cn = r["name_cn"] or ""
-            has_photo = name_cn in manifest
-            photo_file = manifest.get(name_cn, {}).get("file", "") if has_photo else (r["image"] or "")
+            photo_file = r["image"] or ""
+            has_photo = bool(photo_file)
 
             # 解析 JSON 字段
             def _parse(v):
@@ -148,6 +242,8 @@ def get_all_dishes():
                 "vegetables": _parse(r["vegetables"]),
                 "vegetable_count": r["vegetable_count"] or 0,
                 "carb_type": r["carb_type"],
+                "breakfast_staple_type": r["breakfast_staple_type"],
+                "meal_roles": _parse(r["meal_roles"]),
                 "meal_components": _parse(r["meal_components"]),
                 "taste": r["taste"] or "normal",
                 "cooking_methods": _parse(r["cooking_methods"]),
@@ -157,11 +253,24 @@ def get_all_dishes():
                 "quick_soup": int(r["quick_soup"] or 0),
                 "slow_soup": int(r["slow_soup"] or 0),
                 "manual_only_for_breakfast": int(r["manual_only_for_breakfast"] or 0),
+                "required_ingredients": required_map.get(r["id"], []),
                 "has_photo": has_photo,
                 "photo_file": photo_file,
                 "slug": slugify(r["name_en"] or ""),
             })
         return result
+    finally:
+        conn.close()
+
+
+def get_all_ingredients_admin():
+    from db import get_db
+    conn = get_db()
+    try:
+        return [dict(row) for row in conn.execute(
+            "SELECT ingredient_id,name_cn,name_en,translation_pending "
+            "FROM ingredients ORDER BY translation_pending DESC,name_cn"
+        )]
     finally:
         conn.close()
 
@@ -198,7 +307,14 @@ HTML_PAGE = r"""<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="菜品管理">
+<meta name="theme-color" content="#007aff">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <title>菜品管理器 v2.0</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -670,6 +786,34 @@ body {
   color: #8e8e93;
   font-size: 15px;
 }
+@media (max-width:767px) {
+  html, body { max-width: 100%; overflow-x: hidden; }
+  body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .header { padding: 12px 10px; }
+  .header-inner { gap: 8px; }
+  .header-actions { gap: 5px; }
+  .search-box, .filter-bar { padding-left: 10px; padding-right: 10px; }
+  .container { padding: 12px 10px calc(40px + env(safe-area-inset-bottom)); }
+  .category-section { margin-bottom: 22px; }
+  .category-title { width: 100%; margin-bottom: 8px; }
+  .dish-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .dish-card { min-width: 0; border-width: 1px; border-radius: 9px; }
+  .dish-photo-area { aspect-ratio: 1 / 1; }
+  .dish-info { padding: 6px; min-width: 0; }
+  .dish-zh {
+    display: -webkit-box;
+    min-height: 2.6em;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+  }
+  .dish-en, .card-badges { display: none; }
+  .has-photo-badge { top: 4px; right: 4px; padding: 1px 4px; font-size: 9px; }
+  .card-actions button { padding: 7px 1px; font-size: 10px; }
+}
 </style>
 </head>
 <body>
@@ -681,6 +825,7 @@ body {
       <div class="stats" id="stats">加载中...</div>
       <button class="btn-secondary" onclick="openCategoryManager()">管理分类</button>
       <button class="btn-secondary" onclick="openTagManager()">管理标签</button>
+      <button class="btn-secondary" onclick="openIngredientManager()">食材双语</button>
       <button class="btn-add" onclick="openAddModal()">+ 添加菜品</button>
     </div>
   </div>
@@ -740,6 +885,9 @@ body {
 
         <label>包含蔬菜</label>
         <div class="tag-input-container" id="editVegetables"></div>
+
+        <label>必需食材（精确食材 ID 或名称）</label>
+        <div class="tag-input-container" id="editRequiredIngredients"></div>
 
         <div id="carbTypeSection" style="display:none;">
           <label>主食类型</label>
@@ -812,6 +960,11 @@ body {
       <label class="checkbox-label"><input type="checkbox" id="addDinner"> 晚餐</label>
     </div>
     <label class="checkbox-label" style="margin-top: 14px;"><input type="checkbox" id="addBanquet"> 家宴推荐</label>
+    <div class="form-section required-ingredients-section">
+      <label>必需食材 / Required ingredients</label>
+      <div class="modal-note">例如：黄瓜、虾仁。多个食材可用逗号或顿号分隔，无需按回车。</div>
+      <div class="tag-input-container" id="addRequiredIngredients"></div>
+    </div>
     <label style="margin-top: 14px; display:block;">V3 汤类标签 / Soup Tags</label>
     <div class="checkbox-group">
       <label class="checkbox-label"><input type="checkbox" id="addQuickSoup"> 快手汤 Quick Soup</label>
@@ -857,10 +1010,24 @@ body {
   </div>
 </div>
 
+<!-- Ingredient bilingual manager -->
+<div class="modal-overlay" id="ingredientModal">
+  <div class="modal modal-large">
+    <h3>食材双语名称</h3>
+    <div class="modal-note">只修改名称，不会把相似食材合并。</div>
+    <div id="ingredientList"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('ingredientModal')">取消</button>
+      <button class="btn-save" onclick="saveIngredients()">保存</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 // ========== 常量 ==========
+const ADMIN_UI_VERSION = '20260805-required-ingredients-v2';
 const PROTEIN_TYPES = {
   fish: '鱼', shrimp: '虾', other_seafood: '其他海鲜',
   beef: '牛肉', pork: '猪肉', chicken: '鸡肉',
@@ -884,6 +1051,7 @@ const SYSTEM_TAGS = [
 let allDishes = [];
 let allCategories = [];
 let allCustomTags = [];
+let allIngredients = [];
 let currentMealFilter = 'all';
 let currentCategoryFilter = 'all';
 let editingDish = null;
@@ -891,12 +1059,13 @@ let editingDish = null;
 // ========== 初始化 ==========
 async function loadDishes() {
   try {
-    const [dishResp, catResp, tagResp] = await Promise.all([
-      fetch('/api/dishes'), fetch('/api/categories'), fetch('/api/custom_tags')
+    const [dishResp, catResp, tagResp, ingredientResp] = await Promise.all([
+      fetch('/api/dishes'), fetch('/api/categories'), fetch('/api/custom_tags'), fetch('/api/ingredients')
     ]);
     allDishes = await dishResp.json();
     allCategories = await catResp.json();
     allCustomTags = await tagResp.json();
+    allIngredients = await ingredientResp.json();
     renderFilters();
     renderAddCategories();
     render();
@@ -1076,6 +1245,7 @@ function openEditModal(d) {
 
   initCheckboxGroup('editProteinTypes', PROTEIN_TYPES, d.protein_types || []);
   initTagInput('editVegetables', d.vegetables || [], '输入蔬菜名后按回车添加');
+  initTagInput('editRequiredIngredients', d.required_ingredients || [], '输入食材 ID 或名称后按回车');
   document.getElementById('editCarbType').value = d.carb_type || '';
   setCheckboxGroup('editMealComponents', d.meal_components || []);
   document.getElementById('editTaste').value = d.taste || 'normal';
@@ -1128,6 +1298,7 @@ async function saveEdit() {
     banquet: document.getElementById('editBanquet').checked,
     protein_types: getCheckboxValues('editProteinTypes'),
     vegetables: getTagValues('editVegetables'),
+    required_ingredients: getTagValues('editRequiredIngredients'),
     carb_type: document.getElementById('editCarbType').value || null,
     meal_components: getCheckboxValues('editMealComponents'),
     taste: document.getElementById('editTaste').value,
@@ -1154,6 +1325,7 @@ async function saveEdit() {
       editingDish.banquet = data.banquet;
       editingDish.protein_types = data.protein_types;
       editingDish.vegetables = data.vegetables;
+      editingDish.required_ingredients = result.required_ingredients || data.required_ingredients;
       editingDish.vegetable_count = data.vegetables.length;
       editingDish.carb_type = data.carb_type;
       editingDish.meal_components = data.meal_components;
@@ -1195,6 +1367,7 @@ function openAddModal() {
   document.getElementById('addQuickSoup').checked = false;
   document.getElementById('addSlowSoup').checked = false;
   document.getElementById('addManualOnlyBreakfast').checked = false;
+  initTagInput('addRequiredIngredients', [], '输入食材 ID 或名称后按回车');
   document.getElementById('addModal').classList.add('show');
   document.getElementById('addZh').focus();
 }
@@ -1209,17 +1382,25 @@ async function saveAdd() {
   if (document.getElementById('addBreakfast').checked) mealTags.push('breakfast');
   if (document.getElementById('addLunch').checked) mealTags.push('lunch');
   if (document.getElementById('addDinner').checked) mealTags.push('dinner');
+  const requiredIngredients = getTagValues('addRequiredIngredients');
+  if (!requiredIngredients.length) {
+    showToast('请填写必需食材，例如：黄瓜、虾仁', 'error');
+    document.querySelector('#addRequiredIngredients .tag-input').focus();
+    return;
+  }
 
   try {
     const resp = await fetch('/api/add_dish', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name_cn: nameCn, name_en: nameEn, category_id: categoryId,
+        ui_version: ADMIN_UI_VERSION,
         meal_tags: mealTags,
         banquet: document.getElementById('addBanquet').checked,
         quick_soup: document.getElementById('addQuickSoup').checked ? 1 : 0,
         slow_soup: document.getElementById('addSlowSoup').checked ? 1 : 0,
         manual_only_for_breakfast: document.getElementById('addManualOnlyBreakfast').checked ? 1 : 0,
+        required_ingredients: requiredIngredients,
       })
     });
     const result = await resp.json();
@@ -1237,6 +1418,7 @@ async function saveAdd() {
         quick_soup: document.getElementById('addQuickSoup').checked ? 1 : 0,
         slow_soup: document.getElementById('addSlowSoup').checked ? 1 : 0,
         manual_only_for_breakfast: document.getElementById('addManualOnlyBreakfast').checked ? 1 : 0,
+        required_ingredients: result.required_ingredients || [],
         has_photo: false, photo_file: '', slug: result.slug
       });
       closeModal('addModal');
@@ -1383,7 +1565,13 @@ function createTagChip(value) {
 }
 
 function getTagValues(containerId) {
-  return Array.from(document.getElementById(containerId).querySelectorAll('.tag-chip')).map(c => c.dataset.value);
+  const container = document.getElementById(containerId);
+  const values = Array.from(container.querySelectorAll('.tag-chip')).map(c => c.dataset.value);
+  const pending = container.querySelector('.tag-input');
+  if (pending && pending.value.trim()) {
+    values.push(...pending.value.split(/[,，、;；\n]+/).map(v => v.trim()).filter(Boolean));
+  }
+  return [...new Set(values)];
 }
 
 // ========== Checkbox Group ==========
@@ -1535,6 +1723,31 @@ async function saveTags() {
   }
 }
 
+function openIngredientManager() {
+  const list = document.getElementById('ingredientList');
+  list.innerHTML = allIngredients.map(item =>
+    '<div class="manager-item" data-id="' + escAttr(item.ingredient_id) + '">' +
+    '<input type="text" class="ingredient-cn" value="' + escAttr(item.name_cn) + '" placeholder="中文名">' +
+    '<input type="text" class="ingredient-en" value="' + escAttr(item.name_en) + '" placeholder="English name">' +
+    (item.translation_pending ? '<span class="mgr-info">待补翻译</span>' : '') + '</div>'
+  ).join('');
+  document.getElementById('ingredientModal').classList.add('show');
+}
+
+async function saveIngredients() {
+  const items = [...document.querySelectorAll('#ingredientList .manager-item')].map(row => ({
+    ingredient_id: row.dataset.id,
+    name_cn: row.querySelector('.ingredient-cn').value.trim(),
+    name_en: row.querySelector('.ingredient-en').value.trim(),
+  }));
+  if (items.some(item => !item.name_cn || !item.name_en)) { showToast('中英文名称不能为空', 'error'); return; }
+  try {
+    const response = await fetch('/api/save_ingredients', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items})});
+    const result = await response.json();if(!response.ok||!result.success)throw new Error(result.error||'保存失败');
+    allIngredients = result.items;closeModal('ingredientModal');showToast('食材双语名称已保存', 'success');
+  } catch(error) { showToast('保存失败: '+error.message, 'error'); }
+}
+
 // ========== 工具函数 ==========
 function slugify(en) {
   let s = en.toLowerCase().trim();
@@ -1551,7 +1764,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('show'); 
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    ['editModal','addModal','categoryModal','tagModal'].forEach(id => closeModal(id));
+    ['editModal','addModal','categoryModal','tagModal','ingredientModal'].forEach(id => closeModal(id));
   }
 });
 
@@ -1600,12 +1813,18 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         path = parsed.path
         if path == "/" or path == "/index.html":
             self._serve_html()
+        elif path == "/health":
+            self._serve_health()
         elif path == "/api/dishes":
             self._serve_dishes()
         elif path == "/api/categories":
             self._serve_categories()
         elif path == "/api/custom_tags":
             self._serve_custom_tags()
+        elif path == "/api/ingredients":
+            self._json_response(200, get_all_ingredients_admin())
+        elif path in ("/manifest.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/favicon.png"):
+            self._serve_pwa_asset(path[1:])
         elif path.startswith("/photos/"):
             self._serve_photo(path)
         else:
@@ -1628,6 +1847,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._handle_save_categories()
         elif parsed.path == "/api/save_custom_tags":
             self._handle_save_custom_tags()
+        elif parsed.path == "/api/save_ingredients":
+            self._handle_save_ingredients()
         else:
             self._json_response(404, {"error": "Not found"})
 
@@ -1635,7 +1856,30 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         body = HTML_PAGE.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _serve_pwa_asset(self, filename):
+        allowed = {
+            "manifest.webmanifest": "application/manifest+json; charset=utf-8",
+            "apple-touch-icon.png": "image/png",
+            "icon-192.png": "image/png",
+            "icon-512.png": "image/png",
+            "favicon.png": "image/png",
+        }
+        content_type = allowed.get(filename)
+        filepath = os.path.join(PWA_DIR, filename)
+        if not content_type or not os.path.isfile(filepath):
+            self._json_response(404, {"error": "Not found"})
+            return
+        with open(filepath, "rb") as f:
+            body = f.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "public, max-age=86400" if filename.endswith(".png") else "no-cache")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1647,14 +1891,28 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         self._json_response(200, get_categories())
 
     def _serve_custom_tags(self):
-        pool = load_dish_pool()
-        tags = pool.get("custom_tags_def", [])
-        self._json_response(200, tags)
+        from db import get_db
+        conn = get_db()
+        try:
+            tags = [dict(row) for row in conn.execute("SELECT id, label FROM custom_tags_def ORDER BY id")]
+            self._json_response(200, tags)
+        finally:
+            conn.close()
+
+    def _serve_health(self):
+        status, payload = health_result()
+        self._json_response(status, payload)
 
     def _serve_photo(self, path):
-        filename = os.path.basename(path)
-        filepath = os.path.join(PHOTOS_DIR, filename)
-        if not os.path.exists(filepath):
+        filename = path[len("/photos/"):]
+        try:
+            filepath = resolve_photo_path(PHOTOS_DIR, filename)
+        except PhotoValidationError:
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not os.path.isfile(filepath):
             self.send_response(404)
             self.send_header("Content-Length", "0")
             self.end_headers()
@@ -1662,7 +1920,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         with open(filepath, "rb") as f:
             body = f.read()
         self.send_response(200)
-        self.send_header("Content-Type", "image/jpeg")
+        extension = os.path.splitext(filepath)[1].lower()
+        self.send_header("Content-Type", "image/png" if extension == ".png" else "image/jpeg")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
@@ -1684,24 +1943,16 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"success": False, "error": "缺少参数"})
                 return
 
-            image_data = base64.b64decode(image_b64)
-            filename = f"{slug}.jpg"
-            filepath = os.path.join(PHOTOS_DIR, filename)
-
-            with open(filepath, "wb") as f:
-                f.write(image_data)
-
-            manifest = load_manifest()
-            from datetime import date as _date
-            manifest[zh_name] = {
-                "file": filename,
-                "uploaded": _date.today().isoformat(),
-            }
-            save_manifest(manifest)
+            if len(image_b64) > ((MAX_UPLOAD_BYTES * 4 // 3) + 16):
+                raise PhotoValidationError("image payload too large")
+            image_data = base64.b64decode(image_b64, validate=True)
+            filename = store_photo_for_dish(zh_name, slug, image_data)
 
             print(f"  [OK] 照片已保存: {filename} ({len(image_data) // 1024}KB) -> {zh_name}")
             self._json_response(200, {"success": True, "file": filename})
 
+        except (PhotoValidationError, ValueError, base64.binascii.Error) as e:
+            self._json_response(400, {"success": False, "error": str(e)})
         except Exception as e:
             print(f"  [ERROR] 上传失败: {e}")
             self._json_response(500, {"success": False, "error": str(e)})
@@ -1734,6 +1985,7 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 protein_types = data.get("protein_types", [])
                 vegetables = data.get("vegetables", [])
                 carb_type = data.get("carb_type")
+                breakfast_staple_type = data.get("breakfast_staple_type")
                 meal_components = data.get("meal_components", [])
                 taste = data.get("taste", "normal")
                 cooking_methods = data.get("cooking_methods", [])
@@ -1742,31 +1994,47 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 quick_soup = int(data.get("quick_soup", 0))
                 slow_soup = int(data.get("slow_soup", 0))
                 manual_only_for_breakfast = int(data.get("manual_only_for_breakfast", 0))
+                meal_roles = data.get("meal_roles", [])
+                required_ingredients = data.get("required_ingredients", [])
+                missing = []
+                if not category_id:
+                    missing.append("category")
+                if not meal_tags:
+                    missing.append("meal_tags")
+                if not required_ingredients:
+                    missing.append("required_ingredients")
+                if missing:
+                    self._json_response(400, {
+                        "success": False, "error": "菜品资料不完整", "missing_fields": missing,
+                    })
+                    return
 
                 conn.execute("""
                     UPDATE dishes SET
                         name_cn = ?, name_en = ?, category_id = ?,
                         meal_tags = ?, banquet = ?,
                         protein_types = ?, vegetables = ?,
-                        vegetable_count = ?, carb_type = ?,
+                        vegetable_count = ?, carb_type = ?, breakfast_staple_type = ?,
                         meal_components = ?, taste = ?,
                         cooking_methods = ?, can_serve_warm = ?,
                         custom_tags = ?,
                         quick_soup = ?, slow_soup = ?,
-                        manual_only_for_breakfast = ?,
+                        manual_only_for_breakfast = ?, meal_roles = ?, is_active = 1,
                         updated_at = datetime('now')
                     WHERE id = ?
                 """, (
                     name_cn, name_en, category_id,
                     json.dumps(meal_tags, ensure_ascii=False), 1 if banquet else 0,
                     json.dumps(protein_types, ensure_ascii=False), json.dumps(vegetables, ensure_ascii=False),
-                    len(vegetables), carb_type,
+                    len(vegetables), carb_type, breakfast_staple_type,
                     json.dumps(meal_components, ensure_ascii=False), taste,
                     json.dumps(cooking_methods, ensure_ascii=False), 1 if can_serve_warm else 0,
                     json.dumps(custom_tags, ensure_ascii=False),
                     quick_soup, slow_soup, manual_only_for_breakfast,
+                    json.dumps(meal_roles, ensure_ascii=False),
                     dish_id
                 ))
+                resolved_ingredients = _sync_required_ingredients(conn, dish_id, required_ingredients)
                 # V11: 递增 catalog_version → 触发 cache invalidation
                 _increment_catalog_version(conn)
                 conn.commit()
@@ -1779,18 +2047,13 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             # V11: 失效 menu_service catalog cache
             _invalidate_menu_cache()
 
-            # 同步 photo manifest（重命名照片映射）
-            manifest = load_manifest()
-            has_photo = False
-            photo_file = ""
-            if old_name != name_cn and old_name in manifest:
-                manifest[name_cn] = manifest.pop(old_name)
-                save_manifest(manifest)
-                has_photo = True
-                photo_file = manifest[name_cn].get("file", "")
-            elif name_cn in manifest:
-                has_photo = True
-                photo_file = manifest[name_cn].get("file", "")
+            conn = get_db()
+            try:
+                image_row = conn.execute("SELECT image FROM dishes WHERE id=?", (dish_id,)).fetchone()
+                photo_file = image_row["image"] or "" if image_row else ""
+                has_photo = bool(photo_file)
+            finally:
+                conn.close()
 
             new_slug = slugify(name_en)
             print(f"  [OK] 编辑菜品 (SQLite): {old_name} -> {name_cn}")
@@ -1799,6 +2062,7 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 "new_slug": new_slug,
                 "has_photo": has_photo,
                 "photo_file": photo_file,
+                "required_ingredients": resolved_ingredients,
             })
 
         except Exception as e:
@@ -1808,6 +2072,13 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
     def _handle_add_dish(self):
         try:
             data = self._read_body()
+            if data.get("ui_version") != ADMIN_UI_VERSION:
+                self._json_response(409, {
+                    "success": False,
+                    "reload_required": True,
+                    "error": "管理页面已更新，请刷新页面后重试；新版会显示“必需食材”输入框",
+                })
+                return
             name_cn = data.get("name_cn", "").strip()
             name_en = data.get("name_en", "").strip()
             category_id = data.get("category_id", "")
@@ -1831,40 +2102,74 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                     self._json_response(400, {"success": False, "error": f"菜品已存在: {name_cn}"})
                     return
 
-                # 生成新 ID
-                cur = conn.execute("SELECT id FROM dishes WHERE id LIKE 'dish_%' ORDER BY id DESC LIMIT 1")
-                last_id = cur.fetchone()
-                if last_id:
-                    last_num = int(last_id["id"].split("_")[1])
-                    new_id = f"dish_{last_num + 1:04d}"
-                else:
-                    new_id = "dish_0001"
+                # 生成新 ID；兼容 dish_baozi 一类非数字历史 ID。
+                rows = conn.execute("SELECT id FROM dishes WHERE id LIKE 'dish_%'").fetchall()
+                last_num = max(
+                    (
+                        int(row["id"][5:])
+                        for row in rows
+                        if row["id"][5:].isdigit()
+                    ),
+                    default=0,
+                )
+                new_id = f"dish_{last_num + 1:04d}"
 
                 quick_soup = int(data.get("quick_soup", 0))
                 slow_soup = int(data.get("slow_soup", 0))
                 manual_only_for_breakfast = int(data.get("manual_only_for_breakfast", 0))
+                protein_types = data.get("protein_types", [])
+                vegetables = data.get("vegetables", [])
+                carb_type = data.get("carb_type")
+                breakfast_staple_type = data.get("breakfast_staple_type")
+                meal_components = data.get("meal_components", [])
+                taste = data.get("taste", "normal")
+                cooking_methods = data.get("cooking_methods", [])
+                can_serve_warm = int(bool(data.get("can_serve_warm", False)))
+                custom_tags = data.get("custom_tags", [])
+                meal_roles = data.get("meal_roles", [])
+                required_ingredients = data.get("required_ingredients", [])
+                missing = []
+                if not category_id:
+                    missing.append("category")
+                if not meal_tags:
+                    missing.append("meal_tags")
+                if not required_ingredients:
+                    missing.append("required_ingredients")
+                if missing:
+                    self._json_response(400, {
+                        "success": False, "error": "菜品资料不完整", "missing_fields": missing,
+                    })
+                    return
 
                 conn.execute("""
                     INSERT INTO dishes (
                         id, name_cn, name_en, category_id, meal_tags, banquet,
-                        protein_types, vegetables, vegetable_count, carb_type,
+                        protein_types, vegetables, vegetable_count, carb_type, breakfast_staple_type,
                         meal_components, taste, cooking_methods, can_serve_warm,
-                        custom_tags, needs_review, image, image_uploaded,
+                        custom_tags, needs_review, image, image_uploaded, meal_roles,
                         quick_soup, slow_soup, manual_only_for_breakfast,
                         is_active, created_at, updated_at
                     ) VALUES (
                         ?, ?, ?, ?, ?, ?,
-                        '[]', '[]', 0, NULL,
-                        '[]', 'normal', '[]', 0,
-                        '[]', 0, NULL, 0,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, 0, NULL, 0, ?,
                         ?, ?, ?,
                         1, datetime('now'), datetime('now')
                     )
                 """, (
                     new_id, name_cn, name_en, category_id,
                     json.dumps(meal_tags, ensure_ascii=False), 1 if banquet else 0,
+                    json.dumps(protein_types, ensure_ascii=False),
+                    json.dumps(vegetables, ensure_ascii=False), len(vegetables), carb_type,
+                    breakfast_staple_type,
+                    json.dumps(meal_components, ensure_ascii=False), taste,
+                    json.dumps(cooking_methods, ensure_ascii=False), can_serve_warm,
+                    json.dumps(custom_tags, ensure_ascii=False),
+                    json.dumps(meal_roles, ensure_ascii=False),
                     quick_soup, slow_soup, manual_only_for_breakfast
                 ))
+                resolved_ingredients = _sync_required_ingredients(conn, new_id, required_ingredients)
                 # V11: 递增 catalog_version → 触发 cache invalidation
                 _increment_catalog_version(conn)
                 conn.commit()
@@ -1879,11 +2184,37 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
 
             new_slug = slugify(name_en)
             print(f"  [OK] 添加菜品 (SQLite): {name_cn} / {name_en} -> {category_id}")
-            self._json_response(200, {"success": True, "slug": new_slug, "id": new_id})
+            self._json_response(200, {
+                "success": True, "slug": new_slug, "id": new_id,
+                "required_ingredients": resolved_ingredients,
+            })
 
         except Exception as e:
             print(f"  [ERROR] 添加失败: {e}")
             self._json_response(500, {"success": False, "error": str(e)})
+
+    def _handle_save_ingredients(self):
+        try:
+            data = self._read_body()
+            from db import get_db
+            conn = get_db()
+            try:
+                for item in data.get("items", []):
+                    update_ingredient_names(
+                        conn, item.get("ingredient_id", ""),
+                        item.get("name_cn", ""), item.get("name_en", ""),
+                    )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
+            self._json_response(200, {"success": True, "items": get_all_ingredients_admin()})
+        except ValueError as error:
+            self._json_response(400, {"success": False, "error": str(error)})
+        except Exception as error:
+            self._json_response(500, {"success": False, "error": str(error)})
 
     def _handle_delete_dish(self):
         try:
@@ -1895,45 +2226,11 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                 self._json_response(400, {"success": False, "error": "缺少 id"})
                 return
 
-            # V7: Soft Delete — SQLite 是唯一真相源
-            from db import get_db, log_event
-            conn = get_db()
-            try:
-                dish = conn.execute("SELECT name_cn FROM dishes WHERE id = ?", (dish_id,)).fetchone()
-                if not dish:
-                    self._json_response(404, {"success": False, "error": f"菜品不存在: {dish_id}"})
-                    return
-
-                name_cn = dish["name_cn"]
-
-                # Soft Delete: is_active = 0, deleted_at = timestamp
-                conn.execute(
-                    "UPDATE dishes SET is_active = 0, deleted_at = datetime('now') WHERE id = ?",
-                    (dish_id,)
-                )
-                # V11: 递增 catalog_version → 触发 cache invalidation
-                _increment_catalog_version(conn)
-                conn.commit()
-
-                log_event("dish_soft_deleted", "dishes", dish_id, {
-                    "name_cn": name_cn, "deleted_via": "photo_manager"
-                })
-            finally:
-                conn.close()
-
-            # V11: 失效 menu_service catalog cache
-            _invalidate_menu_cache()
-
-            # 删除照片
-            manifest = load_manifest()
-            if name_cn in manifest:
-                photo_file = manifest[name_cn].get("file", "")
-                if photo_file:
-                    photo_path = os.path.join(PHOTOS_DIR, photo_file)
-                    if os.path.exists(photo_path):
-                        os.remove(photo_path)
-                del manifest[name_cn]
-                save_manifest(manifest)
+            ok, result = soft_delete_dish(dish_id)
+            if not ok:
+                self._json_response(404, {"success": False, "error": result})
+                return
+            name_cn = result
 
             print(f"  [OK] 菜品已下架(Soft Delete): {name_cn}")
             self._json_response(200, {"success": True, "soft_delete": True})
@@ -2017,6 +2314,7 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -2025,14 +2323,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
 def main():
     ensure_dirs()
 
-    if not os.path.exists(DISH_POOL_FILE):
-        print(f"[ERROR] 找不到 {DISH_POOL_FILE}")
-        print("  请确保在项目根目录下运行此脚本")
-        return
-
     dishes = get_all_dishes()
-    manifest = load_manifest()
-    photo_count = len(manifest)
+    photo_count = sum(1 for dish in dishes if dish.get("has_photo"))
 
     print("=" * 55)
     print("  🍳 菜品管理器 v2.0（结构化字段 + 分类/标签管理）")
@@ -2041,18 +2333,18 @@ def main():
     print(f"  已传照片: {photo_count} 道")
     print(f"  待传照片: {len(dishes) - photo_count} 道")
     print(f"  照片目录: {PHOTOS_DIR}")
-    print(f"  映射文件: {MANIFEST_FILE}")
-    print(f"  菜谱文件: {DISH_POOL_FILE}")
+    print("  图片元数据: SQLite dishes.image")
     print("-" * 55)
-    print(f"  浏览器打开: http://localhost:{PORT}")
+    print(f"  浏览器打开: http://{HOST}:{PORT}")
     print("  操作完成后关闭此窗口即可")
     print("  之后执行 ./sync.sh 同步到 GitHub")
     print("=" * 55)
     print()
 
-    webbrowser.open(f"http://localhost:{PORT}")
+    if app_env() == "development" and os.environ.get("BROWSER", "true").lower() == "true":
+        webbrowser.open(f"http://{HOST}:{PORT}")
 
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), PhotoManagerHandler)
+    server = ThreadingHTTPServer((HOST, PORT), PhotoManagerHandler)
     server.daemon_threads = True
     try:
         server.serve_forever()

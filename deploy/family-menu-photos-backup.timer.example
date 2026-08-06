@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Family Menu photo archive weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 03:45:00 Asia/Hong_Kong
+Persistent=true
+RandomizedDelaySec=10m
+Unit=family-menu-photos-backup.service
+
+[Install]
+WantedBy=timers.target

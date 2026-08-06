@@ -553,14 +553,10 @@
   },
   "四味豆腐沙拉": {
     "file": "fourflavour_tofu_salad.jpg",
-    "uploaded": "2026-07-29"
+    "uploaded": "2026-07-31"
   },
   "鸡丝青瓜丝嫩豆腐": {
     "file": "silken_tofu_with_shredded_chicken_and_cucumber.jpg",
-    "uploaded": "2026-07-29"
-  },
-  "日式拌豆腐": {
-    "file": "japanesestyle_tofu_salad.jpg",
     "uploaded": "2026-07-29"
   },
   "西兰花鸡蛋番茄沙拉": {
@@ -621,7 +617,7 @@
   },
   "牛油果洋葱酱三文鱼籽": {
     "file": "avocado_with_onion_dressing_and_salmon_roe.jpg",
-    "uploaded": "2026-07-29"
+    "uploaded": "2026-07-31"
   },
   "山药疙瘩汤": {
     "file": "chinese_yam_doughdrop_soup.jpg",
@@ -789,6 +785,26 @@
   },
   "羊肉串": {
     "file": "grilled_lamb_skewers.jpg",
+    "uploaded": "2026-07-31"
+  },
+  "汤饺": {
+    "file": "dumpling_soup.jpg",
+    "uploaded": "2026-07-31"
+  },
+  "日式拌豆腐（木鱼花、柴鱼片）": {
+    "file": "japanesestyle_tofu_salad.jpg",
+    "uploaded": "2026-07-29"
+  },
+  "蒜蓉菜心": {
+    "file": "stirfried_choy_sum_with_garlic.jpg",
+    "uploaded": "2026-07-31"
+  },
+  "清炒菜心": {
+    "file": "stirfried_choy_sum.jpg",
+    "uploaded": "2026-07-31"
+  },
+  "蒜蓉青菜": {
+    "file": "stirfried_green_vegetables_with_garlic.jpg",
     "uploaded": "2026-07-31"
   }
 }

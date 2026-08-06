@@ -1,0 +1,10 @@
+/opt/family-menu/logs/*.log {
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 family-menu family-menu
+}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Family Menu reminder daily at 20:00 Asia/Hong_Kong
+
+[Timer]
+OnCalendar=*-*-* 20:00:00 Asia/Hong_Kong
+Persistent=true
+Unit=family-menu-reminder-20.service
+
+[Install]
+WantedBy=timers.target

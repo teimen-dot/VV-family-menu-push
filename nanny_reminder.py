@@ -20,9 +20,8 @@ import json
 import os
 import sys
 import argparse
-import urllib.request
-import urllib.error
 from datetime import date, datetime, timedelta
+from push_service import PushPlusClient, PushError, get_h5_base_url
 
 # 本地模块
 try:
@@ -32,7 +31,6 @@ try:
 except ImportError:
     DB_AVAILABLE = False
 
-PUSHPLUS_API = "https://www.pushplus.plus/send"
 CONFIG_FILE = "config.json"
 
 
@@ -67,34 +65,11 @@ def get_tomorrow_menu_status():
 
 
 def send_pushplus(token, topic, title, content):
-    """通过 PushPlus 发送消息"""
-    payload = {
-        "token": token,
-        "title": title,
-        "content": content,
-        "template": "markdown",
-    }
-    if topic:
-        payload["topic"] = topic
-
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        PUSHPLUS_API,
-        data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            result = json.loads(response.read().decode("utf-8"))
-            if result.get("code") == 200:
-                print(f"[OK] PushPlus 提醒发送成功!")
-                return True
-            else:
-                print(f"[FAIL] PushPlus 发送失败: {result.get('msg', '')}")
-                return False
-    except Exception as e:
+        PushPlusClient(token, topic).send(title, content)
+        print("[OK] PushPlus 提醒发送成功!")
+        return True
+    except PushError as e:
         print(f"[ERROR] 发送异常: {e}")
         return False
 
@@ -102,15 +77,19 @@ def send_pushplus(token, topic, title, content):
 def send_reminder(reminder_type, menu_status, error_msg=None):
     """发送提醒消息"""
     config = load_config()
-    token = os.environ.get("PUSHPLUS_TOKEN", config.get("pushplus_token", ""))
-    topic = os.environ.get("PUSHPLUS_TOPIC", config.get("pushplus_topic", "home-menu"))
+    token = os.environ.get("PUSHPLUS_TOKEN", "")
+    topic = os.environ.get("PUSHPLUS_TOPIC", "home-menu")
 
     if not token:
         print("[ERROR] 未设置 PUSHPLUS_TOKEN")
         return False
 
     # H5 链接
-    h5_base = config.get("h5_base_url", "http://localhost:8090")
+    try:
+        h5_base = get_h5_base_url()
+    except PushError as exc:
+        print(f"[ERROR] {exc}")
+        return False
     tomorrow_link = f"{h5_base}/tomorrow"
 
     if reminder_type == "nanny_first":
@@ -172,16 +151,8 @@ def main():
     menu_row, error = get_tomorrow_menu_status()
 
     if error:
-        print(f"[INFO] {error}")
-        # DB 不可用或菜单不存在时，仍发送提醒（让保姆/VV 去检查）
-        if args.time in ("19:00", "20:00"):
-            print(f"[SEND] {args.time} 保姆提醒 (无法检查状态，默认发送)")
-            send_reminder("nanny_first" if args.time == "19:00" else "nanny_second",
-                          "unknown")
-        elif args.time == "21:00":
-            print("[SEND] 21:00 VV 提醒 (无法检查状态，默认发送)")
-            send_reminder("vv_final", "unknown")
-        return
+        print(f"[ERROR] {error}; 为避免错误提醒，本次不发送")
+        return 1
 
     status = menu_row["status"]
     print(f"明日菜单状态: {status}")

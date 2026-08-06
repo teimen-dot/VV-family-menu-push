@@ -1,0 +1,15 @@
+[Unit]
+Description=Family Menu Daily SQLite Backup
+After=family-menu-app.service
+
+[Service]
+Type=oneshot
+User=family-menu
+Group=family-menu
+WorkingDirectory=/opt/family-menu/app
+EnvironmentFile=/etc/family-menu.env
+ExecStart=/usr/bin/python3 /opt/family-menu/app/backup_data.py db
+UMask=0027
+NoNewPrivileges=true
+StandardOutput=append:/opt/family-menu/logs/backup.log
+StandardError=append:/opt/family-menu/logs/backup.log

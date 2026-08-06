@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="家庭菜单">
+<meta name="theme-color" content="#2c2620">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<title>明日菜单 · Tomorrow</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;background:#faf7f2;color:#2c2620;line-height:1.6;font-size:16px}
+.header{background:#2c2620;color:#faf7f2;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.header h1{font-size:22px;font-weight:700;letter-spacing:.5px;line-height:1.12}
+.header h1 span{display:block;font-size:12px;font-weight:500;letter-spacing:.02em;opacity:.72;margin-top:3px}
+.loc-switch{display:flex;gap:4px}
+.loc-btn{font-size:14px;padding:5px 12px;border-radius:14px;border:1px solid #a89888;background:transparent;color:#a89888;cursor:pointer}
+.loc-btn.active{background:#a89888;color:#2c2620;border-color:#a89888}
+.role-badge{font-size:13px;background:#a89888;padding:3px 10px;border-radius:10px}
+.nav{display:flex;background:#fff;border-bottom:1px solid #e8e0d4;position:sticky;top:62px;z-index:99}
+.nav a{position:relative;flex:1;text-align:center;padding:10px 2px 12px;font-size:17px;line-height:1.15;color:#a89888;text-decoration:none;font-weight:600}
+.nav a.active{color:#2c2620}
+.nav a.active:after{content:"";position:absolute;left:50%;bottom:0;width:34px;height:3px;border-radius:3px 3px 0 0;background:#287356;transform:translateX(-50%)}
+.nav a span{display:block;font-size:13px;margin-top:1px;opacity:.6}
+.content{max-width:600px;margin:0 auto;padding:12px}
+.tomorrow-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 4px 14px}
+.tomorrow-date{font-size:15px;font-weight:650;color:#5a4a3a;line-height:1.35}
+.tomorrow-date span{display:block;color:#a89888;font-size:13px;font-weight:500;margin-top:2px}
+.tomorrow-heading h2{font-size:30px;line-height:1.2;margin-top:10px}
+.tomorrow-heading p{font-size:14px;color:#6f6255;margin-top:6px;max-width:42ch}
+.nutrition-overview{background:#eef6f1;border:1px solid #c7ded1;border-radius:12px;padding:14px;margin-bottom:10px}
+.nutrition-overview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
+.nutrition-overview-head h3{font-size:18px;line-height:1.25}
+.nutrition-overview-head h3 span{display:block;font-size:12px;color:#56806b;font-weight:600;margin-bottom:3px}
+.nutrition-overview-head>span{font-size:12px;color:#356b52;background:#fff;border:1px solid #c7ded1;border-radius:999px;padding:3px 9px;white-space:nowrap}
+.nutrition-metric{display:grid;grid-template-columns:58px minmax(0,1fr) 46px;align-items:center;gap:10px;margin-top:9px;font-size:13px}
+.nutrition-metric strong{text-align:right;font-size:12px;color:#356b52}
+.nutrition-track{height:8px;background:#d9e7df;border-radius:999px;overflow:hidden}
+.nutrition-track i{display:block;width:var(--value);height:100%;background:#287356;border-radius:inherit}
+.nutrition-note{font-size:12px;color:#56806b;margin-top:11px}
+.meal-section{background:#fff;border-radius:12px;margin-bottom:10px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.meal-header{padding:12px 14px;display:flex;align-items:center;gap:8px}
+.meal-bar{width:4px;height:24px;border-radius:2px}
+.meal-title{font-size:22px;font-weight:700}
+.meal-title-en{font-size:15px;color:#a89888;font-style:italic;margin-left:4px}
+.meal-actions{margin-left:auto;display:flex;gap:6px}
+.meal-act-btn{font-size:15px;padding:8px 14px;border-radius:8px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;white-space:nowrap;min-height:44px;display:flex;align-items:center}
+.meal-act-btn:active{background:#e8e0d4}
+.meal-items{padding:0 14px 8px}
+.slot-hint{padding:9px 12px;font-size:14px;color:#856404;background:#fff7d6;border:1px solid #f0d98a;border-radius:8px;margin:0 14px 6px}
+.meal-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f5f0e8;align-items:center}
+.meal-item:last-child{border-bottom:none}
+.meal-item img{width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0;background:#f5f0e8}
+.meal-item .no-img{width:56px;height:56px;border-radius:8px;background:#f5f0e8;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:24px}
+.meal-item .info{flex:1;min-width:0}
+.dish-name{font-size:18px;font-weight:600}
+.dish-name-en{font-size:14px;color:#a89888;font-style:italic}
+.dish-meta{font-size:12px;color:#a89888;margin-top:2px}
+.badge{display:inline-block;font-size:12px;padding:2px 6px;border-radius:4px;margin-right:3px;vertical-align:middle}
+.badge-owner{background:#d4edda;color:#155724}
+.badge-ai{background:#d1ecf1;color:#0c5460}
+.badge-shortage-missing{background:#f8d7da;color:#721c24}
+.badge-shortage-tobuy{background:#fff3cd;color:#856404}
+.badge-shortage-notified{background:#cce5ff;color:#004085}
+.badge-shortage-purchased{background:#d4edda;color:#155724}
+.badge-cat{background:#e8e0d4;color:#5a4a3a}
+.badge-warning{background:#fff3cd;color:#856404}
+.item-actions{display:flex;gap:6px;flex-shrink:0}
+.item-btn{width:44px;height:44px;border-radius:8px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center}
+.item-btn:active{background:#e8e0d4}
+.item-btn.danger{border-color:#f5c6cb;color:#721c24}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.card h3{font-size:16px;margin-bottom:6px}
+.card p{font-size:14px;color:#5a4a3a}
+.empty{text-align:center;padding:40px 20px;color:#a89888}
+.empty h2{font-size:18px;margin-bottom:6px}
+.btn{display:block;width:100%;padding:14px;text-align:center;border:none;border-radius:8px;font-size:16px;font-weight:500;cursor:pointer;text-decoration:none;min-height:44px}
+.btn-primary{background:#2c2620;color:#faf7f2}
+.btn-outline{background:transparent;border:1px solid #2c2620;color:#2c2620}
+.btn-danger{background:#c0504c;color:#fff}
+.btn:active{opacity:.7}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.status-tag{display:inline-block;font-size:13px;padding:3px 10px;border-radius:10px}
+.status-draft{background:#fff3cd;color:#856404}
+.status-confirmed{background:#d4edda;color:#155724}
+.status-pushed{background:#d1ecf1;color:#0c5460}
+.loc-banner{background:#e8e0d4;color:#5a4a3a;padding:8px 16px;font-size:14px;text-align:center;font-weight:500}
+.search-bar{padding:10px 14px;background:#fff;position:sticky;top:118px;z-index:98}
+.search-bar input{width:100%;padding:12px 16px;border:1px solid #e8e0d4;border-radius:24px;font-size:16px;outline:none;box-sizing:border-box}
+.filter-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:6px 14px;background:#fff;border-bottom:1px solid #f5f0e8}
+.filter-tab{white-space:nowrap;padding:6px 14px;border-radius:16px;font-size:14px;background:#f5f0e8;color:#5a4a3a;cursor:pointer}
+.filter-tab.active{background:#2c2620;color:#faf7f2}
+.dish-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:4px 0}
+.dish-card{background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03);cursor:pointer}
+.dish-card img{width:100%;aspect-ratio:1.2;object-fit:cover;background:#f5f0e8}
+.dish-card .no-img{width:100%;aspect-ratio:1.2;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:28px}
+.dish-card .info{padding:8px}
+.dish-card .name{font-size:18px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dish-card .name-en{font-size:14px;color:#a89888;font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dish-card .cat-label{font-size:13px;color:#a89888;margin-top:2px}
+.dish-card .avail-badge{font-size:13px;padding:2px 6px;border-radius:4px;margin-top:3px;display:inline-block}
+.avail-yes{background:#d4edda;color:#155724}
+.avail-almost{background:#fff3cd;color:#856404}
+.pantry-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f5f0e8;gap:8px}
+.pantry-item:last-child{border-bottom:none}
+.pantry-item .name{font-size:18px;font-weight:600}
+.pantry-item .name-en{font-size:14px;color:#a89888}
+.pantry-controls{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.pantry-status-group{display:flex;gap:4px}
+.st-btn{font-size:14px;padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;white-space:nowrap;transition:all .15s;min-height:40px;display:flex;align-items:center}
+.st-btn:active{opacity:.7}
+.st-btn.active-priority{background:#fff3cd;color:#856404;border-color:#e0c060}
+.st-btn.active-expiring{background:#f8d7da;color:#721c24;border-color:#e8a0a8}
+.pantry-used-up{font-size:14px;padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid #f5c6cb;background:#fff;color:#721c24;white-space:nowrap;min-height:40px;display:flex;align-items:center}
+.pantry-used-up:active{opacity:.7}
+.history-entry{background:#fff;border-radius:10px;padding:12px;margin-bottom:8px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.history-date{font-size:16px;font-weight:600;margin-bottom:4px;display:flex;justify-content:space-between;align-items:center}
+.history-context{font-size:13px;color:#a89888;margin-bottom:6px;display:flex;gap:8px;flex-wrap:wrap}
+.history-context span{display:inline-flex;align-items:center;gap:2px}
+.history-meal{font-size:14px;margin-top:3px}
+.history-meal .label{color:#a89888;font-weight:600;margin-right:4px;font-size:13px}
+.history-meal .dish-list{color:#2c2620}
+.history-meal .dish-list-en{color:#a89888;font-style:italic;font-size:13px}
+.footer{text-align:center;padding:20px;color:#a89888;font-size:13px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;width:100%;max-width:600px;border-radius:16px 16px 0 0;max-height:85vh;overflow-y:auto}
+.modal-img{width:100%;aspect-ratio:2;object-fit:cover;background:#f5f0e8}
+.modal-body{padding:16px}
+.modal-body h2{font-size:22px;font-weight:700;margin-bottom:2px}
+.modal-body .en-name{font-size:15px;color:#a89888;font-style:italic;margin-bottom:10px}
+.modal-body .meta-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.modal-body .section-title{font-size:15px;font-weight:600;color:#5a4a3a;margin:10px 0 4px}
+.modal-body .ing-list{font-size:14px;color:#5a4a3a}
+.modal-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid #f5f0e8;position:sticky;bottom:0;background:#fff}
+.modal-actions .btn{flex:1;padding:12px;font-size:16px}
+.rec-section-title{font-size:15px;font-weight:700;color:#5a4a3a;padding:8px 16px 4px;background:#f5f0e8;border-radius:6px 6px 0 0}
+.add-to-meal{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px}
+.add-to-meal .btn{padding:12px;font-size:15px;min-height:44px}
+.snack-bar{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#2c2620;color:#faf7f2;padding:10px 20px;border-radius:20px;font-size:14px;z-index:300;display:none;white-space:nowrap}
+.snack-bar.show{display:block}
+.ing-picker{display:flex;gap:6px;flex-wrap:wrap;padding:8px 0}
+.ing-chip{font-size:14px;padding:6px 12px;border-radius:14px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer}
+.ing-chip.selected{background:#2c2620;color:#faf7f2;border-color:#2c2620}
+.ing-chip:active{opacity:.7}
+.ing-add-chip{font-size:14px;padding:6px 12px;border-radius:14px;border:1px dashed #4a9eff;background:#e8f4ff;color:#0c5460;cursor:pointer}
+.selected-list{margin-top:10px}
+.selected-item{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:#f5f0e8;border-radius:8px;margin-bottom:6px;gap:8px}
+.selected-item .name{font-size:16px;font-weight:600}
+.selected-item .name-en{font-size:14px;color:#a89888}
+.status-picker{display:flex;gap:4px}
+.status-pick{font-size:14px;padding:4px 10px;border-radius:10px;border:1px solid #d4c9b8;background:#fff;color:#5a4a3a;cursor:pointer}
+.status-pick.active{font-weight:600}
+.collapsible{margin-bottom:10px}
+.collapsible-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#fff;border-radius:10px;cursor:pointer;font-size:16px;font-weight:500}
+.collapsible-header .arrow{transition:transform .2s}
+.collapsible-header.open .arrow{transform:rotate(90deg)}
+.collapsible-body{display:none;padding:0 14px}
+.collapsible-body.open{display:block}
+.warning-box{background:#fff3cd;border:1px solid #ffeaa7;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:14px;color:#856404}
+.warning-box .warn-title{font-weight:600;margin-bottom:4px}
+.diners-section{background:#fff;border:1px solid #e5e8e3;border-radius:14px;padding:14px;margin-bottom:10px}
+.diners-section .diners-title{display:flex;align-items:flex-end;justify-content:space-between;font-size:18px;font-weight:700;color:#202724;line-height:1.15;margin-bottom:12px}
+.diners-section .diners-title>span>small{display:block;font-size:12px;color:#6b746f;font-weight:600;margin-top:3px}
+.diner-count{font-size:14px;color:#66706b;text-align:right;line-height:1.25}
+.diner-count small{display:block;font-size:12px}
+.diners-row.people-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+.diner-chip{display:inline-flex;align-items:center;gap:3px;padding:8px 14px;border-radius:14px;border:1px solid #ddd5c8;font-size:16px;cursor:pointer;transition:transform .15s,background .15s,border-color .15s;min-height:44px}
+.diner-chip.person-card{min-width:0;min-height:102px;padding:10px 4px;flex-direction:column;justify-content:center;border-radius:12px;background:#fff;color:#202724;text-align:center}
+.diner-chip.person-card.active{background:#e9f3ed;color:#202724;border-color:#8dbca3}
+.diner-avatar{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50%;background:#eef0ee;color:#59635e;font-size:15px;font-weight:700;margin-bottom:4px}
+.person-card.active .diner-avatar{background:#287356;color:#fff}
+.diner-name{display:block;max-width:100%;font-weight:700;line-height:1.15;overflow:hidden;text-overflow:ellipsis}
+.diner-en{display:block;font-size:12px;line-height:1.2;color:#68716d;margin-top:3px}
+.tomorrow-actions{position:sticky;bottom:0;z-index:20;display:grid;grid-template-columns:1fr 1.25fr;gap:8px;background:rgba(250,247,242,.94);backdrop-filter:blur(12px);padding:10px 0 calc(10px + env(safe-area-inset-bottom));margin-top:8px}
+.tomorrow-actions .btn{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.2}
+.tomorrow-actions .btn small{font-size:11px;font-weight:500;opacity:.72;margin-top:3px}
+.btn-stepper{width:40px;height:40px;border-radius:8px;border:1px solid #ddd5c8;background:#fff;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;min-height:44px}
+.btn-stepper:active{background:#f5f0e8}
+.purchase-task{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f0e8}
+.purchase-task:last-child{border-bottom:none}
+.purchase-task .info{flex:1;min-width:0}
+.purchase-task .dish-name-sm{font-size:15px;font-weight:500}
+.purchase-task .missing-list{font-size:13px;color:#a89888;margin-top:2px}
+.purchase-task .act-btn{font-size:14px;padding:8px 14px;border-radius:8px;border:none;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:8px;min-height:44px}
+.act-notify{background:#4a9eff;color:#fff}
+.act-notified{background:#e8e0d4;color:#6c757d}
+.act-purchased{background:#d4edda;color:#155724}
+.ing-group-header{font-size:15px;font-weight:600;color:#5a4a3a;padding:8px 0 4px;border-bottom:1px solid #f5f0e8;margin-top:4px}
+.ing-group-header:first-child{margin-top:0}
+@media (max-width:767px){
+html,body{max-width:100%;overflow-x:hidden}
+body{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+.content,.card,.pantry-item,.pantry-item>*{min-width:0;max-width:100%}
+.pantry-item{display:grid;grid-template-columns:minmax(0,1fr);align-items:stretch;gap:10px}
+.pantry-item>.pantry-name{width:100%;min-width:0}
+.pantry-item .name{white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.pantry-item .name-en{white-space:normal;overflow-wrap:anywhere;word-break:normal}
+.pantry-controls{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%;min-width:0}
+.pantry-status-group{display:contents}
+.st-btn,.pantry-used-up{width:100%;min-width:0;min-height:48px;padding:6px 3px;justify-content:center;text-align:center;white-space:normal;line-height:1.15;overflow-wrap:normal}
+.tomorrow-heading{padding-top:10px}
+.tomorrow-heading h2{font-size:27px}
+.diners-row.people-cards{gap:6px;overflow-x:auto;grid-template-columns:repeat(5,minmax(94px,1fr));padding-bottom:3px}
+.diner-chip.person-card{min-height:110px}
+.item-actions{gap:4px}
+.item-btn{width:42px;height:42px}
+}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>家庭菜单<span>Family Menu</span></h1>
+<div class="loc-switch"><button class="loc-btn active" onclick="switchLocation('shenzhen')">深圳 Shenzhen</button><button class="loc-btn " onclick="switchLocation('hongkong')">香港 Hong Kong</button></div>
+</div>
+<div class="loc-banner" id="locBanner">📍 当前厨房 Kitchen: 深圳 Shenzhen</div>
+<div class="nav"><a href="tomorrow" class="active">明日<span>Tomorrow</span></a><a href="pantry" class="">食材<span>Pantry</span></a><a href="dishes" class="">菜品<span>Dishes</span></a><a href="history" class="">历史<span>History</span></a></div>
+<div class="content"><section class="tomorrow-heading"><div><div class="tomorrow-date">2026年8月5日 · 星期三<span>Wednesday, August 5, 2026</span></div><h2>明日菜单</h2><p>为一家人安排营养均衡、好执行的一日餐食。</p></div><span class="status-tag status-draft">待确认 Pending</span></section>
+<section class="diners-section"><div class="diners-title"><span>用餐成员<small>Diners</small></span><span class="diner-count">3 人<small>3 people</small></span></div><div class="diners-row people-cards"><button type="button" class="diner-chip person-card active" data-diner="vivian" aria-pressed="true" onclick="toggleDiner('vivian')"><span class="diner-avatar" aria-hidden="true">V</span><span class="diner-name">Vivian</span></button><button type="button" class="diner-chip person-card active" data-diner="sir" aria-pressed="true" onclick="toggleDiner('sir')"><span class="diner-avatar" aria-hidden="true">S</span><span class="diner-name">老板</span><span class="diner-en">Sir</span></button><button type="button" class="diner-chip person-card active" data-diner="toby" aria-pressed="true" onclick="toggleDiner('toby')"><span class="diner-avatar" aria-hidden="true">T</span><span class="diner-name">Toby</span></button><button type="button" class="diner-chip person-card " data-diner="ben" aria-pressed="false" onclick="toggleDiner('ben')"><span class="diner-avatar" aria-hidden="true">B</span><span class="diner-name">Ben</span></button><button type="button" class="diner-chip person-card " data-diner="grandma" aria-pressed="false" onclick="toggleDiner('grandma')"><span class="diner-avatar" aria-hidden="true">G</span><span class="diner-name">婆婆</span><span class="diner-en">Grandma</span></button></div></section>
+<div class="diners-section"><div class="diners-title">用餐模式 Meal Mode</div><div class="diners-row"><span class="diner-chip active" onclick="setMealMode('daily')">日常 Daily</span><span class="diner-chip " onclick="setMealMode('banquet')">家宴 Banquet</span></div><div id="banquet-input" style="display:none;margin-top:8px;align-items:center;gap:10px"><span style="font-size:14px;color:#a89888">家宴总人数 Total Diners</span><button class="btn-stepper" onclick="adjustBanquet(-1)">−</button><input type="number" id="banquetTotal" value="8" min="2" max="30" style="width:60px;text-align:center;font-size:18px;border:1px solid #d4c8b8;border-radius:6px;padding:4px" onchange="setBanquetTotal(this.value)"><button class="btn-stepper" onclick="adjustBanquet(1)">+</button></div></div>
+<section class="nutrition-overview" aria-labelledby="nutrition-title"><div class="nutrition-overview-head"><h3 id="nutrition-title"><span>营养概览 Nutrition</span>还需要补充营养搭配</h3><span>3 项待补</span></div><div class="nutrition-metric"><span>蛋白质</span><div class="nutrition-track" role="progressbar" aria-label="蛋白质" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="--value:0%"></i></div><strong>0%</strong></div><div class="nutrition-metric"><span>蔬菜</span><div class="nutrition-track" role="progressbar" aria-label="蔬菜" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="--value:0%"></i></div><strong>0%</strong></div><div class="nutrition-metric"><span>主食</span><div class="nutrition-track" role="progressbar" aria-label="主食" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i style="--value:0%"></i></div><strong>0%</strong></div><p class="nutrition-note">进度根据当前菜单中的蛋白质、蔬菜和主食标签计算。</p></section>
+<div class="warning-box"><div class="warn-title">提示 Warnings (16)</div><div class="warn-item">⚠️ 早餐缺粥 / No porridge</div><div class="warn-item">⚠️ 早餐缺搭配主食 / No companion staple (mantou/jiaozi/huajuan)</div><div class="warn-item">⚠️ 早餐缺粗粮 / No coarse grain</div><div class="warn-item">⚠️ 早餐缺蛋白质 / No protein</div><div class="warn-item">⚠️ 早餐蔬菜不足: 0种 / Insufficient vegetables (0, need >=2)</div><div class="warn-item">⚠️ 早餐还没有鸡蛋 / No egg for breakfast</div><div class="warn-item">⚠️ 早餐还没有豆腐 / No tofu for breakfast</div><div class="warn-item">⚠️ 午餐缺蛋白质 / No protein for lunch</div><div class="warn-item">⚠️ 午餐缺蔬菜 / No vegetables for lunch</div><div class="warn-item">⚠️ 午餐缺主食 / No carb for lunch</div><div class="warn-item">⚠️ 午餐还没有快手汤 / No quick soup for lunch</div><div class="warn-item">⚠️ 晚餐菜品不足: 0道 / Insufficient dishes (0, need >=3)</div><div class="warn-item">⚠️ 晚餐蛋白质不足: 0/2 / Insufficient protein (0/2, diners=3)</div><div class="warn-item">⚠️ 晚餐蔬菜不足: 0/1 / Insufficient vegetable dishes (0/1, diners=3)</div><div class="warn-item">⚠️ 晚餐缺主食 / No carb for dinner</div><div class="warn-item">⚠️ 晚餐还没有煲汤 / No slow-cooked soup for dinner</div><div style="margin-top:4px;font-size:13px;color:#a89060">VV 仍可确认 · VV can still confirm</div></div>
+<div class="meal-section">
+<div class="meal-header"><div class="meal-bar" style="background:#f0a040"></div><div><span class="meal-title">早餐</span><span class="meal-title-en">Breakfast</span></div><div class="meal-actions"><button class="meal-act-btn" onclick="openDishSearch('breakfast')">＋ 添加菜品 <span class="meal-title-en">Add dish</span></button><button class="meal-act-btn" onclick="aiFillMeal('breakfast')">AI 补充 AI Fill</button></div></div>
+<div class="slot-hint">还缺：粥 1 / 搭配主食 1 / 粗粮 1 / 蛋白质 1 / vegetable 2 / 鸡蛋 1 / 豆腐 1<br>Missing: Porridge 1 / Side Staple 1 / Coarse Grain 1 / Protein 1 / vegetable 2 / Egg 1 / Tofu 1</div><div class="meal-items"><div class="meal-item">
+<div class="no-img">🍽️</div>
+<div class="info">
+<div class="dish-name"><span class="badge badge-ai">AI 推荐 AI Suggestion</span>南瓜山药小米粥 ＋ 原味蒸鸡蛋 / 煮鸡蛋 ＋ 香港红薯 ＋ 白灼 / 清炒芦笋</div>
+<div class="dish-name-en">(历史组合菜单 Historical Combo)</div>
+<div class="dish-meta">  </div>
+</div><div class="item-actions"><button class="item-btn" onclick="openDishSearch('breakfast',33,'南瓜山药小米粥 ＋ 原味蒸鸡蛋 / 煮鸡蛋 ＋ 香港红薯 ＋ 白灼 / 清炒芦笋','None')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish(33)" title="删除 Delete">×</button></div></div></div></div>
+<div class="meal-section">
+<div class="meal-header"><div class="meal-bar" style="background:#4a9eff"></div><div><span class="meal-title">午餐</span><span class="meal-title-en">Lunch</span></div><div class="meal-actions"><button class="meal-act-btn" onclick="openDishSearch('lunch')">＋ 添加菜品 <span class="meal-title-en">Add dish</span></button><button class="meal-act-btn" onclick="aiFillMeal('lunch')">AI 补充 AI Fill</button></div></div>
+<div class="slot-hint">还缺：蛋白质 1 / 蔬菜 1 / 主食 1 / 快手汤 1<br>Missing: Protein 1 / Vegetable 1 / Staple 1 / Quick Soup 1</div><div class="meal-items"><div class="meal-item">
+<div class="no-img">🍽️</div>
+<div class="info">
+<div class="dish-name"><span class="badge badge-ai">AI 推荐 AI Suggestion</span>16谷米饭 / 16谷粗粮饭 ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤</div>
+<div class="dish-name-en">(历史组合菜单 Historical Combo)</div>
+<div class="dish-meta">  </div>
+</div><div class="item-actions"><button class="item-btn" onclick="openDishSearch('lunch',34,'16谷米饭 / 16谷粗粮饭 ＋ 香煎澳洲和牛片 ＋ 温拌莴笋丝 / 莴笋片 ＋ 番茄菌菇小白菜汤 / 番茄菌菇豆腐汤','None')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish(34)" title="删除 Delete">×</button></div></div></div></div>
+<div class="meal-section">
+<div class="meal-header"><div class="meal-bar" style="background:#7bc67b"></div><div><span class="meal-title">下午茶</span><span class="meal-title-en">Afternoon Tea</span><div style="font-size:13px;color:#a89888;line-height:1.2">可选 Optional</div></div><div class="meal-actions"><button class="meal-act-btn" onclick="openDishSearch('afternoon_snack')">＋ 添加餐点 <span class="meal-title-en">Add dish</span></button></div></div>
+<div class="meal-items"><div class="meal-item">
+<div class="no-img">🍽️</div>
+<div class="info">
+<div class="dish-name"><span class="badge badge-ai">AI 推荐 AI Suggestion</span>奇异果 ＋ 麦冬大麦茶</div>
+<div class="dish-name-en">(历史组合菜单 Historical Combo)</div>
+<div class="dish-meta">  </div>
+</div><div class="item-actions"><button class="item-btn" onclick="openDishSearch('afternoon_snack',35,'奇异果 ＋ 麦冬大麦茶','None')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish(35)" title="删除 Delete">×</button></div></div></div></div>
+<div class="meal-section">
+<div class="meal-header"><div class="meal-bar" style="background:#c0504c"></div><div><span class="meal-title">晚餐</span><span class="meal-title-en">Dinner</span></div><div class="meal-actions"><button class="meal-act-btn" onclick="openDishSearch('dinner')">＋ 添加菜品 <span class="meal-title-en">Add dish</span></button><button class="meal-act-btn" onclick="aiFillMeal('dinner')">AI 补充 AI Fill</button></div></div>
+<div class="slot-hint"><strong>晚餐缺少 蛋白质 2 份、蔬菜 1 份、主食 1 份、煲汤 1 份</strong><br>建议补充合适菜品 · Dinner needs Protein 2, Vegetable 1, Staple 1, Soup 1</div><div class="meal-items"><div class="meal-item">
+<div class="no-img">🍽️</div>
+<div class="info">
+<div class="dish-name"><span class="badge badge-ai">AI 推荐 AI Suggestion</span>纯白米饭 ＋ 清蒸银鳕鱼 / 清蒸新鲜鱼片/海鱼 ＋ 蒜蓉红苋菜 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤</div>
+<div class="dish-name-en">(历史组合菜单 Historical Combo)</div>
+<div class="dish-meta">  </div>
+</div><div class="item-actions"><button class="item-btn" onclick="openDishSearch('dinner',36,'纯白米饭 ＋ 清蒸银鳕鱼 / 清蒸新鲜鱼片/海鱼 ＋ 蒜蓉红苋菜 ＋ 西葫芦松茸肉丸汤 / 西葫芦淮山豆腐松茸汤','None')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish(36)" title="删除 Delete">×</button></div></div></div></div>
+<div class="tomorrow-actions"><button class="btn btn-outline" onclick="repairMenu()">重新生成<small>Regenerate menu</small></button><button class="btn btn-primary" onclick="confirmMenu()">确认菜单<small>Confirm menu</small></button></div></div>
+<div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()">
+<div class="modal" style="max-height:85vh">
+<div style="padding:14px 16px;border-bottom:1px solid #f5f0e8">
+<div id="dishSearchTitle" style="font-size:22px;font-weight:700;margin-bottom:8px">换一道 Replace Dish</div>
+<div id="dishSearchHint" style="font-size:13px;color:#a89888;margin-bottom:8px">系统根据库存和当前餐位推荐 · 或搜索菜品 Smart recommendations based on pantry & meal</div>
+<input type="text" id="dishSearchInput" placeholder="搜索菜品 Search dishes..." oninput="onDishSearchInput()" style="width:100%;padding:12px 16px;border:1px solid #e8e0d4;border-radius:24px;font-size:16px;outline:none;box-sizing:border-box">
+</div>
+<div id="dishSearchResults" style="overflow-y:auto;max-height:60vh"></div>
+<div class="modal-actions"><button class="btn btn-outline" onclick="closeDishSearch()">取消 Cancel</button></div>
+</div></div>
+
+<div class="footer">家庭菜单管家 · Powered by AI</div>
+<div class="snack-bar" id="snackBar"></div>
+<script>
+function switchLocation(loc){
+  if(typeof hasUnsavedChanges!=='undefined'&&hasUnsavedChanges){
+    if(!confirm('当前修改尚未保存，确定切换厨房吗?\nUnsaved changes will be lost. Switch kitchen?'))return;
+  }
+  document.cookie='loc='+loc+';path=/';
+  location.reload();
+}
+function getLoc(){
+  let m=document.cookie.match(/loc=(\w+)/);
+  return m?m[1]:'shenzhen';
+}
+function snack(msg){
+  let b=document.getElementById('snackBar');
+  b.textContent=msg;b.classList.add('show');
+  setTimeout(()=>b.classList.remove('show'),2000);
+}
+function showWarningCard(title,content){{
+  let card=document.getElementById('warnCard')||document.createElement('div');
+  card.id='warnCard';
+  card.style.cssText='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff8e1;border:2px solid #e6a700;border-radius:12px;padding:20px;max-width:90vw;max-height:80vh;overflow-y:auto;z-index:400;box-shadow:0 4px 20px rgba(0,0,0,.15);font-size:14px;color:#2c2620';
+  card.innerHTML='<div style="font-size:16px;font-weight:700;margin-bottom:12px;color:#e6a700">'+title+'</div><div style="line-height:1.6">'+content+'</div><div style="margin-top:16px;text-align:center"><button onclick="document.getElementById(\'warnCard\').remove()" style="padding:8px 24px;border:none;border-radius:20px;background:#2c2620;color:#faf7f2;font-size:14px;cursor:pointer">关闭 Close</button></div>';
+  document.body.appendChild(card);
+}}
+</script>
+</body></html>
+<script>
+let menuId=9;
+let currentLoc='shenzhen';
+let hasUnsavedChanges=false;
+let selectedDiners=["vivian", "sir", "toby"];
+let currentMealMode='daily';
+let banquetTotal=8;
+function toggleDiner(id){
+  let i=selectedDiners.indexOf(id);
+  if(i>=0)selectedDiners.splice(i,1);
+  else selectedDiners.push(id);
+  // Update chip UI
+  let chip=document.querySelector('.diner-chip[data-diner="'+id+'"]');
+  if(chip)chip.classList.toggle('active');
+  // Save to server
+  fetch('/api/tomorrow/diners',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,diners:selectedDiners,location:currentLoc})}).then(r=>r.json()).then(res=>{
+    if(res.ok){
+      if(res.reconciled){
+        snack('已根据人数重新调整 AI 推荐 · Reconciled');
+      }else{
+        snack('用餐成员已更新 Diners updated');
+      }
+    }
+  });
+  // Reload to refresh menu
+  setTimeout(()=>location.reload(),1000);
+}
+// V11: Meal Mode toggle
+function setMealMode(mode){
+  if(mode===currentMealMode)return;
+  currentMealMode=mode;
+  fetch('/api/tomorrow/meal-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,meal_mode:mode,banquet_total_diners:mode==='banquet'?banquetTotal:null,location:currentLoc})}).then(r=>r.json()).then(res=>{
+    if(res.ok){
+      if(mode==='banquet'){
+        document.getElementById('banquet-input').style.display='flex';
+      }else{
+        document.getElementById('banquet-input').style.display='none';
+      }
+      // Update chip active states
+      document.querySelectorAll('.diners-section .diner-chip').forEach((c,idx)=>{
+        c.classList.toggle('active',(mode==='daily'&&idx===0)||(mode==='banquet'&&idx===1));
+      });
+      snack(mode==='banquet'?'已切换到家宴模式 Banquet mode':'已切换到日常模式 Daily mode');
+      setTimeout(()=>location.reload(),800);
+    }
+  });
+}
+function adjustBanquet(delta){
+  let input=document.getElementById('banquetTotal');
+  let v=parseInt(input.value)||8;
+  v=Math.max(2,Math.min(30,v+delta));
+  input.value=v;
+  setBanquetTotal(v);
+}
+function setBanquetTotal(val){
+  let v=parseInt(val)||8;
+  v=Math.max(2,Math.min(30,v));
+  banquetTotal=v;
+  fetch('/api/tomorrow/meal-mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,meal_mode:'banquet',banquet_total_diners:v,location:currentLoc})}).then(r=>r.json()).then(res=>{
+    if(res.ok)snack('家宴总人数已更新: '+v+' Total diners updated');
+  });
+}
+// V7: Smart dish replacement modal
+let searchMode={meal:null,replaceId:null,currentDishId:null,categoryId:null};
+function openDishSearch(mt,replaceId,currentDishId,categoryId){
+  searchMode={meal:mt,replaceId:replaceId||null,currentDishId:currentDishId||null,categoryId:categoryId||null};
+  let m=document.getElementById('dishSearchModal');
+  m.classList.add('show');
+  let input=document.getElementById('dishSearchInput');
+  input.value='';
+  let titleEl=document.getElementById('dishSearchTitle');
+  let hintEl=document.getElementById('dishSearchHint');
+  if(replaceId){
+    titleEl.textContent='换一道 Replace Dish';
+    hintEl.style.display='block';
+    loadRecommendations();
+  }else{
+    titleEl.textContent='添加菜品 Add Dish';
+    hintEl.style.display='none';
+    document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">输入菜名搜索</div><div style="font-size:13px;margin-top:4px">Type to search</div></div>';
+    input.focus();
+  }
+}
+function closeDishSearch(){document.getElementById('dishSearchModal').classList.remove('show');}
+let _searchTimer=null;
+function onDishSearchInput(){
+  clearTimeout(_searchTimer);
+  let q=document.getElementById('dishSearchInput').value.trim();
+  if(!q){
+    if(searchMode.replaceId){loadRecommendations();}else{
+      document.getElementById('dishSearchResults').innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">输入菜名搜索</div><div style="font-size:13px;margin-top:4px">Type to search</div></div>';
+    }
+    return;
+  }
+  _searchTimer=setTimeout(()=>doDishSearch(q),300);
+}
+async function loadRecommendations(){
+  let container=document.getElementById('dishSearchResults');
+  container.innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">推荐加载中...</div><div style="font-size:13px;margin-top:4px">Loading recommendations...</div></div>';
+  let r=await fetch('/api/dishes/recommend',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({meal_type:searchMode.meal,current_dish_id:searchMode.currentDishId,category_id:searchMode.categoryId,location:currentLoc})});
+  let data=await r.json();
+  window._recMap={};
+  (data.available||[]).forEach(d=>{window._recMap[d.id]=d;});
+  (data.almost_available||[]).forEach(d=>{window._recMap[d.id]=d;});
+  let html='';
+  // Available Now
+  if(data.available&&data.available.length){
+    html+='<div class="rec-section-title">库存可做 Available Now</div>';
+    html+=data.available.map(d=>renderRecCard(d,'available')).join('');
+  }
+  // Almost Available
+  if(data.almost_available&&data.almost_available.length){
+    html+='<div class="rec-section-title" style="margin-top:12px">差1种食材 Almost Available</div>';
+    html+=data.almost_available.map(d=>renderRecCard(d,'almost')).join('');
+  }
+  if(!html){
+    html='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">暂无推荐</div><div style="font-size:13px;margin-top:4px">No recommendations</div></div>';
+  }
+  container.innerHTML=html;
+}
+function renderRecCard(d,type){
+  let img=d.image?'<img src="photos/'+d.image+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>';
+  let noImg=d.image?'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>':'';
+  let badge=type==='available'?'<span style="font-size:13px;color:#155724;background:#d4edda;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">库存可做 Available</span>':'';
+  let missing='';
+  if(d.missing_required&&d.missing_required.length){
+    let mn=d.missing_required.join(', ');
+    let mnEn=d.missing_required_en?d.missing_required_en.join(', '):'';
+    missing='<span style="font-size:13px;color:#856404;background:#fff3cd;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">缺：'+mn+' Missing: '+mnEn+'</span>';
+  }
+  return '<div onclick="pickRec(\''+d.id+'\','+(type==='almost')+')" style="display:flex;gap:10px;padding:12px;border-bottom:1px solid #f5f0e8;cursor:pointer;align-items:center">'+img+noImg+'<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:600">'+d.name_cn+'</div><div style="font-size:14px;color:#a89888;font-style:italic">'+(d.name_en||'')+'</div>'+badge+missing+'</div></div>';
+}
+async function pickRec(dishId,isAlmost){
+  if(isAlmost){
+    let d=window._recMap&&window._recMap[dishId];
+    if(d&&d.missing_required&&d.missing_required.length){
+      let mn=d.missing_required.join(', ');
+      let mnEn=d.missing_required_en?d.missing_required_en.join(', '):'';
+      if(!confirm('这道菜还缺：'+mn+'\n\nThis dish is missing:\n'+mnEn+'\n\n仍然选择? Choose Anyway?'))return;
+    }
+  }
+  await doPickDish(dishId);
+}
+async function doDishSearch(q){
+  let res=await fetch('/api/dishes?search='+encodeURIComponent(q));
+  let data=await res.json();
+  let container=document.getElementById('dishSearchResults');
+  if(!data.length){
+    container.innerHTML='<div style="text-align:center;padding:30px 20px;color:#a89888"><div style="font-size:15px">没有找到相关菜品</div><div style="font-size:13px;margin-top:4px">No matching dishes</div></div>';
+    return;
+  }
+  container.innerHTML=data.slice(0,20).map(d=>{
+    let img=d.image?'<img src="photos/'+d.image+'" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>';
+    let noImg=d.image?'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>':'';
+    return '<div onclick="doPickDish(\''+d.id+'\')" style="display:flex;gap:10px;padding:12px;border-bottom:1px solid #f5f0e8;cursor:pointer;align-items:center">'+img+noImg+'<div style="flex:1;min-width:0"><div style="font-size:18px;font-weight:600">'+d.name_cn+'</div><div style="font-size:14px;color:#a89888;font-style:italic">'+(d.name_en||'')+'</div><div style="font-size:13px;color:#a89888;margin-top:2px">'+(d.category_id||'')+'</div></div></div>';
+  }).join('');
+}
+async function doPickDish(dishId){
+  if(searchMode.replaceId){
+    let r=await fetch('/api/tomorrow/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId})});
+    let result=await r.json();
+    if(result.ok){closeDishSearch();snack('已替换 Replaced');location.reload();}else{snack(result.error||'替换失败');}
+  }else{
+    let r=await fetch('/api/tomorrow/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,dish_id:dishId,meal_type:searchMode.meal})});
+    let result=await r.json();
+    if(result.ok){closeDishSearch();snack('已添加 Added');location.reload();}else{snack(result.error||'添加失败');}
+  }
+}
+async function removeDish(itemId){
+  if(!confirm('确认删除? Confirm delete?'))return;
+  let r=await fetch('/api/tomorrow/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,menu_item_id:itemId})});
+  let result=await r.json();
+  if(result.ok){snack('已删除 Removed');location.reload();}else{snack(result.error||'删除失败');}
+}
+async function aiFillMeal(mt){
+  snack('AI 补充中... AI filling...');
+  let r=await fetch('/api/tomorrow/ai-fill',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,location:currentLoc,meal_type:mt})});
+  let result=await r.json();
+  if(result.ok){
+    // V10: 用页面内 Warning Card 替代 alert()
+    let unmet=result.review&&(result.review.unmet_slots||[]);
+    let added=result.message||'AI 补充完成';
+    if(unmet&&unmet.length>0){
+      // 去重显示
+      let seen={};
+      let uniqueUnmet=unmet.filter(u=>{
+        let k=(u.meal||'')+'|'+(u.slot||'');
+        if(seen[k])return false;seen[k]=true;return true;
+      });
+      let msgs=uniqueUnmet.map(u=>u.message||(''+u.slot)).join('<br>• ');
+      showWarningCard('AI 补充完成，但仍有槽位未补齐：','• '+msgs+'<br><br>请手动添加缺失菜品 / Please add missing dishes manually.');
+    }else if(result.review&&result.review.reconciled){
+      snack('已重新调整 AI 推荐 Reconciled for '+result.review.reconcile_diners+' diners');
+    }else{
+      snack('AI 补充完成 AI fill done');
+    }
+    location.reload();
+  }else{snack(result.error||'补充失败');}
+}
+async function repairMenu(){
+  if(!confirm('重新推荐所有 AI 菜品? Refresh all AI suggestions?'))return;
+  snack('重新推荐中... Refreshing...');
+  let r=await fetch('/api/tomorrow/repair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId,location:currentLoc})});
+  let result=await r.json();
+  if(result.ok){snack('已重新推荐 Refreshed');location.reload();}else{snack(result.error||'失败');}
+}
+async function confirmMenu(){
+  if(!confirm('确认明日菜单? Confirm tomorrow menu?'))return;
+  let r=await fetch('/api/tomorrow/confirm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId})});
+  let result=await r.json();
+  if(result.ok){
+    if(result.warnings&&result.warnings.length){
+      snack('已确认（有'+result.warnings.length+'项提示）');
+    }else{
+      snack('已确认 Confirmed');
+    }
+    setTimeout(()=>location.reload(),1500);
+  }else{
+    snack(result.error||'确认失败');
+  }
+}
+async function editMenu(){
+  if(!confirm('修改菜单将回退到草稿状态，修改后需重新确认。\nEditing will revert to draft. Reconfirm required.'))return;
+  let r=await fetch('/api/tomorrow/revert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({menu_id:menuId})});
+  let result=await r.json();
+  if(result.ok){
+    snack('已回退到草稿 Reverted to draft');
+    setTimeout(()=>location.reload(),1000);
+  }else{
+    snack(result.error||'操作失败');
+  }
+}
+async function notifyPurchase(reqId){
+  let r=await fetch('/api/purchase/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:reqId,status:'notified',by:'owner'})});
+  let result=await r.json();
+  if(result.ok){snack('已通知采购 Notified');location.reload();}else{snack('失败');}
+}
+async function markPurchased(reqId){
+  let r=await fetch('/api/purchase/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:reqId,status:'purchased',by:'owner'})});
+  let result=await r.json();
+  if(result.ok){snack('已标记购买 Purchased');location.reload();}else{snack('失败');}
+}
+</script>

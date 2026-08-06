@@ -1,0 +1,15 @@
+[Unit]
+Description=Family Menu 20:00 Nanny Reminder
+After=network-online.target family-menu-app.service
+
+[Service]
+Type=oneshot
+User=family-menu
+Group=family-menu
+WorkingDirectory=/opt/family-menu/app
+EnvironmentFile=/etc/family-menu.env
+ExecStart=/usr/bin/python3 /opt/family-menu/app/nanny_reminder.py --time 20:00
+UMask=0027
+NoNewPrivileges=true
+StandardOutput=append:/opt/family-menu/logs/reminder.log
+StandardError=append:/opt/family-menu/logs/reminder.log

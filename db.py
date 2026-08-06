@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "family_menu.db")
+DB_PATH = os.environ.get("FAMILY_MENU_DB_PATH", os.path.join(BASE_DIR, "family_menu.db"))
 
 
 def get_db():
@@ -19,6 +19,7 @@ def get_db():
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -106,10 +107,6 @@ def init_db():
         )
     """)
 
-    # V11: menus 表增加 meal_mode + banquet_total_diners
-    _safe_add_column(c, "menus", "meal_mode", "TEXT DEFAULT 'daily'")
-    _safe_add_column(c, "menus", "banquet_total_diners", "INTEGER")
-
     # ========== 3. ingredients - 食材库 ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS ingredients (
@@ -125,6 +122,20 @@ def init_db():
 
     # V4 迁移：为已存在的 ingredients 表添加 is_common 列（幂等）
     _safe_add_column(c, "ingredients", "is_common", "INTEGER DEFAULT 0")
+    _safe_add_column(c, "ingredients", "ingredient_group", "TEXT")
+    _safe_add_column(c, "ingredients", "translation_pending", "INTEGER DEFAULT 0")
+    _safe_add_column(c, "ingredients", "updated_at", "TEXT")
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS pantry_usage_stats (
+            location        TEXT NOT NULL,
+            ingredient_id   TEXT NOT NULL,
+            add_count       INTEGER NOT NULL DEFAULT 0,
+            last_action_at  TEXT NOT NULL,
+            PRIMARY KEY (location, ingredient_id),
+            FOREIGN KEY (ingredient_id) REFERENCES ingredients(ingredient_id)
+        )
+    """)
 
     # ========== 4. dish_ingredients - 菜品-食材关联 ==========
     c.execute("""
@@ -199,9 +210,6 @@ def init_db():
         )
     """)
 
-    # V4: menus 表增加 inventory_snapshot_id 列
-    _safe_add_column(c, "menus", "inventory_snapshot_id", "INTEGER")
-
     # ========== 8. menus - 每日菜单（按真实日期） ==========
     c.execute("""
         CREATE TABLE IF NOT EXISTS menus (
@@ -220,6 +228,16 @@ def init_db():
             updated_at      TEXT DEFAULT (datetime('now'))
         )
     """)
+
+    # Existing menu migrations must run after menus exists (also supports fresh test DBs).
+    _safe_add_column(c, "menus", "inventory_snapshot_id", "INTEGER")
+    _safe_add_column(c, "menus", "meal_mode", "TEXT DEFAULT 'daily'")
+    _safe_add_column(c, "menus", "banquet_total_diners", "INTEGER")
+
+    # Task A: confirmation and delivery are separate states.
+    _safe_add_column(c, "menus", "push_status", "TEXT DEFAULT 'not_sent'")
+    _safe_add_column(c, "menus", "push_error", "TEXT")
+    _safe_add_column(c, "menus", "confirmed_revision", "TEXT")
 
     # ========== 9. menu_items - 菜单中的菜品 ==========
     # dish_id: 新数据存 dishes.id；历史迁移数据存原始文本（无 FK 约束以兼容）
@@ -240,9 +258,64 @@ def init_db():
         )
     """)
 
+    # Meal-level overrides are stored separately so menu items remain intact
+    # while a meal is skipped and can be restored without regeneration.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS menu_meal_settings (
+            menu_id         INTEGER NOT NULL,
+            meal_type       TEXT NOT NULL,
+            diners          TEXT,
+            note            TEXT DEFAULT '',
+            is_skipped      INTEGER DEFAULT 0,
+            updated_at      TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (menu_id, meal_type),
+            FOREIGN KEY (menu_id) REFERENCES menus(id)
+        )
+    """)
+
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS menu_item_replace_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_id         INTEGER NOT NULL,
+            menu_item_id    INTEGER NOT NULL,
+            dish_id         TEXT NOT NULL,
+            replaced_at     TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (menu_id) REFERENCES menus(id)
+        )
+    """)
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS idx_replace_history_item "
+        "ON menu_item_replace_history(menu_id,menu_item_id,id DESC)"
+    )
+
     # V6 迁移：为已存在的 menu_items 表添加新列（幂等）
     _safe_add_column(c, "menu_items", "custom_name", "TEXT")
     _safe_add_column(c, "menu_items", "source", "TEXT DEFAULT 'ai'")
+
+    # Task A: one durable delivery record per confirmed menu content revision.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS push_logs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_id         INTEGER NOT NULL,
+            menu_revision   TEXT NOT NULL,
+            date            TEXT NOT NULL,
+            location        TEXT NOT NULL,
+            channel         TEXT NOT NULL DEFAULT 'pushplus',
+            status          TEXT NOT NULL,
+            pushed_at       TEXT,
+            error           TEXT,
+            created_at      TEXT DEFAULT (datetime('now')),
+            updated_at      TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (menu_id) REFERENCES menus(id),
+            UNIQUE(menu_id, menu_revision, channel)
+        )
+    """)
+    _safe_add_column(c, "push_logs", "confirmed_at", "TEXT")
+    _safe_add_column(c, "push_logs", "triggered_by", "TEXT")
+    _safe_add_column(c, "push_logs", "push_requested_at", "TEXT")
+    _safe_add_column(c, "push_logs", "message_id", "TEXT")
+    _safe_add_column(c, "push_logs", "response_code", "INTEGER")
+    _safe_add_column(c, "push_logs", "attempt_count", "INTEGER DEFAULT 0")
 
     # ========== 10. selections - 老板点菜记录 ==========
     c.execute("""
@@ -312,6 +385,12 @@ def init_db():
             created_at  TEXT DEFAULT (datetime('now'))
         )
     """)
+
+    c.execute(
+        "INSERT OR IGNORE INTO pantry_usage_stats(location,ingredient_id,add_count,last_action_at) "
+        "SELECT location,ingredient_id,1,COALESCE(updated_at,created_at,datetime('now')) "
+        "FROM current_pantry"
+    )
 
     # ========== 15. config - 系统配置 ==========
     c.execute("""
@@ -433,6 +512,14 @@ INGREDIENT_EN_NAMES = {
     "黑鱼子酱": "Black Caviar", "蚕豆": "Broad Bean", "豆苗": "Pea Shoots",
     "蔬菜": "Vegetables", "藜麦": "Quinoa", "蛤蜊": "Clam",
     "西兰花": "Broccoli", "西葫芦": "Zucchini",
+    "三文鱼": "Salmon", "上海青": "Shanghai Bok Choy", "五花肉": "Pork Belly",
+    "龙虾": "Lobster", "花卷": "Steamed Twisted Roll", "肉包": "Pork Bao",
+    "饺子": "Dumplings", "鸡翅": "Chicken Wings", "梅头猪肉": "Pork Collar",
+    "罗勒": "Basil", "虾仁": "Shrimp", "生菜": "Lettuce",
+    "鸡毛菜": "Baby Bok Choy", "樱桃萝卜": "Cherry Radish",
+    "小辣椒": "Chili Pepper", "鱼子酱": "Caviar", "猪肉": "Pork",
+    "红薯": "Sweet Potato", "日本水菜": "Mizuna", "蒜苔": "Garlic Scapes",
+    "腊肉": "Chinese Cured Pork",
 }
 
 
