@@ -493,10 +493,10 @@ def check_dish_availability(dish_id, location, inventory_version=None):
     V5 Section 12-18: 统一菜品可用性检查服务（InventoryService）。
     所有模块（Dishes / Tomorrow / Purchase Request / Add Dish picker / AI scoring）必须调用此方法。
     返回: {status, required, available_required, missing_required, optional, inventory_version}
-    status: available / almost_available / missing
+    status: available / almost_available / missing / incomplete
 
-    V12: required_ingredients 为空时返回 "available"（无必选食材 = 无约束 = 可制作）。
-    旧版 V5 的 "incomplete" 状态已废弃，因为它阻止了花卷/日式饺子等简单菜品被 AI Fill 选中。
+    生产止血：required_ingredients 为空时不能证明库存可做，返回 "incomplete"。
+    这类菜品仍可手动选择，但不会进入 Available Now 或 AI Fill 自动候选。
     """
     if inventory_version is None:
         inventory_version = get_inventory_version(location)
@@ -516,16 +516,17 @@ def check_dish_availability(dish_id, location, inventory_version=None):
             (dish_id,)
         ).fetchall()
 
-        # V12: required_ingredients 为空 → available（无约束 = 可制作）
+        # 没有必需食材资料时，不能把“未知”误判成“库存可做”。
         required_ings = [r for r in ings if r["required"]]
         if not required_ings:
             result = {
-                "status": "available",
+                "status": "incomplete",
                 "required": [],
                 "available_required": [],
                 "missing_required": [],
                 "optional": [dict(r) for r in ings if not r["required"]],
                 "inventory_version": inventory_version,
+                "data_complete": False,
             }
             _availability_cache[cache_key] = result
             return result
@@ -577,6 +578,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
             "missing_required": missing_required,
             "optional": optional,
             "inventory_version": inventory_version,
+            "data_complete": True,
         }
         _availability_cache[cache_key] = result
         return result
