@@ -132,6 +132,8 @@ class MarkupTests(unittest.TestCase):
         self.assertIn("重新添加该餐", owner_html)
         self.assertIn("/api/menu/diners", owner_html)
         self.assertIn("meal-note-button", owner_html)
+        self.assertIn("data-meal-diner", owner_html)
+        self.assertNotIn('onclick="toggleMealDiner(\'\'', owner_html)
 
 if __name__ == "__main__":
     unittest.main()
