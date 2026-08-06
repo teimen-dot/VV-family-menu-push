@@ -1511,7 +1511,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         ensure_tomorrow_menu(location)
     menu = get_menu_with_dishes(tomorrow)
     if not menu.get("exists"):
-        return tomorrow_preview_head("明日菜单 · Tomorrow Menu", "tomorrow", location) + \
+        return tomorrow_preview_head("菜单 · Menu", "tomorrow", location) + \
             '<main class="page-shell"><div class="empty">明日菜单未生成</div></main></body></html>'
 
     all_diners = get_all_diners()
@@ -1627,22 +1627,23 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         "afternoon_snack": ("下午茶", "Afternoon Tea", "green"), "dinner": ("晚餐", "Dinner", "red"),
     }
     meal_sections = []
+    today_notes = today_menu.get("meal_notes") or {} if today_menu.get("exists") else {}
     meal_rows = [
-        ("today_dinner", today_dinner, "今日晚餐", "Today's Dinner", "red", today_menu_id, today_diners, False),
+        ("today_dinner", today_dinner, "下一顿", "Next Meal", "red", today_menu_id, today_diners, today_notes, True),
         *[
             (meal_type, valid_meals.get(meal_type, []), f"明天{meal_meta[meal_type][0]}",
-             f"Tomorrow {meal_meta[meal_type][1]}", meal_meta[meal_type][2], menu["menu_id"], menu_diners, True)
+             f"Tomorrow {meal_meta[meal_type][1]}", meal_meta[meal_type][2], menu["menu_id"], menu_diners, meal_notes, True)
             for meal_type in ("breakfast", "lunch", "afternoon_snack", "dinner")
         ],
     ]
-    for display_type, dishes, cn, en, color_class, target_menu_id, target_diners, editable in meal_rows:
+    for display_type, dishes, cn, en, color_class, target_menu_id, target_diners, target_notes, editable in meal_rows:
         meal_type = "dinner" if display_type == "today_dinner" else display_type
         count_html = (
             bilingual("可选", "Optional")
             if display_type == "afternoon_snack"
             else bilingual(f"{len(dishes)} 道", f"{len(dishes)} dishes")
         )
-        note_text = str(meal_notes.get(meal_type, "") or "").strip() if editable else ""
+        note_text = str(target_notes.get(meal_type, "") or "").strip() if editable else ""
         note_label_cn, note_label_en = ("修改备注", "Edit note") if note_text else ("添加备注", "Add note")
         diners_json = json.dumps(target_diners, ensure_ascii=False)
         diners_action = (
@@ -1657,14 +1658,14 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         else:
             actions = (
                 diners_action +
-                f'<button class="text-button meal-note-button" onclick="editMealNote(\'{meal_type}\')">{bilingual(note_label_cn, note_label_en)}</button>'
-                f'<button class="text-button" onclick="openDishSearch(\'{meal_type}\')">{bilingual("添加餐点" if meal_type == "afternoon_snack" else "添加菜品", "Add item" if meal_type == "afternoon_snack" else "Add dish")}</button>'
-                f'<button class="text-button fill-button" onclick="aiFillMeal(\'{meal_type}\',this)">{bilingual("智能补充", "AI fill")}</button>'
+                f'<button class="text-button meal-note-button" onclick="editMealNote({target_menu_id},\'{meal_type}\')">{bilingual(note_label_cn, note_label_en)}</button>'
+                f'<button class="text-button" onclick="openDishSearch({target_menu_id},\'{meal_type}\')">{bilingual("添加餐点" if meal_type == "afternoon_snack" else "添加菜品", "Add item" if meal_type == "afternoon_snack" else "Add dish")}</button>'
+                f'<button class="text-button fill-button" onclick="aiFillMeal({target_menu_id},\'{meal_type}\',this)">{bilingual("智能补充", "AI fill")}</button>'
             )
             if dishes:
                 delete_button = (
                     f'<button class="meal-delete-x" type="button" aria-label="删除整餐 / Delete meal" '
-                    f'title="删除整餐 / Delete meal" onclick="deleteMeal(\'{meal_type}\')">×</button>'
+                    f'title="删除整餐 / Delete meal" onclick="deleteMeal({target_menu_id},\'{meal_type}\')">×</button>'
                 )
         if not editable:
             actions = diners_action
@@ -1680,11 +1681,11 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             if is_owner and editable:
                 dish_actions = (
                     f'<div class="dish-actions"><button class="swap-button" type="button" aria-label="更换 {dish_name_cn}" '
-                    f'onclick="cycleDish(this,{dish["menu_item_id"]})">更换</button>'
+                    f'onclick="cycleDish(this,{target_menu_id},{dish["menu_item_id"]})">更换</button>'
                     f'<button class="search-swap-button" type="button" aria-label="搜索更换 {dish_name_cn}" '
-                    f'onclick="openDishSearch(\'{meal_type}\',{dish["menu_item_id"]},\'{dish.get("dish_id", "")}\',\'{dish.get("category_id") or ""}\')">搜索更换</button>'
+                    f'onclick="openDishSearch({target_menu_id},\'{meal_type}\',{dish["menu_item_id"]},\'{dish.get("dish_id", "")}\',\'{dish.get("category_id") or ""}\')">搜索更换</button>'
                     f'<button class="remove-button" type="button" aria-label="删除 {dish_name_cn}" '
-                    f'onclick="removeDish({dish["menu_item_id"]})">删除</button></div>'
+                    f'onclick="removeDish({target_menu_id},{dish["menu_item_id"]})">删除</button></div>'
                 )
             cards += (
                 f'<article class="dish-card" data-item-id="{dish["menu_item_id"]}">{media}'
@@ -1693,7 +1694,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             )
         if display_type == "afternoon_snack" and not dishes:
             empty_action = (
-                f'<button class="text-button meal-note-button" onclick="restoreMeal(\'{meal_type}\')">{bilingual("重新添加该餐", "Re-add meal")}</button>'
+                f'<button class="text-button meal-note-button" onclick="restoreMeal({target_menu_id},\'{meal_type}\')">{bilingual("重新添加该餐", "Re-add meal")}</button>'
                 if is_owner else ""
             )
             cards = (
@@ -1703,7 +1704,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             )
         if not cards and display_type != "afternoon_snack":
             restore_action = (
-                f'<button class="text-button meal-note-button" onclick="restoreMeal(\'{meal_type}\')">{bilingual("重新添加该餐", "Re-add meal")}</button>'
+                f'<button class="text-button meal-note-button" onclick="restoreMeal({target_menu_id},\'{meal_type}\')">{bilingual("重新添加该餐", "Re-add meal")}</button>'
                 if is_owner and editable else ""
             )
             cards = f'<div class="empty-state"><div><strong>{bilingual("该餐尚未安排菜品", "No dishes planned")}</strong></div>{restore_action}</div>'
@@ -1754,7 +1755,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     body = f"""
 <main id="main" class="page-shell">
 <section class="page-heading"><div><p class="eyebrow">{bilingual(f'{menu_date.year}年{menu_date.month}月{menu_date.day}日 · {weekday_cn}', f'{weekday_en}, {month_en} {menu_date.day}, {menu_date.year}')}</p>
-<h1>{bilingual('明日菜单','Tomorrow Menu')}</h1><p>{bilingual('为一家人安排营养均衡、好执行的一日餐食。','Plan a balanced, practical day of meals for the family.')}</p></div>
+<h1>{bilingual('菜单','Menu')}</h1><p>{bilingual('为一家人安排营养均衡、好执行的一日餐食。','Plan a balanced, practical day of meals for the family.')}</p></div>
 <div class="status-chip {'confirmed' if menu['status'] != 'draft' else ''}"><i></i>{bilingual(status_cn,status_en)}</div></section>
 {push_notice}
 <section class="settings-block diners-panel"><div class="section-label"><span>{bilingual('用餐成员','Diners')}</span><small>{bilingual(f'{len(menu_diners)} 人',f'{len(menu_diners)} people')}</small></div><div class="people-grid">{people_html}</div></section>
@@ -1768,8 +1769,11 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 {owner_action_bar}
 """
     if not is_owner:
-        return tomorrow_preview_head("明日菜单 · Tomorrow Menu", "tomorrow", location) + body + "</body></html>"
-    meal_notes_json = json.dumps(meal_notes, ensure_ascii=False).replace("</", "<\\/")
+        return tomorrow_preview_head("菜单 · Menu", "tomorrow", location) + body + "</body></html>"
+    meal_notes_by_menu_json = json.dumps({
+        str(menu["menu_id"]): meal_notes,
+        **({str(today_menu_id): today_notes} if today_menu_id else {}),
+    }, ensure_ascii=False).replace("</", "<\\/")
     diner_options_json = json.dumps([
         {"id": diner["id"], "name_cn": diner["name_cn"], "name_en": diner["name_en"]}
         for diner in all_diners
@@ -1789,7 +1793,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 <input class="dish-picker-search" id="dishSearchInput" placeholder="搜索菜品 / Search dishes" oninput="onDishSearchInput()">
 <div class="dish-picker-results" id="dishSearchResults"></div><div class="modal-actions"><button class="secondary-button" onclick="closeDishSearch()">{bilingual('取消','Cancel')}</button></div></div></div>
 <div class="snack-bar" id="snackBar"></div><script>
-let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotes={meal_notes_json},noteMealType=null,mealDinerMenuId=null,mealDinerSelection=[],dinerOptions={diner_options_json},searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
+let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotesByMenu={meal_notes_by_menu_json},noteMenuId=null,noteMealType=null,mealDinerMenuId=null,mealDinerSelection=[],dinerOptions={diner_options_json},searchMode={{menuId:null,meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
 function snack(msg){{let b=document.getElementById('snackBar');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),1800)}}
 function pairMarkup(zh,en){{return '<span class="bilingual-pair"><span class="lang-zh">'+zh+'</span><span class="lang-en">'+en+'</span></span>'}}
 async function requestJSON(path,options){{let response;try{{response=await fetch(path,options)}}catch(e){{throw new Error('网络连接失败 Network error')}}let data;try{{data=await response.json()}}catch(e){{throw new Error('服务器返回无效响应 Invalid server response')}}if(!response.ok||data.ok===false)throw new Error(data.error||data.message||('请求失败 HTTP '+response.status));return data}}
@@ -1797,33 +1801,33 @@ function postJSON(path,payload){{return requestJSON(path,{{method:'POST',headers
 async function toggleDiner(id){{let next=selectedDiners.includes(id)?selectedDiners.filter(v=>v!==id):selectedDiners.concat(id);if(!next.length){{snack('至少保留一名用餐成员 Keep at least one diner');return}}try{{await postJSON('/api/tomorrow/diners',{{menu_id:menuId,diners:next,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
 async function setMealMode(mode){{try{{await postJSON('/api/tomorrow/meal-mode',{{menu_id:menuId,meal_mode:mode,banquet_total_diners:mode==='banquet'?banquetTotal:null,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
 async function adjustBanquet(delta){{let next=Math.max(2,Math.min(30,banquetTotal+delta));if(next===banquetTotal)return;try{{await postJSON('/api/tomorrow/meal-mode',{{menu_id:menuId,meal_mode:'banquet',banquet_total_diners:next,location:currentLoc}});banquetTotal=next;document.getElementById('banquetTotal').textContent=next;location.reload()}}catch(e){{snack(e.message)}}}}
-function openDishSearch(meal,replaceId,currentDishId,categoryId){{searchMode={{meal,replaceId:replaceId||null,currentDishId:currentDishId||null,categoryId:categoryId||null}};document.getElementById('dishSearchModal').classList.add('show');document.getElementById('dishSearchTitle').innerHTML=replaceId?pairMarkup('换一道','Replace dish'):pairMarkup('添加菜品','Add dish');document.getElementById('dishSearchInput').value='';loadDishPicker()}}
+function openDishSearch(targetMenuId,meal,replaceId,currentDishId,categoryId){{searchMode={{menuId:targetMenuId,meal,replaceId:replaceId||null,currentDishId:currentDishId||null,categoryId:categoryId||null}};document.getElementById('dishSearchModal').classList.add('show');document.getElementById('dishSearchTitle').innerHTML=replaceId?pairMarkup('换一道','Replace dish'):pairMarkup('添加菜品','Add dish');document.getElementById('dishSearchInput').value='';loadDishPicker()}}
 function closeDishSearch(){{document.getElementById('dishSearchModal').classList.remove('show')}}
 function onDishSearchInput(){{clearTimeout(searchTimer);let q=document.getElementById('dishSearchInput').value.trim();searchTimer=setTimeout(()=>q?doDishSearch(q):loadDishPicker(),250)}}
 function recommendationResult(d,state){{let media=d.image?'<img src="/photos/'+d.image+'" alt="'+d.name_cn+'" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="rec-no-img" hidden>No image</span>':'<span class="rec-no-img">No image</span>';let missing=d.missing_required&&d.missing_required.length?d.missing_required:[];let badge=state==='available'?pairMarkup('库存可做','Available now'):state==='almost'?pairMarkup('差少量','Almost available'):pairMarkup('缺少食材','Missing ingredients');let details=missing.length?'<small>'+missing.join('、')+'</small>':'';return '<button type="button" class="recommendation-item" onclick="pickRecommendation(\\''+d.id+'\\','+(missing.length>0)+')">'+media+'<span class="recommendation-copy"><strong>'+pairMarkup(d.name_cn,d.name_en||'')+'</strong><em class="'+state+'">'+badge+'</em>'+details+'</span></button>'}}
 async function loadDishPicker(){{let c=document.getElementById('dishSearchResults');c.innerHTML='<div style="padding:28px;text-align:center">加载中 Loading...</div>';try{{let results=await Promise.all([postJSON('/api/dishes/recommend',{{meal_type:searchMode.meal,current_dish_id:searchMode.currentDishId,category_id:searchMode.categoryId,location:currentLoc}}),requestJSON('/api/dishes')]);let rec=results[0],all=results[1],availability=all.length?await postJSON('/api/dishes/availability',{{dish_ids:all.map(d=>d.id),location:currentLoc}}):{{}};window.recommendationMap={{}};all.forEach(d=>{{let a=availability[d.id]||{{}};window.recommendationMap[d.id]=Object.assign({{}},d,a)}});let available=(rec.available||[]).map(d=>Object.assign({{}},window.recommendationMap[d.id]||d,d));let almost=(rec.almost_available||[]).map(d=>Object.assign({{}},window.recommendationMap[d.id]||d,d));let section=(zh,en,rows,state)=>'<div class="rec-section-title">'+pairMarkup(zh,en)+'</div>'+(rows.length?rows.map(d=>recommendationResult(d,state)).join(''):'<div style="padding:14px 18px;color:#65706a">暂无 None</div>');c.innerHTML=section('库存可做','Available now',available,'available')+section('差少量','Almost available',almost,'almost')+section('全部菜品','All dishes',all.slice(0,80),'all')}}catch(e){{c.innerHTML='<div class="inline-warning">'+e.message+'</div>'}}}}
 async function doDishSearch(q){{let c=document.getElementById('dishSearchResults');try{{let data=await requestJSON('/api/dishes?search='+encodeURIComponent(q)),availability=data.length?await postJSON('/api/dishes/availability',{{dish_ids:data.map(d=>d.id),location:currentLoc}}):{{}};window.recommendationMap={{}};data.forEach(d=>window.recommendationMap[d.id]=Object.assign({{}},d,availability[d.id]||{{}}));c.innerHTML='<div class="rec-section-title">'+pairMarkup('搜索结果','Search results')+'</div>'+data.slice(0,40).map(d=>recommendationResult(window.recommendationMap[d.id],(availability[d.id]||{{}}).available?'available':'all')).join('')}}catch(e){{c.innerHTML='<div class="inline-warning">'+e.message+'</div>'}}}}
 function pickRecommendation(dishId,isMissing){{let d=window.recommendationMap&&window.recommendationMap[dishId];if(isMissing&&d&&d.missing_required&&d.missing_required.length&&!confirm('这道菜还缺：'+d.missing_required.join('、')+'\\n\\n仍然选择? Choose anyway?'))return;doPickDish(dishId)}}
-async function doPickDish(dishId){{let path=searchMode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add';let payload=searchMode.replaceId?{{menu_id:menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId}}:{{menu_id:menuId,dish_id:dishId,meal_type:searchMode.meal}};try{{await postJSON(path,payload);closeDishSearch();location.reload()}}catch(e){{snack(e.message)}}}}
-async function cycleDish(button,itemId){{button.disabled=true;try{{let result=await postJSON('/api/tomorrow/cycle-replace',{{menu_id:menuId,menu_item_id:itemId,location:currentLoc}});if(!result.replaced){{snack('暂无其他可做同类菜品 / No other available dish');button.disabled=false;return}}snack('已切换为：'+result.dish.name_cn);location.reload()}}catch(e){{snack(e.message);button.disabled=false}}}}
-function editMealNote(meal){{noteMealType=meal;document.getElementById('mealNoteInput').value=mealNotes[meal]||'';document.getElementById('mealNoteModal').classList.add('show');document.getElementById('mealNoteInput').focus()}}
-function closeMealNote(){{document.getElementById('mealNoteModal').classList.remove('show');noteMealType=null}}
-async function saveMealNote(){{if(!noteMealType)return;let note=document.getElementById('mealNoteInput').value;try{{await postJSON('/api/tomorrow/meal-note',{{menu_id:menuId,meal_type:noteMealType,note:note}});location.reload()}}catch(e){{snack(e.message)}}}}
+async function doPickDish(dishId){{let path=searchMode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add';let payload=searchMode.replaceId?{{menu_id:searchMode.menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId}}:{{menu_id:searchMode.menuId,dish_id:dishId,meal_type:searchMode.meal}};try{{await postJSON(path,payload);closeDishSearch();location.reload()}}catch(e){{snack(e.message)}}}}
+async function cycleDish(button,targetMenuId,itemId){{button.disabled=true;try{{let result=await postJSON('/api/tomorrow/cycle-replace',{{menu_id:targetMenuId,menu_item_id:itemId,location:currentLoc}});if(!result.replaced){{snack('暂无其他可做同类菜品 / No other available dish');button.disabled=false;return}}snack('已切换为：'+result.dish.name_cn);location.reload()}}catch(e){{snack(e.message);button.disabled=false}}}}
+function editMealNote(targetMenuId,meal){{noteMenuId=targetMenuId;noteMealType=meal;let notes=mealNotesByMenu[String(targetMenuId)]||{{}};document.getElementById('mealNoteInput').value=notes[meal]||'';document.getElementById('mealNoteModal').classList.add('show');document.getElementById('mealNoteInput').focus()}}
+function closeMealNote(){{document.getElementById('mealNoteModal').classList.remove('show');noteMenuId=null;noteMealType=null}}
+async function saveMealNote(){{if(!noteMenuId||!noteMealType)return;let note=document.getElementById('mealNoteInput').value;try{{await postJSON('/api/tomorrow/meal-note',{{menu_id:noteMenuId,meal_type:noteMealType,note:note}});location.reload()}}catch(e){{snack(e.message)}}}}
 function renderMealDiners(){{let box=document.getElementById('mealDinersOptions');box.innerHTML=dinerOptions.map(d=>'<button class="person '+(mealDinerSelection.includes(d.id)?'selected':'')+'" type="button" data-meal-diner="'+d.id+'"><span class="person-avatar">'+(d.name_en||d.name_cn||'?').charAt(0).toUpperCase()+'</span><span class="person-name">'+d.name_cn+'<small>'+d.name_en+'</small></span></button>').join('');box.querySelectorAll('[data-meal-diner]').forEach(button=>button.onclick=()=>toggleMealDiner(button.dataset.mealDiner))}}
 function editMealDiners(targetMenuId,current){{mealDinerMenuId=targetMenuId;mealDinerSelection=current.slice();renderMealDiners();document.getElementById('mealDinersModal').classList.add('show')}}
 function closeMealDiners(){{document.getElementById('mealDinersModal').classList.remove('show');mealDinerMenuId=null}}
 function toggleMealDiner(id){{let next=mealDinerSelection.includes(id)?mealDinerSelection.filter(v=>v!==id):mealDinerSelection.concat(id);if(!next.length){{snack('至少保留一名用餐成员 Keep at least one diner');return}}mealDinerSelection=next;renderMealDiners()}}
 async function saveMealDiners(){{if(!mealDinerMenuId)return;try{{await postJSON('/api/menu/diners',{{menu_id:mealDinerMenuId,diners:mealDinerSelection,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
-async function deleteMeal(meal){{if(!confirm('确认删除整餐？\\nDelete the entire meal?'))return;try{{await postJSON('/api/tomorrow/delete-meal',{{menu_id:menuId,meal_type:meal}});location.reload()}}catch(e){{snack(e.message)}}}}
-function restoreMeal(meal){{openDishSearch(meal)}}
-async function removeDish(itemId){{if(!confirm('确认删除? Confirm delete?'))return;let result=await fetch('/api/tomorrow/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:itemId}})}}).then(r=>r.json());result.ok?location.reload():snack(result.error||'删除失败')}}
-async function aiFillMeal(meal,button){{try{{if(button){{button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='补充中 Filling...'}}await postJSON('/api/tomorrow/ai-fill',{{menu_id:menuId,location:currentLoc,meal_type:meal}});location.reload()}}catch(e){{snack(e.message);if(button){{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='智能补充 AI fill'}}}}}}
+async function deleteMeal(targetMenuId,meal){{if(!confirm('确认删除整餐？\\nDelete the entire meal?'))return;try{{await postJSON('/api/tomorrow/delete-meal',{{menu_id:targetMenuId,meal_type:meal}});location.reload()}}catch(e){{snack(e.message)}}}}
+function restoreMeal(targetMenuId,meal){{openDishSearch(targetMenuId,meal)}}
+async function removeDish(targetMenuId,itemId){{if(!confirm('确认删除? Confirm delete?'))return;let result=await fetch('/api/tomorrow/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:targetMenuId,menu_item_id:itemId}})}}).then(r=>r.json());result.ok?location.reload():snack(result.error||'删除失败')}}
+async function aiFillMeal(targetMenuId,meal,button){{try{{if(button){{button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='补充中 Filling...'}}await postJSON('/api/tomorrow/ai-fill',{{menu_id:targetMenuId,location:currentLoc,meal_type:meal}});location.reload()}}catch(e){{snack(e.message);if(button){{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='智能补充 AI fill'}}}}}}
 async function repairMenu(){{if(!confirm('重新生成菜单? Regenerate menu?'))return;try{{await postJSON('/api/tomorrow/repair',{{menu_id:menuId,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
 async function confirmMenu(){{try{{let result=await postJSON('/api/tomorrow/confirm',{{menu_id:menuId}});snack(result.message||'已确认 Confirmed');setTimeout(()=>location.reload(),1200)}}catch(e){{snack(e.message)}}}}
 async function retryPush(){{let result=await fetch('/api/tomorrow/push',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId}})}}).then(r=>r.json());snack(result.ok?'重新推送成功 Push sent':(result.error||'重新推送失败'));if(result.ok)setTimeout(()=>location.reload(),1200)}}
 async function editMenu(){{if(!confirm('修改菜单将回退到草稿状态，修改后需重新确认。 Edit and reconfirm?'))return;let result=await fetch('/api/tomorrow/revert',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId}})}}).then(r=>r.json());result.ok?location.reload():snack(result.error||'操作失败')}}
 </script></body></html>"""
-    return tomorrow_preview_head("明日菜单 · Tomorrow Menu", "tomorrow", location) + body + js
+    return tomorrow_preview_head("菜单 · Menu", "tomorrow", location) + body + js
 
 def render_tomorrow(role="owner", location="shenzhen"):
     if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true":

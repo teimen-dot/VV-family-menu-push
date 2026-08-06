@@ -85,7 +85,10 @@ class MarkupTests(unittest.TestCase):
                 "breakfast": [], "lunch": [{
                     "menu_item_id": 9, "dish_id": "dish_1", "name_cn": "测试菜",
                     "name_en": "Test Dish", "category_id": "vegetable", "image": None,
-                }], "afternoon_snack": [], "dinner": [],
+                }], "afternoon_snack": [], "dinner": [{
+                    "menu_item_id": 10, "dish_id": "dish_2", "name_cn": "测试晚餐",
+                    "name_en": "Test Dinner", "category_id": "protein", "image": None,
+                }],
             },
         }
         diners = [{"id": "vv", "name_cn": "VV", "name_en": "VV", "default_attends": 1}]
@@ -122,18 +125,27 @@ class MarkupTests(unittest.TestCase):
         self.assertIn("cycleDish(this", owner_html)
         self.assertIn("搜索更换", owner_html)
         meal_order = [
-            owner_html.index("今日晚餐"), owner_html.index("明天早餐"),
+            owner_html.index("下一顿"), owner_html.index("明天早餐"),
             owner_html.index("明天午餐"), owner_html.index("明天下午茶"),
             owner_html.index("明天晚餐"),
         ]
         self.assertEqual(meal_order, sorted(meal_order))
+        self.assertIn("Next Meal", owner_html)
+        self.assertNotIn("今日晚餐", owner_html)
+        self.assertIn("<title>菜单 · Menu</title>", owner_html)
+        self.assertIn('<span class="lang-zh">菜单</span><span class="lang-en">Menu</span>', owner_html)
         self.assertGreaterEqual(owner_html.count("meal-diners-button"), 5)
-        self.assertIn('class="meal-delete-x"', owner_html)
+        self.assertGreaterEqual(owner_html.count('class="meal-delete-x"'), 2)
         self.assertIn("重新添加该餐", owner_html)
         self.assertIn("/api/menu/diners", owner_html)
         self.assertIn("meal-note-button", owner_html)
         self.assertIn("data-meal-diner", owner_html)
         self.assertNotIn('onclick="toggleMealDiner(\'\'', owner_html)
+        next_meal = owner_html[owner_html.index('data-meal="today_dinner"'):owner_html.index('data-meal="breakfast"')]
+        for label in ("修改人数", "添加备注", "添加菜品", "智能补充", "删除整餐", "搜索更换"):
+            self.assertIn(label, next_meal)
+        self.assertIn("cycleDish(this,1,10)", next_meal)
+        self.assertIn("removeDish(1,10)", next_meal)
 
 if __name__ == "__main__":
     unittest.main()
