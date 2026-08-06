@@ -42,6 +42,7 @@ class MarkupTests(unittest.TestCase):
         for path in (
             "/api/tomorrow/add", "/api/tomorrow/ai-fill", "/api/tomorrow/repair",
             "/api/tomorrow/confirm", "/api/tomorrow/diners", "/api/tomorrow/meal-mode",
+            "/api/menu/diners",
         ):
             self.assertFalse(app.post_path_allowed("worker", path), path)
 
@@ -120,6 +121,17 @@ class MarkupTests(unittest.TestCase):
         self.assertLess(fill_index, delete_index)
         self.assertIn("cycleDish(this", owner_html)
         self.assertIn("搜索更换", owner_html)
+        meal_order = [
+            owner_html.index("今日晚餐"), owner_html.index("明天早餐"),
+            owner_html.index("明天午餐"), owner_html.index("明天下午茶"),
+            owner_html.index("明天晚餐"),
+        ]
+        self.assertEqual(meal_order, sorted(meal_order))
+        self.assertGreaterEqual(owner_html.count("meal-diners-button"), 5)
+        self.assertIn('class="meal-delete-x"', owner_html)
+        self.assertIn("重新添加该餐", owner_html)
+        self.assertIn("/api/menu/diners", owner_html)
+        self.assertIn("meal-note-button", owner_html)
 
 if __name__ == "__main__":
     unittest.main()

@@ -73,6 +73,7 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal",
     "/api/tomorrow/cycle-replace",
+    "/api/menu/diners",
     "/api/purchase/update",
 }
 PANTRY_POST_PATHS = {
@@ -1264,13 +1265,13 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .nutrition-row{display:grid;grid-template-columns:82px 1fr 70px;align-items:center;gap:9px;margin:13px 0;font-size:13px}
 .nutrition-row>span .lang-en{font-size:10px}.nutrition-row strong{text-align:right;font-size:12px}.meter{height:6px;overflow:hidden;border-radius:6px;background:#e5e9e5}.meter i{display:block;width:var(--progress);height:100%;background:var(--accent)}
 .nutrition-card>p{display:none}.menu-content{display:grid;gap:16px;min-width:0}
-.meal-section{overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:none}
+.meal-section{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:14px;background:var(--surface);box-shadow:none}
 .meal-header{min-height:82px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px;border-bottom:1px solid #e8ebe8}
 .meal-title{display:flex;align-items:stretch;gap:9px}.meal-accent{width:4px;border-radius:4px;background:var(--accent)}
 .meal-accent.amber{background:#c78326}.meal-accent.blue{background:#447b9d}.meal-accent.green{background:#4f8b64}.meal-accent.red{background:#a54b45}
 .meal-title h2{margin:0;font-size:23px;line-height:1.15;letter-spacing:-.025em}.meal-title h2 .lang-en{margin-top:3px;font-size:13px}.meal-title p{margin:5px 0 0;color:var(--muted);font-size:15px;font-weight:700;line-height:1.25}.meal-title p .lang-en{font-size:10px}
-.meal-actions{display:flex;flex-wrap:wrap;gap:5px}.text-button,.secondary-button,.primary-button{border-radius:var(--radius-control);font-weight:750;cursor:pointer;white-space:nowrap}
-.meal-note-button{border-color:#8fb49d!important;color:var(--accent-dark)!important;background:var(--accent-soft)!important}.meal-delete-button{color:var(--danger)!important}.meal-note-display{margin:10px 14px 0;padding:9px 12px;border-left:3px solid #8fb49d;border-radius:7px;color:#435149;background:#f0f6f2;font-size:12px}.meal-note-display small{display:block;margin-top:2px;color:var(--muted)}
+.meal-actions{display:flex;flex-wrap:wrap;gap:5px;padding-right:40px}.text-button,.secondary-button,.primary-button{border-radius:var(--radius-control);font-weight:750;cursor:pointer;white-space:nowrap}
+.meal-note-button{border-color:#6f9f7f!important;color:#205b38!important;background:#e6f3ea!important}.meal-diners-button{border-color:#c4d2c8!important;color:#34463b!important;background:#f6f8f6!important}.meal-delete-x{position:absolute;top:12px;right:12px;width:36px;height:36px;border:1px solid #e4c3c0;border-radius:9px;color:var(--danger);background:#fff7f6;font-size:23px;line-height:1;cursor:pointer}.meal-delete-x:hover{background:#fdebea}.meal-note-display{margin:10px 14px 0;padding:9px 12px;border-left:3px solid #8fb49d;border-radius:7px;color:#435149;background:#f0f6f2;font-size:12px}.meal-note-display small{display:block;margin-top:2px;color:var(--muted)}
 .text-button{min-height:50px;padding:0 10px;border:1px solid #ced6d0;color:#34463b;background:white;font-size:13px}.fill-button{color:var(--accent-dark);background:var(--accent-soft);border-color:#c7ddcf}
 .dish-grid{display:grid;grid-template-columns:1fr}.dish-card{min-width:0;min-height:128px;display:grid;grid-template-columns:112px minmax(0,1fr);grid-template-rows:1fr auto;column-gap:12px;padding:8px 12px;border-bottom:1px solid #edf0ed}
 .dish-card:last-child{border-bottom:0}.dish-card img,.dish-card .no-img{grid-row:1/3;width:112px;height:112px;align-self:center;border-radius:13px;object-fit:cover;background:#edf0ed}
@@ -1294,6 +1295,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .recommendation-item{width:100%;min-height:110px;display:grid;grid-template-columns:86px minmax(0,1fr);align-items:center;gap:13px;padding:10px 16px;border:0;border-bottom:1px solid var(--line);background:var(--surface);text-align:left;cursor:pointer}.recommendation-item:hover{background:#f7faf8}.recommendation-item img,.rec-no-img{width:86px;height:86px;border-radius:11px;object-fit:cover;background:#edf0ed}.rec-no-img{display:grid;place-items:center;color:var(--muted);font-size:10px}.rec-no-img[hidden]{display:none!important}
 .recommendation-copy{min-width:0}.recommendation-copy strong,.recommendation-copy em,.recommendation-copy small{display:block}.recommendation-copy strong{font-size:15px}.recommendation-copy strong .bilingual-pair{align-items:flex-start;text-align:left}.recommendation-copy strong .lang-en{margin-top:3px;font-size:11px}.recommendation-copy em{width:max-content;margin-top:7px;padding:4px 6px;border-radius:5px;font-size:10px;font-style:normal}.recommendation-copy em .lang-en{font-size:8px}.recommendation-copy em.available{color:var(--accent-dark);background:var(--accent-soft)}.recommendation-copy em.missing{color:#8a5d08;background:#fff1cf}.recommendation-copy small{margin-top:4px;color:var(--muted);font-size:10px}
 .dish-picker .modal-actions{position:static;padding:10px 16px calc(12px + env(safe-area-inset-bottom));border-color:var(--line)}
+@media(max-width:700px){.meal-header{align-items:flex-start;flex-direction:column;padding-right:56px}.meal-actions{width:100%;padding-right:0}.meal-actions .text-button{flex:1 1 calc(50% - 5px);min-width:118px}.meal-delete-x{top:14px;right:14px}.meal-diners-button{min-height:48px}}
 @media(min-width:701px){.modal-overlay:has(.dish-picker){align-items:center;padding:18px}.dish-picker{max-height:min(820px,92dvh);border-radius:18px}.dish-picker-head{padding:22px 24px 14px}.dish-picker-title{font-size:28px}.dish-picker-title .lang-en{font-size:19px}.dish-picker-search{margin:0 24px 14px}.rec-section-title{padding:11px 24px}.recommendation-item{grid-template-columns:78px minmax(0,1fr);min-height:100px;padding:11px 24px}.recommendation-item img,.rec-no-img{width:78px;height:78px}.dish-picker .modal-actions{padding:12px 24px 18px}}
 @media(min-width:701px){body{padding-bottom:0;font-size:16px}.header-inner,.nav-inner,.page-shell{width:min(1180px,calc(100% - 40px))}.header-inner{height:76px;padding:0}.kitchen-context{top:76px;min-height:52px}.primary-nav{top:128px}.nav-inner{height:70px;justify-content:center}.nav-item{flex:0 0 auto;min-width:150px}.page-shell{padding:38px 0 96px}.page-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:28px}.page-heading p:last-child{max-width:none;padding:0}.status-chip{position:static}.diners-panel{padding:24px 34px 30px}.person{min-height:150px}.person-avatar{width:56px;height:56px;font-size:17px}.person-name{font-size:22px}.desktop-layout{grid-template-columns:300px minmax(0,1fr);gap:24px}.planner-panel{position:sticky;top:222px;gap:14px}.meal-section{border-radius:16px;box-shadow:var(--shadow)}.dish-grid{grid-template-columns:1fr 1fr}.dish-card{grid-template-columns:88px minmax(0,1fr);min-height:auto;padding:16px 18px}.dish-card img,.dish-card .no-img{width:88px;height:88px;border-radius:12px}.mobile-action-bar{display:none}}
 @media(min-width:701px) and (max-width:960px){.mobile-action-bar{display:grid}}
@@ -1528,6 +1530,19 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         for meal_type, dishes in menu["meals"].items()
     }
     meal_notes = menu.get("meal_notes") or {}
+    today_menu = get_menu_with_dishes(date.today().isoformat())
+    today_dinner = []
+    today_menu_id = None
+    today_diners = []
+    if today_menu.get("exists"):
+        today_menu_id = today_menu["menu_id"]
+        today_dinner = [
+            dish for dish in today_menu.get("meals", {}).get("dinner", [])
+            if not dish.get("is_historical_combo")
+        ]
+        today_diners = get_menu_diners(today_menu_id)
+    if not today_diners:
+        today_diners = [d["id"] for d in all_diners if d["default_attends"]]
 
     menu_validation = validate_menu_meals(menu, effective_diners)
     slot_results = menu_validation["meal_slots"]
@@ -1612,25 +1627,47 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         "afternoon_snack": ("下午茶", "Afternoon Tea", "green"), "dinner": ("晚餐", "Dinner", "red"),
     }
     meal_sections = []
-    for meal_type in ("breakfast", "lunch", "afternoon_snack", "dinner"):
-        dishes = valid_meals.get(meal_type, [])
-        cn, en, color_class = meal_meta[meal_type]
+    meal_rows = [
+        ("today_dinner", today_dinner, "今日晚餐", "Today's Dinner", "red", today_menu_id, today_diners, False),
+        *[
+            (meal_type, valid_meals.get(meal_type, []), f"明天{meal_meta[meal_type][0]}",
+             f"Tomorrow {meal_meta[meal_type][1]}", meal_meta[meal_type][2], menu["menu_id"], menu_diners, True)
+            for meal_type in ("breakfast", "lunch", "afternoon_snack", "dinner")
+        ],
+    ]
+    for display_type, dishes, cn, en, color_class, target_menu_id, target_diners, editable in meal_rows:
+        meal_type = "dinner" if display_type == "today_dinner" else display_type
         count_html = (
             bilingual("可选", "Optional")
-            if meal_type == "afternoon_snack"
+            if display_type == "afternoon_snack"
             else bilingual(f"{len(dishes)} 道", f"{len(dishes)} dishes")
         )
-        note_text = str(meal_notes.get(meal_type, "") or "").strip()
+        note_text = str(meal_notes.get(meal_type, "") or "").strip() if editable else ""
         note_label_cn, note_label_en = ("修改备注", "Edit note") if note_text else ("添加备注", "Add note")
-        if not is_owner:
+        diners_json = json.dumps(target_diners, ensure_ascii=False)
+        diners_action = (
+            f'<button class="text-button meal-diners-button" type="button" '
+            f'onclick=\'editMealDiners({target_menu_id},{diners_json})\'>{bilingual(f"修改人数 · {len(target_diners)}人", f"Edit diners · {len(target_diners)}")}</button>'
+            if is_owner and target_menu_id else
+            f'<span class="text-button meal-diners-button">{bilingual(f"{len(target_diners)} 人", f"{len(target_diners)} diners")}</span>'
+        )
+        delete_button = ""
+        if not is_owner or not editable:
             actions = ""
         else:
             actions = (
+                diners_action +
                 f'<button class="text-button meal-note-button" onclick="editMealNote(\'{meal_type}\')">{bilingual(note_label_cn, note_label_en)}</button>'
                 f'<button class="text-button" onclick="openDishSearch(\'{meal_type}\')">{bilingual("添加餐点" if meal_type == "afternoon_snack" else "添加菜品", "Add item" if meal_type == "afternoon_snack" else "Add dish")}</button>'
                 f'<button class="text-button fill-button" onclick="aiFillMeal(\'{meal_type}\',this)">{bilingual("智能补充", "AI fill")}</button>'
-                f'<button class="text-button meal-delete-button" onclick="deleteMeal(\'{meal_type}\')">{bilingual("删除整餐", "Delete meal")}</button>'
             )
+            if dishes:
+                delete_button = (
+                    f'<button class="meal-delete-x" type="button" aria-label="删除整餐 / Delete meal" '
+                    f'title="删除整餐 / Delete meal" onclick="deleteMeal(\'{meal_type}\')">×</button>'
+                )
+        if not editable:
+            actions = diners_action
         cards = ""
         for dish in dishes:
             dish_name_cn = dish.get("name_cn") or dish.get("custom_name") or "未命名菜品"
@@ -1640,7 +1677,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             else:
                 media = '<div class="no-img">No image</div>'
             dish_actions = ""
-            if is_owner:
+            if is_owner and editable:
                 dish_actions = (
                     f'<div class="dish-actions"><button class="swap-button" type="button" aria-label="更换 {dish_name_cn}" '
                     f'onclick="cycleDish(this,{dish["menu_item_id"]})">更换</button>'
@@ -1654,9 +1691,9 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
                 f'<div class="dish-copy"><h3>{bilingual(dish_name_cn, dish_name_en)}</h3></div>'
                 f'{dish_actions}</article>'
             )
-        if meal_type == "afternoon_snack" and not dishes:
+        if display_type == "afternoon_snack" and not dishes:
             empty_action = (
-                f'<button class="text-button" onclick="openDishSearch(\'{meal_type}\')">{bilingual("添加", "Add")}</button>'
+                f'<button class="text-button meal-note-button" onclick="restoreMeal(\'{meal_type}\')">{bilingual("重新添加该餐", "Re-add meal")}</button>'
                 if is_owner else ""
             )
             cards = (
@@ -1664,14 +1701,18 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
                 f'<p>{bilingual("需要时可加入水果、酸奶或坚果。", "Add fruit, yoghurt or nuts when needed.")}</p></div>'
                 f'{empty_action}</div>'
             )
-        if not cards and meal_type != "afternoon_snack":
-            cards = f'<div class="empty-state"><div><strong>{bilingual("该餐尚未安排菜品", "No dishes planned")}</strong></div></div>'
-        warning = "" if meal_type == "afternoon_snack" else meal_warning(meal_type, cn, en)
+        if not cards and display_type != "afternoon_snack":
+            restore_action = (
+                f'<button class="text-button meal-note-button" onclick="restoreMeal(\'{meal_type}\')">{bilingual("重新添加该餐", "Re-add meal")}</button>'
+                if is_owner and editable else ""
+            )
+            cards = f'<div class="empty-state"><div><strong>{bilingual("该餐尚未安排菜品", "No dishes planned")}</strong></div>{restore_action}</div>'
+        warning = "" if display_type in ("today_dinner", "afternoon_snack") else meal_warning(meal_type, cn, en)
         note_html = f'<div class="meal-note-display"><strong>{escape(note_text)}</strong><small>Meal note</small></div>' if note_text else ""
         meal_sections.append(
-            f'<section class="meal-section" data-meal="{meal_type}"><header class="meal-header">'
+            f'<section class="meal-section" data-meal="{display_type}"><header class="meal-header">'
             f'<div class="meal-title"><span class="meal-accent {color_class}"></span><div><h2>{bilingual(cn, en)}</h2><p>{count_html}</p></div></div>'
-            f'<div class="meal-actions">{actions}</div></header>{note_html}{warning}<div class="dish-grid">{cards}</div></section>'
+            f'<div class="meal-actions">{actions}</div>{delete_button}</header>{note_html}{warning}<div class="dish-grid">{cards}</div></section>'
         )
 
     daily_class = "selected" if meal_mode == "daily" else ""
@@ -1729,10 +1770,18 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     if not is_owner:
         return tomorrow_preview_head("明日菜单 · Tomorrow Menu", "tomorrow", location) + body + "</body></html>"
     meal_notes_json = json.dumps(meal_notes, ensure_ascii=False).replace("</", "<\\/")
+    diner_options_json = json.dumps([
+        {"id": diner["id"], "name_cn": diner["name_cn"], "name_en": diner["name_en"]}
+        for diner in all_diners
+    ], ensure_ascii=False).replace("</", "<\\/")
     js = f"""<div class="modal-overlay" id="mealNoteModal" onclick="if(event.target===this)closeMealNote()"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mealNoteTitle">
 <header class="dish-picker-head"><div id="mealNoteTitle" class="dish-picker-title">{bilingual('编辑备注','Edit note')}</div><button class="picker-close" type="button" onclick="closeMealNote()">×</button></header>
 <div style="padding:0 16px 16px"><textarea id="mealNoteInput" maxlength="500" rows="5" placeholder="输入该餐备注 / Enter meal note" style="width:100%;padding:12px;border:1px solid #cbd4ce;border-radius:9px;resize:vertical"></textarea></div>
 <div class="modal-actions"><button class="secondary-button" onclick="closeMealNote()">{bilingual('取消','Cancel')}</button><button class="primary-button" onclick="saveMealNote()">{bilingual('保存备注','Save note')}</button></div></div></div>
+<div class="modal-overlay" id="mealDinersModal" onclick="if(event.target===this)closeMealDiners()"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mealDinersTitle">
+<header class="dish-picker-head"><div id="mealDinersTitle" class="dish-picker-title">{bilingual('修改用餐人数','Edit diners')}</div><button class="picker-close" type="button" onclick="closeMealDiners()">×</button></header>
+<div id="mealDinersOptions" class="people-grid" style="padding:0 16px 16px"></div>
+<div class="modal-actions"><button class="secondary-button" onclick="closeMealDiners()">{bilingual('取消','Cancel')}</button><button class="primary-button" onclick="saveMealDiners()">{bilingual('保存人数','Save diners')}</button></div></div></div>
 <div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()"><div class="modal dish-picker" role="dialog" aria-modal="true" aria-labelledby="dishSearchTitle">
 <header class="dish-picker-head"><div><div id="dishSearchTitle" class="dish-picker-title">{bilingual('添加菜品','Add dish')}</div>
 <p>{bilingual('系统根据库存和当前餐位推荐，也可搜索菜品','Recommendations based on pantry and meal')}</p></div>
@@ -1740,7 +1789,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 <input class="dish-picker-search" id="dishSearchInput" placeholder="搜索菜品 / Search dishes" oninput="onDishSearchInput()">
 <div class="dish-picker-results" id="dishSearchResults"></div><div class="modal-actions"><button class="secondary-button" onclick="closeDishSearch()">{bilingual('取消','Cancel')}</button></div></div></div>
 <div class="snack-bar" id="snackBar"></div><script>
-let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotes={meal_notes_json},noteMealType=null,searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
+let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotes={meal_notes_json},noteMealType=null,mealDinerMenuId=null,mealDinerSelection=[],dinerOptions={diner_options_json},searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
 function snack(msg){{let b=document.getElementById('snackBar');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),1800)}}
 function pairMarkup(zh,en){{return '<span class="bilingual-pair"><span class="lang-zh">'+zh+'</span><span class="lang-en">'+en+'</span></span>'}}
 async function requestJSON(path,options){{let response;try{{response=await fetch(path,options)}}catch(e){{throw new Error('网络连接失败 Network error')}}let data;try{{data=await response.json()}}catch(e){{throw new Error('服务器返回无效响应 Invalid server response')}}if(!response.ok||data.ok===false)throw new Error(data.error||data.message||('请求失败 HTTP '+response.status));return data}}
@@ -1760,7 +1809,13 @@ async function cycleDish(button,itemId){{button.disabled=true;try{{let result=aw
 function editMealNote(meal){{noteMealType=meal;document.getElementById('mealNoteInput').value=mealNotes[meal]||'';document.getElementById('mealNoteModal').classList.add('show');document.getElementById('mealNoteInput').focus()}}
 function closeMealNote(){{document.getElementById('mealNoteModal').classList.remove('show');noteMealType=null}}
 async function saveMealNote(){{if(!noteMealType)return;let note=document.getElementById('mealNoteInput').value;try{{await postJSON('/api/tomorrow/meal-note',{{menu_id:menuId,meal_type:noteMealType,note:note}});location.reload()}}catch(e){{snack(e.message)}}}}
+function renderMealDiners(){{let box=document.getElementById('mealDinersOptions');box.innerHTML=dinerOptions.map(d=>'<button class="person '+(mealDinerSelection.includes(d.id)?'selected':'')+'" type="button" onclick="toggleMealDiner(\''+d.id+'\')"><span class="person-avatar">'+(d.name_en||d.name_cn||'?').charAt(0).toUpperCase()+'</span><span class="person-name">'+d.name_cn+'<small>'+d.name_en+'</small></span></button>').join('')}}
+function editMealDiners(targetMenuId,current){{mealDinerMenuId=targetMenuId;mealDinerSelection=current.slice();renderMealDiners();document.getElementById('mealDinersModal').classList.add('show')}}
+function closeMealDiners(){{document.getElementById('mealDinersModal').classList.remove('show');mealDinerMenuId=null}}
+function toggleMealDiner(id){{let next=mealDinerSelection.includes(id)?mealDinerSelection.filter(v=>v!==id):mealDinerSelection.concat(id);if(!next.length){{snack('至少保留一名用餐成员 Keep at least one diner');return}}mealDinerSelection=next;renderMealDiners()}}
+async function saveMealDiners(){{if(!mealDinerMenuId)return;try{{await postJSON('/api/menu/diners',{{menu_id:mealDinerMenuId,diners:mealDinerSelection,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
 async function deleteMeal(meal){{if(!confirm('确认删除整餐？\\nDelete the entire meal?'))return;try{{await postJSON('/api/tomorrow/delete-meal',{{menu_id:menuId,meal_type:meal}});location.reload()}}catch(e){{snack(e.message)}}}}
+function restoreMeal(meal){{openDishSearch(meal)}}
 async function removeDish(itemId){{if(!confirm('确认删除? Confirm delete?'))return;let result=await fetch('/api/tomorrow/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:itemId}})}}).then(r=>r.json());result.ok?location.reload():snack(result.error||'删除失败')}}
 async function aiFillMeal(meal,button){{try{{if(button){{button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='补充中 Filling...'}}await postJSON('/api/tomorrow/ai-fill',{{menu_id:menuId,location:currentLoc,meal_type:meal}});location.reload()}}catch(e){{snack(e.message);if(button){{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='智能补充 AI fill'}}}}}}
 async function repairMenu(){{if(!confirm('重新生成菜单? Regenerate menu?'))return;try{{await postJSON('/api/tomorrow/repair',{{menu_id:menuId,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
@@ -3808,6 +3863,38 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/purchase/update":
             update_purchase_status(body["id"], body["status"], resolved_by=body.get("by", "nanny"))
             self.send_json({"ok": True})
+
+        elif path == "/api/menu/diners":
+            diners = body.get("diners")
+            if not isinstance(diners, list) or not diners:
+                self.send_json({"ok": False, "error": "至少保留一名用餐成员"}, 400)
+                return
+            diners = list(dict.fromkeys(str(value) for value in diners))
+            valid_diner_ids = {item["id"] for item in get_all_diners()}
+            if any(diner_id not in valid_diner_ids for diner_id in diners):
+                self.send_json({"ok": False, "error": "invalid diner"}, 400)
+                return
+            conn = get_db()
+            try:
+                menu_row = conn.execute(
+                    "SELECT status,location FROM menus WHERE id=?", (body.get("menu_id"),)
+                ).fetchone()
+            finally:
+                conn.close()
+            if not menu_row:
+                self.send_json({"ok": False, "error": "menu not found"}, 404)
+                return
+            if menu_row["location"] != location:
+                self.send_json({"ok": False, "error": "menu location mismatch"}, 403)
+                return
+            ok = update_menu_diners(body["menu_id"], diners)
+            if ok and menu_row["status"] == "draft":
+                try:
+                    from menu_service import reconcile_meal_for_diners
+                    reconcile_meal_for_diners(body["menu_id"], location=location)
+                except Exception:
+                    pass
+            self.send_json({"ok": ok})
 
         elif path == "/api/tomorrow/diners":
             diners = body.get("diners")
