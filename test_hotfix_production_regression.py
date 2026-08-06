@@ -81,7 +81,10 @@ class MarkupTests(unittest.TestCase):
         menu = {
             "exists": True, "menu_id": 1, "date": "2026-08-06", "status": "draft",
             "push_status": "not_sent", "meals": {
-                "breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": [],
+                "breakfast": [], "lunch": [{
+                    "menu_item_id": 9, "dish_id": "dish_1", "name_cn": "测试菜",
+                    "name_en": "Test Dish", "category_id": "vegetable", "image": None,
+                }], "afternoon_snack": [], "dinner": [],
             },
         }
         diners = [{"id": "vv", "name_cn": "VV", "name_en": "VV", "default_attends": 1}]
@@ -108,6 +111,15 @@ class MarkupTests(unittest.TestCase):
         self.assertNotIn('class="desktop-owner-actions"', worker_html)
         self.assertIn("Available now", owner_html)
         self.assertNotIn("智能补充", worker_html)
+        note_index = owner_html.index("添加备注")
+        add_index = owner_html.index("添加菜品", note_index)
+        fill_index = owner_html.index("智能补充", add_index)
+        delete_index = owner_html.index("删除整餐", fill_index)
+        self.assertLess(note_index, add_index)
+        self.assertLess(add_index, fill_index)
+        self.assertLess(fill_index, delete_index)
+        self.assertIn("cycleDish(this", owner_html)
+        self.assertIn("搜索更换", owner_html)
 
 if __name__ == "__main__":
     unittest.main()

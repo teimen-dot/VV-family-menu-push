@@ -130,7 +130,7 @@ def _invalidate_availability_cache(location):
 def save_pantry_changes(location, items, submitted_by="nanny"):
     """
     V4: 保存库存变更（增量模式）。
-    items: list of {ingredient_id, status}
+    items: list of {ingredient_id, status, quantity_level}
     - items 中的项 → UPSERT (新增或更新状态)
     - current_pantry 中有但 items 中没有的 → 标记 is_active = 0 (用户已删除)
     返回: {pantry_count, added, updated, removed, snapshot_id}
@@ -142,11 +142,14 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
 
         # 获取当前活跃库存
         current_rows = conn.execute(
-            "SELECT ingredient_id, status FROM current_pantry "
+            "SELECT ingredient_id, status, COALESCE(quantity_level, 'enough') AS quantity_level FROM current_pantry "
             "WHERE location = ? AND is_active = 1",
             (location,)
         ).fetchall()
-        current_map = {r["ingredient_id"]: r["status"] for r in current_rows}
+        current_map = {
+            r["ingredient_id"]: (r["status"], r["quantity_level"] or "enough")
+            for r in current_rows
+        }
 
         added = 0
         updated = 0
@@ -154,26 +157,30 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
         for item in items:
             ing_id = item["ingredient_id"]
             status = item.get("status", "available")
+            quantity_level = item.get("quantity_level", "enough")
+            if quantity_level not in ("enough", "low"):
+                quantity_level = "enough"
             submitted_ids.add(ing_id)
 
             if ing_id in current_map:
-                if current_map[ing_id] != status:
+                if current_map[ing_id] != (status, quantity_level):
                     # 状态变化 → UPDATE
                     conn.execute(
-                        "UPDATE current_pantry SET status = ?, updated_at = ?, is_active = 1 "
+                        "UPDATE current_pantry SET status = ?, quantity_level = ?, updated_at = ?, is_active = 1 "
                         "WHERE location = ? AND ingredient_id = ?",
-                        (status, now, location, ing_id)
+                        (status, quantity_level, now, location, ing_id)
                     )
                     updated += 1
                 # else: 未变化，不操作
             else:
                 # 新增 → INSERT
                 conn.execute(
-                    "INSERT INTO current_pantry (location, ingredient_id, status, is_active, created_at, updated_at) "
-                    "VALUES (?, ?, ?, 1, ?, ?) "
+                    "INSERT INTO current_pantry (location, ingredient_id, status, quantity_level, is_active, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, 1, ?, ?) "
                     "ON CONFLICT(location, ingredient_id) DO UPDATE SET "
-                    "status = excluded.status, is_active = 1, updated_at = excluded.updated_at",
-                    (location, ing_id, status, now, now)
+                    "status = excluded.status, quantity_level = excluded.quantity_level, "
+                    "is_active = 1, updated_at = excluded.updated_at",
+                    (location, ing_id, status, quantity_level, now, now)
                 )
                 added += 1
 
@@ -235,7 +242,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
 def _create_snapshot(conn, location):
     """生成当前库存快照"""
     items = conn.execute(
-        "SELECT ingredient_id, status FROM current_pantry "
+        "SELECT ingredient_id, status, COALESCE(quantity_level, 'enough') AS quantity_level FROM current_pantry "
         "WHERE location = ? AND is_active = 1",
         (location,)
     ).fetchall()
@@ -267,8 +274,9 @@ def _sync_to_legacy_inventory(conn, location, items, submitted_by):
         conn.execute("DELETE FROM inventory_items WHERE inventory_id = ?", (inv_id,))
         for item in items:
             conn.execute(
-                "INSERT INTO inventory_items (inventory_id, ingredient_id, status) VALUES (?, ?, ?)",
-                (inv_id, item["ingredient_id"], item.get("status", "available"))
+                "INSERT INTO inventory_items (inventory_id, ingredient_id, status, quantity_level) VALUES (?, ?, ?, ?)",
+                (inv_id, item["ingredient_id"], item.get("status", "available"),
+                 item.get("quantity_level", "enough"))
             )
 
 
@@ -301,7 +309,8 @@ def get_current_pantry(location):
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT cp.ingredient_id, cp.status, i.name_cn, i.name_en "
+            "SELECT cp.ingredient_id, cp.status, COALESCE(cp.quantity_level, 'enough') AS quantity_level, "
+            "i.name_cn, i.name_en "
             "FROM current_pantry cp "
             "JOIN ingredients i ON cp.ingredient_id = i.ingredient_id "
             "WHERE cp.location = ? AND cp.is_active = 1 "
@@ -345,20 +354,24 @@ def get_current_pantry_ids(location):
 # V6: Pantry 增量操作（面向保姆简化）
 # ============================================================
 
-def add_ingredient_to_pantry(location, ingredient_id, status="available", submitted_by="nanny"):
+def add_ingredient_to_pantry(location, ingredient_id, status="available", quantity_level="enough",
+                             submitted_by="nanny"):
     """
     V6: 向当前库存添加单项食材（增量，不影响其他食材）。
     如果已存在则更新状态，不重复插入。
     """
     conn = get_db()
     try:
+        if quantity_level not in ("enough", "low"):
+            quantity_level = "enough"
         now = datetime.now().isoformat()
         conn.execute(
-            "INSERT INTO current_pantry (location, ingredient_id, status, is_active, created_at, updated_at) "
-            "VALUES (?, ?, ?, 1, ?, ?) "
+            "INSERT INTO current_pantry (location, ingredient_id, status, quantity_level, is_active, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, 1, ?, ?) "
             "ON CONFLICT(location, ingredient_id) DO UPDATE SET "
-            "status = excluded.status, is_active = 1, updated_at = excluded.updated_at",
-            (location, ingredient_id, status, now, now)
+            "status = excluded.status, quantity_level = excluded.quantity_level, "
+            "is_active = 1, updated_at = excluded.updated_at",
+            (location, ingredient_id, status, quantity_level, now, now)
         )
         conn.commit()
 
@@ -371,7 +384,7 @@ def add_ingredient_to_pantry(location, ingredient_id, status="available", submit
 
         log_event("pantry_item_added", "current_pantry", ingredient_id, {
             "location": location, "ingredient_id": ingredient_id,
-            "status": status, "submitted_by": submitted_by
+            "status": status, "quantity_level": quantity_level, "submitted_by": submitted_by
         })
         return {"ok": True, "ingredient_id": ingredient_id}
     finally:
@@ -658,9 +671,10 @@ def submit_inventory(location, inv_date, items, submitted_by="nanny", notes=None
             conn.execute("DELETE FROM inventory_items WHERE inventory_id = ?", (inv_id,))
         for item in items:
             conn.execute(
-                "INSERT INTO inventory_items (inventory_id, ingredient_id, status, notes) "
-                "VALUES (?, ?, ?, ?)",
-                (inv_id, item["ingredient_id"], item.get("status", "available"), item.get("notes"))
+                "INSERT INTO inventory_items (inventory_id, ingredient_id, status, notes, quantity_level) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (inv_id, item["ingredient_id"], item.get("status", "available"), item.get("notes"),
+                 item.get("quantity_level", "enough"))
             )
         conn.commit()
 
@@ -682,7 +696,8 @@ def get_latest_inventory(location, before_date=None):
     conn = get_db()
     try:
         rows = conn.execute(
-            "SELECT cp.ingredient_id, cp.status, i.name_cn, i.name_en "
+            "SELECT cp.ingredient_id, cp.status, COALESCE(cp.quantity_level, 'enough') AS quantity_level, "
+            "i.name_cn, i.name_en "
             "FROM current_pantry cp "
             "JOIN ingredients i ON cp.ingredient_id = i.ingredient_id "
             "WHERE cp.location = ? AND cp.is_active = 1 "

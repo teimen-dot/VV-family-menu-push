@@ -13,12 +13,13 @@ import hmac
 import secrets
 import threading
 import time
+from difflib import SequenceMatcher
 from html import escape
 from datetime import date, datetime, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs
-from db import get_db, log_event
+from db import get_db, log_event, init_db
 from inventory import (
     get_latest_inventory, submit_inventory,
     get_available_ingredient_ids, check_shortages,
@@ -69,6 +70,9 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/push",
     "/api/tomorrow/diners",
     "/api/tomorrow/meal-mode",
+    "/api/tomorrow/meal-note",
+    "/api/tomorrow/delete-meal",
+    "/api/tomorrow/cycle-replace",
     "/api/purchase/update",
 }
 PANTRY_POST_PATHS = {
@@ -83,8 +87,98 @@ PANTRY_POST_PATHS = {
 MENU_DRAFT_WRITE_PATHS = {
     "/api/tomorrow/add", "/api/tomorrow/remove", "/api/tomorrow/replace",
     "/api/tomorrow/ai-fill", "/api/tomorrow/repair", "/api/tomorrow/diners",
-    "/api/tomorrow/meal-mode",
+    "/api/tomorrow/meal-mode", "/api/tomorrow/meal-note",
+    "/api/tomorrow/delete-meal", "/api/tomorrow/cycle-replace",
 }
+
+INGREDIENT_TYPO_MAP = {
+    "窝笋": "莴笋",
+    "西蓝花": "西兰花",
+}
+
+
+def resolve_ingredient_name(raw_name, ingredient_rows):
+    """Return (matching row, normalized name, corrected_from) without risky merges."""
+    normalized = _normalize_ingredient_name(raw_name)
+    if not normalized:
+        return None, "", None
+    corrected_from = None
+    mapped = INGREDIENT_TYPO_MAP.get(normalized)
+    if mapped:
+        corrected_from, normalized = normalized, mapped
+    key = normalized.casefold()
+    for row in ingredient_rows:
+        aliases = row["aliases"] if "aliases" in row.keys() else "[]"
+        try:
+            aliases = json.loads(aliases or "[]") if isinstance(aliases, str) else aliases
+        except (TypeError, json.JSONDecodeError):
+            aliases = []
+        values = [row["name_cn"], row["name_en"], *(aliases or [])]
+        if any(_normalize_ingredient_name(value).casefold() == key for value in values if value):
+            if normalized != row["name_cn"] and corrected_from is None:
+                corrected_from = _normalize_ingredient_name(raw_name)
+            return row, row["name_cn"], corrected_from
+    # Similar matching is deliberately limited to longer names and a very high threshold.
+    if len(normalized) >= 3:
+        scored = []
+        for row in ingredient_rows:
+            candidate = _normalize_ingredient_name(row["name_cn"])
+            if abs(len(candidate) - len(normalized)) <= 1:
+                scored.append((SequenceMatcher(None, key, candidate.casefold()).ratio(), row))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        if scored and scored[0][0] >= 0.92 and (len(scored) == 1 or scored[0][0] - scored[1][0] >= 0.05):
+            return scored[0][1], scored[0][1]["name_cn"], _normalize_ingredient_name(raw_name)
+    return None, normalized, corrected_from
+
+
+def get_next_available_same_class_dish(menu_id, menu_item_id, location):
+    """Select the next available same-class dish with bounded list/index arithmetic."""
+    conn = get_db()
+    try:
+        current = conn.execute(
+            "SELECT mi.dish_id, mi.meal_type, d.category_id, d.protein_types "
+            "FROM menu_items mi JOIN dishes d ON d.id=mi.dish_id "
+            "WHERE mi.id=? AND mi.menu_id=?", (menu_item_id, menu_id)
+        ).fetchone()
+        if not current:
+            return None
+        try:
+            current_proteins = set(json.loads(current["protein_types"] or "[]"))
+        except (TypeError, json.JSONDecodeError):
+            current_proteins = set()
+        rows = conn.execute(
+            "SELECT id, name_cn, name_en, category_id, image, meal_tags, protein_types "
+            "FROM dishes WHERE (is_active=1 OR is_active IS NULL) AND category_id=? "
+            "ORDER BY name_cn, id", (current["category_id"],)
+        ).fetchall()
+        occupied = {row["dish_id"] for row in conn.execute(
+            "SELECT dish_id FROM menu_items WHERE menu_id=? AND meal_type=? AND id<>?",
+            (menu_id, current["meal_type"], menu_item_id)
+        ).fetchall()}
+        candidates = []
+        for row in rows:
+            try:
+                meal_tags = set(json.loads(row["meal_tags"] or "[]"))
+                proteins = set(json.loads(row["protein_types"] or "[]"))
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if current["meal_type"] not in meal_tags or row["id"] in occupied:
+                continue
+            if current["category_id"] == "protein_main" and current_proteins and not (proteins & current_proteins):
+                continue
+            candidates.append(dict(row))
+        if not candidates:
+            return None
+        availability = check_dishes_availability_batch([row["id"] for row in candidates], location)
+        available = [row for row in candidates if availability.get(row["id"], {}).get("status") == "available"]
+        if len(available) <= 1:
+            return None
+        ids = [row["id"] for row in available]
+        next_index = (ids.index(current["dish_id"]) + 1) % len(ids) if current["dish_id"] in ids else 0
+        chosen = available[next_index]
+        return None if chosen["id"] == current["dish_id"] else chosen
+    finally:
+        conn.close()
 
 
 def authenticated_role(username):
@@ -1175,13 +1269,14 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .meal-title{display:flex;align-items:stretch;gap:9px}.meal-accent{width:4px;border-radius:4px;background:var(--accent)}
 .meal-accent.amber{background:#c78326}.meal-accent.blue{background:#447b9d}.meal-accent.green{background:#4f8b64}.meal-accent.red{background:#a54b45}
 .meal-title h2{margin:0;font-size:23px;line-height:1.15;letter-spacing:-.025em}.meal-title h2 .lang-en{margin-top:3px;font-size:13px}.meal-title p{margin:5px 0 0;color:var(--muted);font-size:15px;font-weight:700;line-height:1.25}.meal-title p .lang-en{font-size:10px}
-.meal-actions{display:flex;gap:5px}.text-button,.secondary-button,.primary-button{border-radius:var(--radius-control);font-weight:750;cursor:pointer;white-space:nowrap}
+.meal-actions{display:flex;flex-wrap:wrap;gap:5px}.text-button,.secondary-button,.primary-button{border-radius:var(--radius-control);font-weight:750;cursor:pointer;white-space:nowrap}
+.meal-note-button{border-color:#8fb49d!important;color:var(--accent-dark)!important;background:var(--accent-soft)!important}.meal-delete-button{color:var(--danger)!important}.meal-note-display{margin:10px 14px 0;padding:9px 12px;border-left:3px solid #8fb49d;border-radius:7px;color:#435149;background:#f0f6f2;font-size:12px}.meal-note-display small{display:block;margin-top:2px;color:var(--muted)}
 .text-button{min-height:50px;padding:0 10px;border:1px solid #ced6d0;color:#34463b;background:white;font-size:13px}.fill-button{color:var(--accent-dark);background:var(--accent-soft);border-color:#c7ddcf}
 .dish-grid{display:grid;grid-template-columns:1fr}.dish-card{min-width:0;min-height:128px;display:grid;grid-template-columns:112px minmax(0,1fr);grid-template-rows:1fr auto;column-gap:12px;padding:8px 12px;border-bottom:1px solid #edf0ed}
 .dish-card:last-child{border-bottom:0}.dish-card img,.dish-card .no-img{grid-row:1/3;width:112px;height:112px;align-self:center;border-radius:13px;object-fit:cover;background:#edf0ed}
 .dish-card .no-img{display:grid;place-items:center;color:var(--muted);font-size:12px}.dish-card .no-img[hidden]{display:none!important}.dish-copy{min-width:0;align-self:center;padding-right:68px}.dish-copy h3{margin:0;font-size:17px;line-height:1.35;letter-spacing:-.015em}.dish-copy h3 .lang-en{margin-top:3px;font-size:12px;line-height:1.35;font-weight:550}
 .dish-actions{grid-column:2;display:flex;justify-content:flex-end;gap:5px;margin-top:-32px;align-self:end}.dish-actions button{width:32px;min-height:32px;overflow:hidden;padding:0;border-radius:7px;background:white;color:transparent;font-size:0;cursor:pointer}
-.swap-button{border:1px solid #ccd5cf}.remove-button{border:1px solid #ead0cd}.swap-button:after{content:"↻";color:#526058;font-size:17px}.remove-button:after{content:"×";color:var(--danger);font-size:18px}
+.swap-button{border:1px solid #ccd5cf}.search-swap-button{border:1px solid #d9dfda}.remove-button{border:1px solid #ead0cd}.swap-button:after{content:"↻";color:#526058;font-size:17px}.search-swap-button:after{content:"⌕";color:#526058;font-size:16px}.remove-button:after{content:"×";color:var(--danger);font-size:18px}
 .inline-warning{display:flex;align-items:flex-start;flex-direction:column;gap:2px;margin:12px 14px 0;padding:11px 13px;border-left:3px solid #d59129;border-radius:8px;color:var(--warning);background:var(--warning-soft);font-size:11px}.inline-warning span{color:#79531d}
 .empty-state{min-height:96px;display:flex;align-items:center;gap:13px;padding:14px}.empty-icon{width:42px;height:42px;display:grid;place-items:center;border:1px dashed #aac0b1;border-radius:10px;color:var(--accent);background:var(--accent-soft);font-size:21px}.empty-state strong{font-size:13px}.empty-state p{max-width:190px;margin:4px 0 0;color:var(--muted);font-size:10px}.empty-state button{margin-left:auto}
 .mobile-action-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:.85fr 1.4fr;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #d9dfda;background:rgba(255,255,255,.96);backdrop-filter:blur(14px)}
@@ -1223,6 +1318,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .inventory-list{display:grid}.ingredient-row{min-height:86px;display:grid;grid-template-columns:minmax(130px,1fr) minmax(260px,330px);align-items:center;gap:12px;padding:12px;border-bottom:1px solid #edf0ed}.ingredient-row:last-child{border-bottom:0}.ingredient-row[hidden]{display:none!important}
 .ingredient-row.ingredient-highlight{background:#fff8ee;box-shadow:inset 3px 0 #d4660b;transition:background .2s ease}
 .ingredient-name{min-width:0;line-height:1.05}.ingredient-name strong{font-size:16px;font-weight:700}.ingredient-name small{margin-left:7px;color:var(--muted);font-size:12px;font-weight:500}.stock-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.stock-button{min-width:0;height:40px;padding:3px 5px;border:1px solid #cbd4ce;border-radius:7px;color:#526058;background:#fff;font-size:12px;font-weight:650;line-height:1.05;cursor:pointer}.stock-button .bilingual-pair{align-items:center;text-align:center}.stock-button .lang-en{font-size:9px}.stock-button.selected-priority{border-color:#8fb99f;color:var(--accent-dark);background:var(--accent-soft)}.stock-button.selected-expiring{border-color:#eb9c92;color:#8c302d;background:#fae0de}.stock-button.used-up{color:#8c302d}.stock-button.selected-used,.stock-button.used-up:active{border-color:#eb9c92;color:#8c302d;background:#fae0de}.stock-button[disabled]{opacity:.6;cursor:wait}
+.quantity-picker{display:flex;align-items:stretch;gap:4px}.quantity-picker button{min-height:42px;padding:5px 10px;border:1px solid #b9c7be;border-radius:8px;color:#526058;background:#fff;font-size:11px;font-weight:700;cursor:pointer}.quantity-picker button.active{border-color:#6f9d82;color:var(--accent-dark);background:var(--accent-soft)}.quantity-tag{display:inline-flex;flex-direction:column;margin-top:6px;padding:3px 7px;border-radius:6px;color:#526058;background:#edf1ee;font-size:10px;font-weight:700;line-height:1.15}.quantity-tag.low{color:#8a5d08;background:#fff1cf}.quantity-tag small{margin:1px 0 0!important;font-size:8px!important;color:inherit!important}
 .inventory-empty{padding:30px 16px;text-align:center}.inventory-empty strong,.inventory-empty small{display:block}.inventory-empty small{margin-top:3px;color:var(--muted);font-size:10px}
 .ingredient-row{grid-template-columns:minmax(150px,1fr) minmax(190px,240px)}.ingredient-copy{min-width:0}.stock-actions.two-actions{grid-template-columns:repeat(2,minmax(0,1fr))}.stock-button.attention-toggle{color:#526058;border-color:#cbd4ce;background:#fff}.stock-button.clear-attention{color:#9a4915;border-color:#e5a75f;background:#fff0dc}.stock-button.used-up-button{color:#8c302d;border-color:#eb9c92;background:#fae0de}.ingredient-row[data-status="expiring"] .stock-button.used-up-button{color:#fff;border-color:#a6403c;background:#a6403c}
 .inline-action{flex-direction:row!important;align-items:baseline!important;justify-content:center;gap:4px;white-space:nowrap;text-align:center}
@@ -1238,7 +1334,7 @@ body:has(.pantry-page) .nav-item span{font-size:18px}body:has(.pantry-page) .nav
 .pantry-snack{position:fixed;left:50%;bottom:18px;z-index:80;max-width:calc(100% - 30px);padding:9px 14px;border-radius:9px;color:#fff;background:#17201c;font-size:11px;opacity:0;pointer-events:none;transform:translate(-50%,10px);transition:.18s}.pantry-snack.show{opacity:1;transform:translate(-50%,0)}
 @media(max-width:700px){body:has(.pantry-page){padding-bottom:env(safe-area-inset-bottom)}.pantry-page{padding-top:20px;padding-bottom:40px}.view-heading{align-items:flex-start;gap:10px;margin-bottom:14px}.view-heading h1{font-size:30px}.view-heading h1 .lang-en{font-size:18px}.view-heading p{max-width:245px;margin-top:7px;font-size:11px}.view-heading p .lang-en{font-size:8px}.view-count{min-width:76px;min-height:64px}.view-count .lang-zh{font-size:24px}.attention-banner{grid-template-columns:38px minmax(0,1fr);gap:9px;padding:12px 13px}.attention-banner>strong{font-size:34px}.attention-banner-copy{grid-template-columns:1fr;gap:6px}.attention-banner-copy b{font-size:12px}.attention-banner-copy span{font-size:10px}.pantry-toolbar{padding:12px}.inventory-panel>header{align-items:stretch;flex-direction:column;padding:12px}.same-last{width:100%;min-width:0;min-height:44px}.inventory-filters{padding-inline:4px}.inventory-filter{font-size:14px;padding-inline:1px}.ingredient-row{grid-template-columns:1fr;gap:8px;min-height:84px;padding:12px}.stock-actions.one-action{max-width:none;margin-left:0}.stock-button{height:40px}.pantry-aside section{padding:13px}}
 @media(max-width:700px){.inventory-filter .lang-en{font-size:11px}.brand-logo{width:32px;height:32px;flex-basis:32px}}
-@media(min-width:701px){.pantry-page{padding-top:34px}.pantry-toolbar{grid-template-columns:minmax(0,1fr) 210px;align-items:end}.pantry-search-results,.pantry-feedback{grid-column:1/-1}.view-heading h1{font-size:42px}}
+@media(min-width:701px){.pantry-page{padding-top:34px}.pantry-toolbar{grid-template-columns:minmax(0,1fr) auto 190px;align-items:end}.pantry-search-results,.pantry-feedback{grid-column:1/-1}.view-heading h1{font-size:42px}}
 @media(min-width:961px){.pantry-layout{grid-template-columns:minmax(0,1fr) 292px;gap:16px}.pantry-aside{position:sticky;top:222px}}
 @media(max-width:390px){.header-inner{padding-inline:8px}.brand strong{font-size:12px}.brand small{font-size:9px;letter-spacing:.03em}.kitchen-switch{gap:1px}.kitchen-button{padding-inline:4px;font-size:10px}.people-grid{gap:6px}.page-shell{padding-inline:14px}}
 """
@@ -1431,6 +1527,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         meal_type: [dish for dish in dishes if not dish.get("is_historical_combo")]
         for meal_type, dishes in menu["meals"].items()
     }
+    meal_notes = menu.get("meal_notes") or {}
 
     menu_validation = validate_menu_meals(menu, effective_diners)
     slot_results = menu_validation["meal_slots"]
@@ -1523,14 +1620,16 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             if meal_type == "afternoon_snack"
             else bilingual(f"{len(dishes)} 道", f"{len(dishes)} dishes")
         )
+        note_text = str(meal_notes.get(meal_type, "") or "").strip()
+        note_label_cn, note_label_en = ("修改备注", "Edit note") if note_text else ("添加备注", "Add note")
         if not is_owner:
             actions = ""
-        elif meal_type == "afternoon_snack":
-            actions = f'<button class="text-button" onclick="openDishSearch(\'{meal_type}\')">{bilingual("添加餐点", "Add item")}</button>'
         else:
             actions = (
-                f'<button class="text-button" onclick="openDishSearch(\'{meal_type}\')">{bilingual("添加菜品", "Add dish")}</button>'
+                f'<button class="text-button meal-note-button" onclick="editMealNote(\'{meal_type}\')">{bilingual(note_label_cn, note_label_en)}</button>'
+                f'<button class="text-button" onclick="openDishSearch(\'{meal_type}\')">{bilingual("添加餐点" if meal_type == "afternoon_snack" else "添加菜品", "Add item" if meal_type == "afternoon_snack" else "Add dish")}</button>'
                 f'<button class="text-button fill-button" onclick="aiFillMeal(\'{meal_type}\',this)">{bilingual("智能补充", "AI fill")}</button>'
+                f'<button class="text-button meal-delete-button" onclick="deleteMeal(\'{meal_type}\')">{bilingual("删除整餐", "Delete meal")}</button>'
             )
         cards = ""
         for dish in dishes:
@@ -1544,7 +1643,9 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             if is_owner:
                 dish_actions = (
                     f'<div class="dish-actions"><button class="swap-button" type="button" aria-label="更换 {dish_name_cn}" '
-                    f'onclick="openDishSearch(\'{meal_type}\',{dish["menu_item_id"]},\'{dish.get("dish_id", "")}\',\'{dish.get("category_id") or ""}\')">更换</button>'
+                    f'onclick="cycleDish(this,{dish["menu_item_id"]})">更换</button>'
+                    f'<button class="search-swap-button" type="button" aria-label="搜索更换 {dish_name_cn}" '
+                    f'onclick="openDishSearch(\'{meal_type}\',{dish["menu_item_id"]},\'{dish.get("dish_id", "")}\',\'{dish.get("category_id") or ""}\')">搜索更换</button>'
                     f'<button class="remove-button" type="button" aria-label="删除 {dish_name_cn}" '
                     f'onclick="removeDish({dish["menu_item_id"]})">删除</button></div>'
                 )
@@ -1566,10 +1667,11 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         if not cards and meal_type != "afternoon_snack":
             cards = f'<div class="empty-state"><div><strong>{bilingual("该餐尚未安排菜品", "No dishes planned")}</strong></div></div>'
         warning = "" if meal_type == "afternoon_snack" else meal_warning(meal_type, cn, en)
+        note_html = f'<div class="meal-note-display"><strong>{escape(note_text)}</strong><small>Meal note</small></div>' if note_text else ""
         meal_sections.append(
             f'<section class="meal-section" data-meal="{meal_type}"><header class="meal-header">'
             f'<div class="meal-title"><span class="meal-accent {color_class}"></span><div><h2>{bilingual(cn, en)}</h2><p>{count_html}</p></div></div>'
-            f'<div class="meal-actions">{actions}</div></header>{warning}<div class="dish-grid">{cards}</div></section>'
+            f'<div class="meal-actions">{actions}</div></header>{note_html}{warning}<div class="dish-grid">{cards}</div></section>'
         )
 
     daily_class = "selected" if meal_mode == "daily" else ""
@@ -1626,14 +1728,19 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 """
     if not is_owner:
         return tomorrow_preview_head("明日菜单 · Tomorrow Menu", "tomorrow", location) + body + "</body></html>"
-    js = f"""<div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()"><div class="modal dish-picker" role="dialog" aria-modal="true" aria-labelledby="dishSearchTitle">
+    meal_notes_json = json.dumps(meal_notes, ensure_ascii=False).replace("</", "<\\/")
+    js = f"""<div class="modal-overlay" id="mealNoteModal" onclick="if(event.target===this)closeMealNote()"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="mealNoteTitle">
+<header class="dish-picker-head"><div id="mealNoteTitle" class="dish-picker-title">{bilingual('编辑备注','Edit note')}</div><button class="picker-close" type="button" onclick="closeMealNote()">×</button></header>
+<div style="padding:0 16px 16px"><textarea id="mealNoteInput" maxlength="500" rows="5" placeholder="输入该餐备注 / Enter meal note" style="width:100%;padding:12px;border:1px solid #cbd4ce;border-radius:9px;resize:vertical"></textarea></div>
+<div class="modal-actions"><button class="secondary-button" onclick="closeMealNote()">{bilingual('取消','Cancel')}</button><button class="primary-button" onclick="saveMealNote()">{bilingual('保存备注','Save note')}</button></div></div></div>
+<div class="modal-overlay" id="dishSearchModal" onclick="if(event.target===this)closeDishSearch()"><div class="modal dish-picker" role="dialog" aria-modal="true" aria-labelledby="dishSearchTitle">
 <header class="dish-picker-head"><div><div id="dishSearchTitle" class="dish-picker-title">{bilingual('添加菜品','Add dish')}</div>
 <p>{bilingual('系统根据库存和当前餐位推荐，也可搜索菜品','Recommendations based on pantry and meal')}</p></div>
 <button class="picker-close" type="button" aria-label="关闭 / Close" onclick="closeDishSearch()">×</button></header>
 <input class="dish-picker-search" id="dishSearchInput" placeholder="搜索菜品 / Search dishes" oninput="onDishSearchInput()">
 <div class="dish-picker-results" id="dishSearchResults"></div><div class="modal-actions"><button class="secondary-button" onclick="closeDishSearch()">{bilingual('取消','Cancel')}</button></div></div></div>
 <div class="snack-bar" id="snackBar"></div><script>
-let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
+let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotes={meal_notes_json},noteMealType=null,searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
 function snack(msg){{let b=document.getElementById('snackBar');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),1800)}}
 function pairMarkup(zh,en){{return '<span class="bilingual-pair"><span class="lang-zh">'+zh+'</span><span class="lang-en">'+en+'</span></span>'}}
 async function requestJSON(path,options){{let response;try{{response=await fetch(path,options)}}catch(e){{throw new Error('网络连接失败 Network error')}}let data;try{{data=await response.json()}}catch(e){{throw new Error('服务器返回无效响应 Invalid server response')}}if(!response.ok||data.ok===false)throw new Error(data.error||data.message||('请求失败 HTTP '+response.status));return data}}
@@ -1649,6 +1756,11 @@ async function loadDishPicker(){{let c=document.getElementById('dishSearchResult
 async function doDishSearch(q){{let c=document.getElementById('dishSearchResults');try{{let data=await requestJSON('/api/dishes?search='+encodeURIComponent(q)),availability=data.length?await postJSON('/api/dishes/availability',{{dish_ids:data.map(d=>d.id),location:currentLoc}}):{{}};window.recommendationMap={{}};data.forEach(d=>window.recommendationMap[d.id]=Object.assign({{}},d,availability[d.id]||{{}}));c.innerHTML='<div class="rec-section-title">'+pairMarkup('搜索结果','Search results')+'</div>'+data.slice(0,40).map(d=>recommendationResult(window.recommendationMap[d.id],(availability[d.id]||{{}}).available?'available':'all')).join('')}}catch(e){{c.innerHTML='<div class="inline-warning">'+e.message+'</div>'}}}}
 function pickRecommendation(dishId,isMissing){{let d=window.recommendationMap&&window.recommendationMap[dishId];if(isMissing&&d&&d.missing_required&&d.missing_required.length&&!confirm('这道菜还缺：'+d.missing_required.join('、')+'\\n\\n仍然选择? Choose anyway?'))return;doPickDish(dishId)}}
 async function doPickDish(dishId){{let path=searchMode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add';let payload=searchMode.replaceId?{{menu_id:menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId}}:{{menu_id:menuId,dish_id:dishId,meal_type:searchMode.meal}};try{{await postJSON(path,payload);closeDishSearch();location.reload()}}catch(e){{snack(e.message)}}}}
+async function cycleDish(button,itemId){{button.disabled=true;try{{let result=await postJSON('/api/tomorrow/cycle-replace',{{menu_id:menuId,menu_item_id:itemId,location:currentLoc}});if(!result.replaced){{snack('暂无其他可做同类菜品 / No other available dish');button.disabled=false;return}}snack('已切换为：'+result.dish.name_cn);location.reload()}}catch(e){{snack(e.message);button.disabled=false}}}}
+function editMealNote(meal){{noteMealType=meal;document.getElementById('mealNoteInput').value=mealNotes[meal]||'';document.getElementById('mealNoteModal').classList.add('show');document.getElementById('mealNoteInput').focus()}}
+function closeMealNote(){{document.getElementById('mealNoteModal').classList.remove('show');noteMealType=null}}
+async function saveMealNote(){{if(!noteMealType)return;let note=document.getElementById('mealNoteInput').value;try{{await postJSON('/api/tomorrow/meal-note',{{menu_id:menuId,meal_type:noteMealType,note:note}});location.reload()}}catch(e){{snack(e.message)}}}}
+async function deleteMeal(meal){{if(!confirm('确认删除整餐？\\nDelete the entire meal?'))return;try{{await postJSON('/api/tomorrow/delete-meal',{{menu_id:menuId,meal_type:meal}});location.reload()}}catch(e){{snack(e.message)}}}}
 async function removeDish(itemId){{if(!confirm('确认删除? Confirm delete?'))return;let result=await fetch('/api/tomorrow/remove',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{menu_id:menuId,menu_item_id:itemId}})}}).then(r=>r.json());result.ok?location.reload():snack(result.error||'删除失败')}}
 async function aiFillMeal(meal,button){{try{{if(button){{button.disabled=true;button.setAttribute('aria-busy','true');button.textContent='补充中 Filling...'}}await postJSON('/api/tomorrow/ai-fill',{{menu_id:menuId,location:currentLoc,meal_type:meal}});location.reload()}}catch(e){{snack(e.message);if(button){{button.disabled=false;button.removeAttribute('aria-busy');button.textContent='智能补充 AI fill'}}}}}}
 async function repairMenu(){{if(!confirm('重新生成菜单? Regenerate menu?'))return;try{{await postJSON('/api/tomorrow/repair',{{menu_id:menuId,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
@@ -2485,6 +2597,11 @@ def render_pantry_reference_preview(role="owner", location="shenzhen"):
         name_cn = escape(item.get("name_cn") or item["ingredient_id"])
         name_en = escape(item.get("name_en") or "")
         status = item.get("status", "available")
+        quantity_level = item.get("quantity_level", "enough") or "enough"
+        quantity_html = (
+            f'<span class="quantity-tag {"low" if quantity_level == "low" else ""}">'
+            f'{"少量" if quantity_level == "low" else "适量"}<small>{"Low" if quantity_level == "low" else "Enough"}</small></span>'
+        )
         if status == "expiring":
             status_html = f'<div class="inventory-status needs-status">{bilingual("! 快过期", "Expiring", "inline-action")}</div>'
             action_html = (
@@ -2500,7 +2617,7 @@ def render_pantry_reference_preview(role="owner", location="shenzhen"):
             )
             action_class = "two-actions"
         return f"""<div class="ingredient-row" data-status="{status}" data-ingredient-id="{ingredient_id}">
-<div class="ingredient-copy"><div class="ingredient-name"><strong>{name_cn}</strong><small>{name_en}</small></div>{status_html}</div>
+<div class="ingredient-copy"><div class="ingredient-name"><strong>{name_cn}</strong><small>{name_en}</small></div>{quantity_html}{status_html}</div>
 <div class="stock-actions {action_class}">{action_html}</div></div>"""
 
     active_rows = "".join(item_row(item) for item in active_items)
@@ -2562,6 +2679,7 @@ data-ingredient-id="{escape(str(item['ingredient_id']), quote=True)}" onclick="t
 {attention_html}
 <section class="pantry-toolbar"><label>{bilingual("搜索或添加食材 /", "Search or add an ingredient", "inline-label")}
 <input id="pantrySearch" type="text" autocomplete="off" placeholder="输入食材名称 / Ingredient name" oninput="updateSearchResults()"></label>
+<div class="quantity-picker" role="group" aria-label="库存分量"><button id="quantityEnough" class="active" type="button" onclick="setPendingQuantity('enough')">适量<br><small>Enough</small></button><button id="quantityLow" type="button" onclick="setPendingQuantity('low')">少量<br><small>Low</small></button></div>
 <button class="pantry-add" type="button" onclick="addFromSearch()">{bilingual("添加食材", "Add ingredient")}</button>
 <div class="pantry-search-results" id="pantrySearchResults"></div><div class="pantry-feedback" id="pantryFeedback" aria-live="polite"></div></section>
 
@@ -2586,6 +2704,13 @@ const pantryIngredients={all_json};
 const pantryActiveIds=new Set({active_json});
 const pantryLocation={json.dumps(location)};
 let selectedIngredientId=null;
+let pendingQuantity='enough';
+
+function setPendingQuantity(value){{
+  pendingQuantity=value==='low'?'low':'enough';
+  document.getElementById('quantityEnough').classList.toggle('active',pendingQuantity==='enough');
+  document.getElementById('quantityLow').classList.toggle('active',pendingQuantity==='low');
+}}
 
 function pantryMessage(message,type=''){{
   const feedback=document.getElementById('pantryFeedback');
@@ -2623,7 +2748,7 @@ async function addFromSearch(){{
   if(!normalizedValue){{pantryMessage('请输入食材名称 / Enter an ingredient name','error');return;}}
   const button=document.querySelector('.pantry-add');button.disabled=true;
   try{{
-    const result=await pantryPost('/api/pantry/add-by-name',{{ingredient_name:rawValue,location:pantryLocation,submitted_by:'owner'}});
+    const result=await pantryPost('/api/pantry/add-by-name',{{ingredient_name:rawValue,quantity_level:pendingQuantity,location:pantryLocation,submitted_by:'owner'}});
     if(result.already_in_pantry){{
       pantryMessage('该食材已在库存中 / Already in pantry','error');
       const allFilter=document.querySelector('.inventory-filter[data-filter="all"]');
@@ -2633,8 +2758,10 @@ async function addFromSearch(){{
       button.disabled=false;return;
     }}
     input.value='';selectedIngredientId=null;
+    setPendingQuantity('enough');
     const results=document.getElementById('pantrySearchResults');results.replaceChildren();results.classList.remove('visible');
-    pantryMessage('已添加 / Added','success');pantrySnack('已添加 / Added');setTimeout(()=>location.reload(),650);
+    const correction=result.corrected_from?'已识别为：'+result.name_cn+' / Recognized as '+result.name_cn:'已添加 / Added';
+    pantryMessage(correction,'success');pantrySnack(correction);setTimeout(()=>location.reload(),850);
   }}catch(error){{pantryMessage('添加失败 / '+error.message,'error');button.disabled=false;}}
 }}
 async function toggleNeedsAttention(button,ingredientId,enabled){{
@@ -2653,7 +2780,8 @@ async function toggleCommon(button){{
   const ingredientId=button.dataset.ingredientId;button.disabled=true;
   try{{
     if(pantryActiveIds.has(ingredientId))await pantryPost('/api/pantry/remove',{{ingredient_id:ingredientId,location:pantryLocation}});
-    else await pantryPost('/api/pantry/add',{{ingredient_id:ingredientId,location:pantryLocation}});
+    else await pantryPost('/api/pantry/add',{{ingredient_id:ingredientId,quantity_level:pendingQuantity,location:pantryLocation}});
+    if(!pantryActiveIds.has(ingredientId))setPendingQuantity('enough');
     location.reload();
   }}catch(error){{button.disabled=false;pantrySnack('更新失败 / Update failed');}}
 }}
@@ -2698,12 +2826,14 @@ def render_pantry(role="nanny", location="shenzhen"):
             ing_id = item["ingredient_id"]
             name_en = item.get("name_en", "") or ""
             st = item["status"]
+            qty = item.get("quantity_level", "enough") or "enough"
+            qty_label = "少量<br><small>Low</small>" if qty == "low" else "适量<br><small>Enough</small>"
             # Use First button
             pf_cls = "active-priority" if st == "priority_use" else ""
             # Expiring Soon button
             ex_cls = "active-expiring" if st == "expiring" else ""
             items_html += f"""<div class="pantry-item" id="pi-{ing_id}">
-<div class="pantry-name"><div class="name">{item["name_cn"]}</div><div class="name-en">{name_en}</div></div>
+<div class="pantry-name"><div class="name">{item["name_cn"]}</div><div class="name-en">{name_en}</div><span class="quantity-tag {'low' if qty == 'low' else ''}">{qty_label}</span></div>
 <div class="pantry-controls">
 <div class="pantry-status-group">
 <span class="st-btn {pf_cls}" onclick="toggleStatus('{ing_id}','priority_use')">优先用<br>Use First</span>
@@ -2722,6 +2852,7 @@ def render_pantry(role="nanny", location="shenzhen"):
     sections.append(f"""<div class="card">
 <h3>搜索或添加食材 Search or Add</h3>
 <input type="text" id="ingSearch" placeholder="搜索食材 Search ingredient..." oninput="filterIngs()" style="width:100%;padding:9px 14px;border:1px solid #e8e0d4;border-radius:20px;font-size:14px;outline:none;margin-top:8px">
+<div class="quantity-picker" style="margin-top:8px"><button id="legacyEnough" class="active" onclick="setAddQuantity('enough')">适量<br><small>Enough</small></button><button id="legacyLow" onclick="setAddQuantity('low')">少量<br><small>Low</small></button></div>
 <div id="searchResults" style="margin-top:8px"></div>
 </div>""")
 
@@ -2772,6 +2903,8 @@ const allIngs={all_ings_json};
 const commonIngs={common_json};
 const currentIds={current_ids};
 let currentLoc='{location}';
+let addQuantity='enough';
+function setAddQuantity(value){{addQuantity=value==='low'?'low':'enough';document.getElementById('legacyEnough').classList.toggle('active',addQuantity==='enough');document.getElementById('legacyLow').classList.toggle('active',addQuantity==='low')}}
 
 function init(){{
   let cl=document.getElementById('commonList');
@@ -2813,9 +2946,9 @@ function addNewIng(name){{
 }}
 async function addIngredient(ingId){{
   if(currentIds.includes(ingId)){{snack('该食材已在当前库存中 Already in pantry');return;}}
-  let r=await fetch('/api/pantry/add',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,location:currentLoc}})}});
+  let r=await fetch('/api/pantry/add',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{ingredient_id:ingId,quantity_level:addQuantity,location:currentLoc}})}});
   let result=await r.json();
-  if(result.ok){{showSaved();setTimeout(()=>location.reload(),500);}}else{{snack('失败 Failed');}}
+  if(result.ok){{setAddQuantity('enough');showSaved();setTimeout(()=>location.reload(),500);}}else{{snack('失败 Failed');}}
 }}
 async function toggleStatus(ingId,status){{
   // V7: Toggle logic — if current status matches, revert to "available"
@@ -2875,7 +3008,7 @@ def render_pantry_submit(role="nanny", location="shenzhen"):
     all_ings = get_all_ingredients()
 
     common_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i.get("name_en") or ""} for i in common], ensure_ascii=False)
-    current_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i.get("name_en") or "", "status": i["status"]} for i in current_items], ensure_ascii=False)
+    current_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i.get("name_en") or "", "status": i["status"], "quantity_level": i.get("quantity_level", "enough")} for i in current_items], ensure_ascii=False)
     all_ings_json = json.dumps([{"id": i["ingredient_id"], "cn": i["name_cn"], "en": i["name_en"] or "", "aliases": i.get("aliases", []), "group": i.get("ingredient_group", "vegetable_mushroom"), "category": i.get("category", "")} for i in all_ings], ensure_ascii=False)
     pantry_count = len(current_items)
 
@@ -2933,7 +3066,7 @@ function init(){{
   let cl=document.getElementById('commonList');
   cl.innerHTML=commonIngs.map(i=>`<div class="ing-chip" onclick="toggleIng('${{i.id}}','${{i.cn}}','${{i.en}}')">${{i.cn}} ${{i.en}}</div>`).join('');
   // V4: 预加载当前库存为已选
-  currentPantry.forEach(i=>{{selected[i.id]={{cn:i.cn,en:i.en,status:i.status}};}});
+  currentPantry.forEach(i=>{{selected[i.id]={{cn:i.cn,en:i.en,status:i.status,quantity_level:i.quantity_level||'enough'}};}});
   renderSelected();
 }}
 function filterIngs(){{
@@ -2968,7 +3101,7 @@ function addNewIng(name){{
       // Add to allIngs
       allIngs.push({{id:data.ingredient_id,cn:name,en:'',aliases:[],group:'vegetable_mushroom'}});
       // Select it
-      selected[data.ingredient_id]={{cn:name,en:'',status:'available'}};
+      selected[data.ingredient_id]={{cn:name,en:'',status:'available',quantity_level:'enough'}};
       renderSelected();
       document.getElementById('ingSearch').value='';
       document.getElementById('searchResults').innerHTML='';
@@ -2980,7 +3113,7 @@ function addNewIng(name){{
   }});
 }}
 function toggleIng(id,cn,en){{
-  if(selected[id]){{delete selected[id];}}else{{selected[id]={{cn,en,status:'available'}};}}
+  if(selected[id]){{delete selected[id];}}else{{selected[id]={{cn,en,status:'available',quantity_level:'enough'}};}}
   hasUnsavedChanges=true;
   renderSelected();
 }}
@@ -2997,6 +3130,7 @@ function toggleStatusSelected(id,status){{
   hasUnsavedChanges=true;
   renderSelected();
 }}
+function setQuantitySelected(id,quantity){{if(selected[id])selected[id].quantity_level=quantity==='low'?'low':'enough';hasUnsavedChanges=true;renderSelected();}}
 function removeIng(id){{
   delete selected[id];
   hasUnsavedChanges=true;
@@ -3015,11 +3149,12 @@ function renderSelected(){{
     let s=selected[id];
     let pfCls=s.status==='priority_use'?'active-priority':'';
     let exCls=s.status==='expiring'?'active-expiring':'';
-    return `<div class="selected-item"><div><div class="name">${{s.cn}}</div><div class="name-en">${{s.en}}</div></div><div class="pantry-controls"><div class="pantry-status-group"><span class="st-btn ${{pfCls}}" onclick="toggleStatusSelected('${{id}}','priority_use')">优先用 Use First</span><span class="st-btn ${{exCls}}" onclick="toggleStatusSelected('${{id}}','expiring')">快过期 Expiring Soon</span></div><span class="pantry-used-up" onclick="removeIng('${{id}}')">用完 Used Up</span></div></div>`;
+    let qty=s.quantity_level==='low'?'low':'enough';
+    return `<div class="selected-item"><div><div class="name">${{s.cn}}</div><div class="name-en">${{s.en}}</div><span class="quantity-tag ${{qty==='low'?'low':''}}">${{qty==='low'?'少量':'适量'}}<small>${{qty==='low'?'Low':'Enough'}}</small></span></div><div class="pantry-controls"><div class="quantity-picker"><button class="${{qty==='enough'?'active':''}}" onclick="setQuantitySelected('${{id}}','enough')">适量 Enough</button><button class="${{qty==='low'?'active':''}}" onclick="setQuantitySelected('${{id}}','low')">少量 Low</button></div><div class="pantry-status-group"><span class="st-btn ${{pfCls}}" onclick="toggleStatusSelected('${{id}}','priority_use')">优先用 Use First</span><span class="st-btn ${{exCls}}" onclick="toggleStatusSelected('${{id}}','expiring')">快过期 Expiring Soon</span></div><span class="pantry-used-up" onclick="removeIng('${{id}}')">用完 Used Up</span></div></div>`;
   }}).join('');
 }}
 async function submitPantry(){{
-  let items=Object.entries(selected).map(([id,s])=>({{ingredient_id:id,status:s.status}}));
+  let items=Object.entries(selected).map(([id,s])=>({{ingredient_id:id,status:s.status,quantity_level:s.quantity_level||'enough'}}));
   let res=await fetch('/api/pantry/submit',{{
     method:'POST',headers:{{'Content-Type':'application/json'}},
     body:JSON.stringify({{items:items,location:currentLoc,submitted_by:'nanny'}})
@@ -3324,6 +3459,7 @@ class AppHandler(BaseHTTPRequestHandler):
             result = add_ingredient_to_pantry(
                 loc, body["ingredient_id"],
                 status=body.get("status", "available"),
+                quantity_level=body.get("quantity_level", "enough"),
                 submitted_by=body.get("submitted_by", "nanny")
             )
             self.send_json(result)
@@ -3335,22 +3471,21 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "preview only"}, 404)
                 return
             raw_name = body.get("ingredient_name", "")
-            normalized_name = _normalize_ingredient_name(raw_name)
-            if not normalized_name:
+            requested_name = _normalize_ingredient_name(raw_name)
+            if not requested_name:
                 self.send_json({"ok": False, "error": "ingredient_name required"}, 400)
                 return
             loc = body.get("location", location)
-            exact_key = normalized_name.casefold()
+            quantity_level = body.get("quantity_level", "enough")
+            if quantity_level not in ("enough", "low"):
+                quantity_level = "enough"
             conn = get_db()
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 ingredient_rows = conn.execute(
-                    "SELECT ingredient_id, name_cn, name_en FROM ingredients"
+                    "SELECT ingredient_id, name_cn, name_en, aliases FROM ingredients"
                 ).fetchall()
-                existing = next((row for row in ingredient_rows if
-                    _normalize_ingredient_name(row["name_cn"]).casefold() == exact_key or
-                    (row["name_en"] and _normalize_ingredient_name(row["name_en"]).casefold() == exact_key)
-                ), None)
+                existing, normalized_name, corrected_from = resolve_ingredient_name(raw_name, ingredient_rows)
 
                 created = False
                 if existing:
@@ -3378,21 +3513,28 @@ class AppHandler(BaseHTTPRequestHandler):
                     (loc, ingredient_id),
                 ).fetchone()
                 if active:
-                    conn.rollback()
+                    conn.execute(
+                        "UPDATE current_pantry SET quantity_level=?, updated_at=datetime('now') "
+                        "WHERE location=? AND ingredient_id=? AND is_active=1",
+                        (quantity_level, loc, ingredient_id),
+                    )
+                    conn.commit()
                     self.send_json({
                         "ok": True, "already_in_pantry": True,
                         "ingredient_id": ingredient_id, "name_cn": display_name,
+                        "corrected_from": corrected_from, "quantity_level": quantity_level,
                     })
                     return
 
                 now = datetime.now().isoformat()
                 conn.execute(
                     "INSERT INTO current_pantry "
-                    "(location, ingredient_id, status, is_active, created_at, updated_at) "
-                    "VALUES (?, ?, 'available', 1, ?, ?) "
+                    "(location, ingredient_id, status, quantity_level, is_active, created_at, updated_at) "
+                    "VALUES (?, ?, 'available', ?, 1, ?, ?) "
                     "ON CONFLICT(location, ingredient_id) DO UPDATE SET "
-                    "status = 'available', is_active = 1, updated_at = excluded.updated_at",
-                    (loc, ingredient_id, now, now),
+                    "status = 'available', quantity_level=excluded.quantity_level, "
+                    "is_active = 1, updated_at = excluded.updated_at",
+                    (loc, ingredient_id, quantity_level, now, now),
                 )
                 _increment_inventory_version(conn, loc)
                 pantry_count = conn.execute(
@@ -3404,6 +3546,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json({
                     "ok": True, "already_in_pantry": False, "created": created,
                     "ingredient_id": ingredient_id, "name_cn": display_name,
+                    "corrected_from": corrected_from, "quantity_level": quantity_level,
                     "pantry_count": pantry_count,
                 })
             except Exception:
@@ -3495,12 +3638,22 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/ingredients/add":
             # Add new ingredient (needs_review = true)
-            name_cn = body.get("name_cn", "").strip()
+            name_cn = _normalize_ingredient_name(body.get("name_cn", ""))
             if not name_cn:
                 self.send_json({"ok": False, "error": "name_cn required"})
                 return
             conn = get_db()
             try:
+                ingredient_rows = conn.execute(
+                    "SELECT ingredient_id, name_cn, name_en, aliases FROM ingredients"
+                ).fetchall()
+                matched, resolved_name, corrected_from = resolve_ingredient_name(name_cn, ingredient_rows)
+                if matched:
+                    self.send_json({"ok": True, "ingredient_id": matched["ingredient_id"],
+                                    "exists": True, "name_cn": matched["name_cn"],
+                                    "corrected_from": corrected_from})
+                    return
+                name_cn = resolved_name
                 # Generate ingredient_id from name
                 ing_id = name_cn.lower().replace(" ", "_")
                 # Check if already exists
@@ -3509,7 +3662,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     (ing_id, name_cn)
                 ).fetchone()
                 if existing:
-                    self.send_json({"ok": True, "ingredient_id": existing["ingredient_id"], "exists": True})
+                    self.send_json({"ok": True, "ingredient_id": existing["ingredient_id"], "exists": True,
+                                    "name_cn": name_cn, "corrected_from": corrected_from})
                     return
                 conn.execute(
                     "INSERT INTO ingredients (ingredient_id, name_cn, name_en, aliases, category, ingredient_group) "
@@ -3518,7 +3672,8 @@ class AppHandler(BaseHTTPRequestHandler):
                 )
                 conn.commit()
                 log_event("ingredient_added", "ingredient", ing_id, {"name_cn": name_cn, "needs_review": True})
-                self.send_json({"ok": True, "ingredient_id": ing_id})
+                self.send_json({"ok": True, "ingredient_id": ing_id, "name_cn": name_cn,
+                                "corrected_from": corrected_from})
             finally:
                 conn.close()
 
@@ -3548,6 +3703,59 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/tomorrow/replace":
             ok, msg = replace_dish_in_menu(body["menu_id"], body["menu_item_id"], body["new_dish_id"])
             self.send_json({"ok": ok, "error": msg if not ok else None})
+
+        elif path == "/api/tomorrow/cycle-replace":
+            loc = body.get("location", location)
+            chosen = get_next_available_same_class_dish(body["menu_id"], body["menu_item_id"], loc)
+            if not chosen:
+                self.send_json({"ok": True, "replaced": False})
+                return
+            ok, msg = replace_dish_in_menu(body["menu_id"], body["menu_item_id"], chosen["id"])
+            self.send_json({"ok": ok, "replaced": ok, "dish": chosen if ok else None,
+                            "error": msg if not ok else None})
+
+        elif path == "/api/tomorrow/meal-note":
+            meal_type = body.get("meal_type")
+            if meal_type not in ("breakfast", "lunch", "afternoon_snack", "dinner"):
+                self.send_json({"ok": False, "error": "invalid meal_type"}, 400)
+                return
+            note = str(body.get("note", "")).strip()
+            if len(note) > 500:
+                self.send_json({"ok": False, "error": "备注最多 500 字"}, 400)
+                return
+            conn = get_db()
+            try:
+                row = conn.execute("SELECT meal_notes FROM menus WHERE id=?", (body["menu_id"],)).fetchone()
+                try:
+                    notes = json.loads(row["meal_notes"] or "{}") if row else {}
+                except (TypeError, json.JSONDecodeError):
+                    notes = {}
+                if note:
+                    notes[meal_type] = note
+                else:
+                    notes.pop(meal_type, None)
+                conn.execute("UPDATE menus SET meal_notes=?,updated_at=datetime('now') WHERE id=?",
+                             (json.dumps(notes, ensure_ascii=False), body["menu_id"]))
+                conn.commit()
+                self.send_json({"ok": True, "meal_notes": notes})
+            finally:
+                conn.close()
+
+        elif path == "/api/tomorrow/delete-meal":
+            meal_type = body.get("meal_type")
+            if meal_type not in ("breakfast", "lunch", "afternoon_snack", "dinner"):
+                self.send_json({"ok": False, "error": "invalid meal_type"}, 400)
+                return
+            conn = get_db()
+            try:
+                cursor = conn.execute("DELETE FROM menu_items WHERE menu_id=? AND meal_type=?",
+                                      (body["menu_id"], meal_type))
+                conn.commit()
+                log_event("meal_deleted", "menu", str(body["menu_id"]),
+                          {"meal_type": meal_type, "deleted_count": cursor.rowcount})
+                self.send_json({"ok": True, "deleted_count": cursor.rowcount})
+            finally:
+                conn.close()
 
         elif path == "/api/tomorrow/ai-fill":
             meal_type = body.get("meal_type")
@@ -3774,6 +3982,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
 def main():
     validate_app_startup()
+    init_db()
     # 确保明天菜单存在
     ensure_tomorrow_menu("shenzhen")
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)

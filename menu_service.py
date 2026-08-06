@@ -310,6 +310,11 @@ def get_menu_with_dishes(date_str):
             if missing_names:
                 shortage_map[did] = missing_names
 
+        try:
+            meal_notes = json.loads(menu["meal_notes"] or "{}") if "meal_notes" in menu.keys() else {}
+        except (TypeError, json.JSONDecodeError):
+            meal_notes = {}
+
         return {
             "date": date_str,
             "exists": True,
@@ -323,6 +328,7 @@ def get_menu_with_dishes(date_str):
             "meals": meals,
             "shortages": shortage_map,
             "review_issues": menu["notes_zh"] or "",
+            "meal_notes": meal_notes,
         }
     finally:
         conn.close()

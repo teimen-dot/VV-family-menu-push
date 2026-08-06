@@ -172,6 +172,7 @@ def init_db():
             FOREIGN KEY (ingredient_id) REFERENCES ingredients(ingredient_id)
         )
     """)
+    _safe_add_column(c, "inventory_items", "quantity_level", "TEXT DEFAULT 'enough'")
 
     # ========== 7a. current_pantry - V4 当前持续库存（增量维护） ==========
     c.execute("""
@@ -186,6 +187,7 @@ def init_db():
             UNIQUE(location, ingredient_id)
         )
     """)
+    _safe_add_column(c, "current_pantry", "quantity_level", "TEXT DEFAULT 'enough'")
 
     # ========== 7b. inventory_snapshots - V4 库存快照（审计追溯） ==========
     c.execute("""
@@ -220,6 +222,7 @@ def init_db():
     _safe_add_column(c, "menus", "inventory_snapshot_id", "INTEGER")
     _safe_add_column(c, "menus", "meal_mode", "TEXT DEFAULT 'daily'")
     _safe_add_column(c, "menus", "banquet_total_diners", "INTEGER")
+    _safe_add_column(c, "menus", "meal_notes", "TEXT DEFAULT '{}'")
 
     # Task A: confirmation and delivery are separate states.
     _safe_add_column(c, "menus", "push_status", "TEXT DEFAULT 'not_sent'")
