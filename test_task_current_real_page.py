@@ -31,7 +31,9 @@ class CurrentRealPageRulesTests(unittest.TestCase):
                 "INSERT INTO categories(id,label_cn,label_en) VALUES(?,?,?)",
                 [("staple_carb", "主食", "Staple"), ("egg_tofu", "蛋豆", "Egg/soy"),
                  ("soup", "汤", "Soup"), ("protein_main", "主菜", "Main"),
-                 ("vegetable_mushroom", "蔬菜", "Vegetable")],
+                 ("vegetable_mushroom", "蔬菜", "Vegetable"),
+                 ("one_pot_meal", "一餐型", "One pot"),
+                 ("fruit_snack", "点心", "Snack")],
             )
             conn.executemany(
                 "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES(?,?,?)",
@@ -116,6 +118,43 @@ class CurrentRealPageRulesTests(unittest.TestCase):
             {item["slot_role"] for item in review["added_details"]},
             {"protein_main", "vegetable_dish"},
         )
+
+    def test_future_unknown_names_join_carb_pools_from_fields_only(self):
+        conn = self.db.get_db()
+        try:
+            conn.executemany(
+                "INSERT INTO dishes(id,name_cn,category_id,carb_type,protein_types,meal_tags,meal_roles,vegetables,is_active,image) "
+                "VALUES(?,?,?,?,?,?,?,?,1,'test.jpg')",
+                [
+                    ("dish_future_rice", "星云甲号", "one_pot_meal", "rice", "[]", '["dinner"]', "[]", "[]"),
+                    ("dish_future_dim", "蓝图乙号", "fruit_snack", "dim_sum", "[]", '["breakfast"]', "[]", "[]"),
+                ],
+            )
+            conn.executemany(
+                "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES(?,?,1)",
+                [("dish_future_rice", "rice"), ("dish_future_dim", "dumpling")],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.inventory.add_ingredient_to_pantry("shenzhen", "rice")
+
+        rice_item = self._item_id("dish_rice_quinoa")
+        rice_seen = []
+        for _ in range(4):
+            ok, _, replacement = self.app.smart_replace_menu_item(1, rice_item, "shenzhen")
+            self.assertTrue(ok)
+            rice_seen.append(replacement)
+        self.assertIn("dish_future_rice", rice_seen)
+
+        dim_item = self._item_id("dish_dumpling_soup")
+        dim_seen = []
+        for _ in range(4):
+            ok, _, replacement = self.app.smart_replace_menu_item(1, dim_item, "shenzhen")
+            self.assertTrue(ok)
+            dim_seen.append(replacement)
+        self.assertIn("dish_future_dim", dim_seen)
 
 
 if __name__ == "__main__":
