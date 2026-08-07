@@ -494,6 +494,28 @@ def _ingredient_match(required, pantry):
     return None
 
 
+_DEFAULT_STAPLE_RICE_TERMS = {"rice", "米", "米饭", "白米"}
+
+
+def _is_default_staple_rice(dish_row, ingredient):
+    """Treat only the basic rice requirement of a rice staple as always on hand."""
+    if not dish_row:
+        return False
+    if dish_row["category_id"] != "staple_carb" or dish_row["carb_type"] != "rice":
+        return False
+    ingredient_terms = {
+        _normalize_exact_ingredient_value(ingredient.get("ingredient_id")),
+        _normalize_exact_ingredient_value(ingredient.get("name_cn")),
+        _normalize_exact_ingredient_value(ingredient.get("name_en")),
+    } - {""}
+    ingredient_terms.update(_parse_alias_values(ingredient.get("aliases")))
+    default_terms = {
+        _normalize_exact_ingredient_value(value)
+        for value in _DEFAULT_STAPLE_RICE_TERMS
+    }
+    return bool(ingredient_terms & default_terms)
+
+
 def check_dish_availability(dish_id, location, inventory_version=None):
     """
     V5 Section 12-18: 统一菜品可用性检查服务（InventoryService）。
@@ -514,7 +536,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
     conn = get_db()
     try:
         dish_row = conn.execute(
-            "SELECT category_id,meal_tags,is_active,image FROM dishes WHERE id=?", (dish_id,)
+            "SELECT category_id,meal_tags,is_active,image,carb_type FROM dishes WHERE id=?", (dish_id,)
         ).fetchone()
         ings = conn.execute(
             "SELECT di.ingredient_id, di.required, i.name_cn, i.name_en, i.aliases "
@@ -551,11 +573,17 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                 required.append(ing_data)
                 required_match = dict(ing)
                 required_match["alias_values"] = _parse_alias_values(required_match.get("aliases"))
-                match = next(
-                    ((pantry, method) for pantry in active_pantry
-                     if (method := _ingredient_match(required_match, pantry))),
-                    None,
-                )
+                if _is_default_staple_rice(dish_row, required_match):
+                    match = ({
+                        "ingredient_id": ing["ingredient_id"],
+                        "name_cn": ing["name_cn"] or ing["ingredient_id"],
+                    }, "default_staple")
+                else:
+                    match = next(
+                        ((pantry, method) for pantry in active_pantry
+                         if (method := _ingredient_match(required_match, pantry))),
+                        None,
+                    )
                 if match:
                     pantry, method = match
                     matched = dict(ing_data)

@@ -13,6 +13,7 @@ BASELINE_DB = WORK_DIR / "family_menu_test.db"
 os.environ["FAMILY_MENU_DB_PATH"] = str(BASELINE_DB)
 
 import app
+import inventory
 
 
 class SmartReplaceTests(unittest.TestCase):
@@ -253,6 +254,43 @@ class SmartReplaceTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIsNone(replacement_id)
         self.assertEqual("暂无库存可做的同类菜，可使用搜索更换查看其他菜品", message)
+
+    def test_plain_rice_is_default_staple_but_special_rice_ingredient_is_required(self):
+        conn = self.connect()
+        conn.executemany(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en,aliases) VALUES(?,?,?,?)",
+            [
+                ("test_base_rice", "米", "Rice", "[]"),
+                ("test_rice_ball", "饭团", "Rice ball", "[]"),
+            ],
+        )
+        for dish_id, ingredients in (
+            ("test_plain_rice", ["test_base_rice"]),
+            ("test_special_rice", ["test_base_rice", "test_rice_ball"]),
+        ):
+            conn.execute(
+                "INSERT INTO dishes(id,name_cn,category_id,meal_tags,carb_type,is_active) "
+                "VALUES(?,?,'staple_carb','[\"lunch\"]','rice',1)",
+                (dish_id, dish_id),
+            )
+            conn.executemany(
+                "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES(?,?,1)",
+                [(dish_id, ingredient_id) for ingredient_id in ingredients],
+            )
+        conn.commit()
+        conn.close()
+
+        inventory._availability_cache.clear()
+        with patch.object(inventory, "get_db", side_effect=self.connect), patch.object(
+            inventory, "get_inventory_version", return_value=987654
+        ), patch.object(inventory, "get_config", return_value="rice-default-test"):
+            plain = inventory.check_dish_availability("test_plain_rice", "shenzhen")
+            special = inventory.check_dish_availability("test_special_rice", "shenzhen")
+
+        self.assertEqual("available", plain["status"])
+        self.assertEqual("default_staple", plain["available_required"][0]["match_method"])
+        self.assertEqual("almost_available", special["status"])
+        self.assertEqual(["饭团"], [item["name_cn"] for item in special["missing_required"]])
 
 
 class DishPickerTests(unittest.TestCase):
