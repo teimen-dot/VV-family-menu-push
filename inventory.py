@@ -77,6 +77,10 @@ INGREDIENT_ALIASES = {
     "淮山": "淮山",
 }
 
+# Pantry-exempt staples are still required recipe ingredients, but do not need
+# to be entered in Current Pantry to count as available.
+PANTRY_EXEMPT_INGREDIENT_IDS = {"rice"}
+
 
 def normalize_ingredient_id(raw_id):
     """V10: 将食材别名归一化为规范 ingredient_id。
@@ -551,7 +555,9 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                         "name_en": ing["name_en"] if ing["name_en"] else ""}
             if ing["required"]:
                 required.append(ing_data)
-                if norm_id in normalized_pantry or ing["ingredient_id"] in available_ings:
+                if (norm_id in PANTRY_EXEMPT_INGREDIENT_IDS
+                        or norm_id in normalized_pantry
+                        or ing["ingredient_id"] in available_ings):
                     available_required.append(ing_data)
                 else:
                     missing_required.append(ing_data)

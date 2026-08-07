@@ -96,6 +96,49 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertEqual(result["dish_almost"]["status"], "almost_available")
         self.assertEqual(result["dish_missing"]["status"], "missing")
 
+    def test_rice_is_the_only_pantry_exempt_required_ingredient(self):
+        conn = db.get_db()
+        for ingredient_id in ("rice", "oyster", "salt"):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+        for dish_id, required_ids in (
+            ("dish_plain_rice", ("rice",)),
+            ("dish_rice_oyster", ("rice", "oyster")),
+            ("dish_salt", ("salt",)),
+        ):
+            conn.execute(
+                "INSERT INTO dishes (id,name_cn,name_en,meal_tags,is_active) VALUES (?,?,?,'[\"lunch\"]',1)",
+                (dish_id, dish_id, dish_id),
+            )
+            for ingredient_id in required_ids:
+                conn.execute(
+                    "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                    (dish_id, ingredient_id),
+                )
+        conn.commit()
+        pantry_count = conn.execute(
+            "SELECT COUNT(*) AS count FROM current_pantry WHERE location='shenzhen' AND is_active=1"
+        ).fetchone()["count"]
+        conn.close()
+        self.assertEqual(pantry_count, 0)
+
+        result = inventory.check_dishes_availability_batch(
+            ["dish_plain_rice", "dish_rice_oyster", "dish_salt"], "shenzhen"
+        )
+        self.assertEqual(result["dish_plain_rice"]["status"], "available")
+        self.assertEqual(
+            [item["ingredient_id"] for item in result["dish_plain_rice"]["available_required"]],
+            ["rice"],
+        )
+        self.assertEqual(result["dish_rice_oyster"]["status"], "almost_available")
+        self.assertEqual(
+            [item["ingredient_id"] for item in result["dish_rice_oyster"]["missing_required"]],
+            ["oyster"],
+        )
+        self.assertEqual(result["dish_salt"]["status"], "missing")
+
     def test_ai_fill_adds_only_inventory_available_lunch_roles(self):
         conn = db.get_db()
         conn.execute("INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES ('stocked','现有食材','Stocked')")
