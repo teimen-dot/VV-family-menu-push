@@ -562,9 +562,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         required_count = len(required)
         missing_count = len(missing_required)
 
-        if required_count == 0:
-            status = "available"
-        elif missing_count == 0:
+        if missing_count == 0:
             status = "available"
         elif required_count >= 2 and missing_count == 1:
             status = "almost_available"

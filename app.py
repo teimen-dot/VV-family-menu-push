@@ -172,9 +172,11 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
             return None
         availability = check_dishes_availability_batch([row["id"] for row in candidates], location)
         available = [row for row in candidates if availability.get(row["id"], {}).get("status") == "available"]
-        if len(available) <= 1:
+        if not available:
             return None
         ids = [row["id"] for row in available]
+        if ids == [current["dish_id"]]:
+            return None
         next_index = (ids.index(current["dish_id"]) + 1) % len(ids) if current["dish_id"] in ids else 0
         chosen = available[next_index]
         return None if chosen["id"] == current["dish_id"] else chosen
@@ -568,7 +570,7 @@ def get_dish_recommendations(meal_type, current_dish_id, category_id, location):
                 available_list.append(item)
             elif status == "almost_available":
                 almost_list.append(item)
-            # missing 不进入推荐（V12: incomplete 已废弃，无必选食材 = available）
+            # missing / incomplete 不进入库存可做或差少量推荐。
 
         # 10. 排序并截断
         available_list.sort(key=lambda x: x["score"], reverse=True)
@@ -2226,7 +2228,7 @@ async function loadRecommendations(){{
     all.forEach(d=>{{let av=availability[d.id]||{{}};window._recMap[d.id]={{...d,missing_required:av.missing_names||[],missing_required_en:av.missing_names_en||[],availability:av.status||'missing'}};}});
     let available=(data.available||[]),almost=(data.almost_available||[]);
     available.forEach(d=>{{window._recMap[d.id]=d;}});almost.forEach(d=>{{window._recMap[d.id]=d;}});
-    let allCards=all.slice(0,80).map(d=>{{let item=window._recMap[d.id];return renderRecCard(item,item.availability==='available'?'available':item.availability==='almost_available'?'almost':'missing');}}).join('');
+    let allCards=all.slice(0,80).map(d=>{{let item=window._recMap[d.id];return renderRecCard(item,item.availability==='available'?'available':item.availability==='almost_available'?'almost':item.availability==='incomplete'?'incomplete':'missing');}}).join('');
     container.innerHTML='<div class="rec-section-title">库存可做 Available now</div>'+(available.map(d=>renderRecCard(d,'available')).join('')||'<div class="empty">暂无库存可做菜品 None</div>')+
       '<div class="rec-section-title">差少量 Almost available</div>'+(almost.map(d=>renderRecCard(d,'almost')).join('')||'<div class="empty">暂无差少量菜品 None</div>')+
       '<div class="rec-section-title">全部菜品 All dishes</div>'+allCards;
@@ -2235,7 +2237,7 @@ async function loadRecommendations(){{
 function renderRecCard(d,type){{
   let img=d.image?'<img src="/photos/'+d.image+'" onerror="this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\'" style="width:60px;height:60px;border-radius:8px;object-fit:cover;flex-shrink:0">':'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>';
   let noImg=d.image?'<div style="width:60px;height:60px;border-radius:8px;background:#f5f0e8;display:none;align-items:center;justify-content:center;font-size:24px;flex-shrink:0">🍽️</div>':'';
-  let badge=type==='available'?'<span style="font-size:13px;color:#155724;background:#d4edda;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">库存可做 Available</span>':'';
+  let badge=type==='available'?'<span style="font-size:13px;color:#155724;background:#d4edda;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">库存可做 Available</span>':type==='incomplete'?'<span style="font-size:13px;color:#856404;background:#fff3cd;padding:2px 8px;border-radius:4px;display:inline-block;margin-top:3px">食材资料待完善 Ingredient data incomplete</span>':'';
   let missing='';
   if(d.missing_required&&d.missing_required.length){{
     let mn=d.missing_required.join(', ');
@@ -2263,7 +2265,7 @@ async function doDishSearch(q){{
     return;
   }}
   let availability=await postJSON('/api/dishes/availability',{{dish_ids:data.map(d=>d.id),location:currentLoc}});
-  container.innerHTML='<div class="rec-section-title">搜索结果 Search results</div>'+data.slice(0,30).map(d=>{{let av=availability[d.id]||{{}};let item={{...d,missing_required:av.missing_names||[],missing_required_en:av.missing_names_en||[]}};return renderRecCard(item,av.status==='available'?'available':av.status==='almost_available'?'almost':'missing');}}).join('');
+  container.innerHTML='<div class="rec-section-title">搜索结果 Search results</div>'+data.slice(0,30).map(d=>{{let av=availability[d.id]||{{}};let item={{...d,missing_required:av.missing_names||[],missing_required_en:av.missing_names_en||[]}};return renderRecCard(item,av.status==='available'?'available':av.status==='almost_available'?'almost':av.status==='incomplete'?'incomplete':'missing');}}).join('');
 }}
 async function doPickDish(dishId){{
   try{{

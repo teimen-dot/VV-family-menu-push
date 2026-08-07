@@ -61,6 +61,41 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertFalse(result["data_complete"])
         self.assertFalse(app.get_dish_availability(["dish_unknown"], "shenzhen")["dish_unknown"]["available"])
 
+    def test_availability_distinguishes_available_almost_and_missing(self):
+        conn = db.get_db()
+        for ingredient_id in ("stocked", "oyster", "sea_urchin"):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+        conn.execute(
+            "INSERT INTO current_pantry (location,ingredient_id,status,is_active) "
+            "VALUES ('shenzhen','stocked','available',1)"
+        )
+        for dish_id, required_ids in (
+            ("dish_available", ("stocked",)),
+            ("dish_almost", ("stocked", "oyster")),
+            ("dish_missing", ("oyster", "sea_urchin")),
+        ):
+            conn.execute(
+                "INSERT INTO dishes (id,name_cn,name_en,meal_tags,is_active) VALUES (?,?,?,'[\"lunch\"]',1)",
+                (dish_id, dish_id, dish_id),
+            )
+            for ingredient_id in required_ids:
+                conn.execute(
+                    "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                    (dish_id, ingredient_id),
+                )
+        conn.commit()
+        conn.close()
+
+        result = inventory.check_dishes_availability_batch(
+            ["dish_available", "dish_almost", "dish_missing"], "shenzhen"
+        )
+        self.assertEqual(result["dish_available"]["status"], "available")
+        self.assertEqual(result["dish_almost"]["status"], "almost_available")
+        self.assertEqual(result["dish_missing"]["status"], "missing")
+
     def test_ai_fill_adds_only_inventory_available_lunch_roles(self):
         conn = db.get_db()
         conn.execute("INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES ('stocked','现有食材','Stocked')")
@@ -103,6 +138,31 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertTrue(ok)
         self.assertEqual(set(review["added"]), {d[0] for d in dishes})
         self.assertNotIn("dish_unknown", review["added"])
+
+    def test_ai_fill_returns_reason_when_protein_has_no_available_candidate(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO categories (id,label_cn,label_en) VALUES ('protein_main','protein','protein')")
+        conn.execute("INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES ('oyster','生蚝','Oyster')")
+        conn.execute(
+            "INSERT INTO dishes (id,name_cn,name_en,category_id,meal_tags,meal_roles,protein_types,is_active) "
+            "VALUES ('dish_oyster','生蚝','Oyster','protein_main','[\"lunch\"]','[\"protein_main\"]','[\"seafood\"]',1)"
+        )
+        conn.execute(
+            "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES ('dish_oyster','oyster',1)"
+        )
+        conn.execute(
+            "INSERT INTO menus (id,date,location,status,diners) VALUES (1,'2099-01-02','shenzhen','draft','[\"vv\",\"bb\"]')"
+        )
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        ok, _, review = menu_service.ai_fill_menu(1, "shenzhen", seed=7, meal_type="lunch")
+        self.assertTrue(ok)
+        self.assertNotIn("dish_oyster", review["added"])
+        protein_unmet = [u for u in review["unmet_slots"] if u["slot"] == "protein_main"]
+        self.assertEqual(protein_unmet[0]["reason"], "no_available_candidate")
+        self.assertTrue(protein_unmet[0]["message"])
 
     def test_quantity_defaults_and_low_round_trip(self):
         conn = db.get_db()
@@ -151,6 +211,39 @@ class DatabaseFeatureTests(unittest.TestCase):
             conn.close()
         self.assertGreaterEqual(len(set(seen)), 3)
         self.assertEqual(seen[0], seen[3])
+
+    def test_cycle_replaces_unavailable_current_with_only_available_alternative(self):
+        conn = db.get_db()
+        conn.execute("INSERT INTO categories (id,label_cn,label_en) VALUES ('vegetable','蔬菜','Vegetable')")
+        for ingredient_id in ("stocked", "missing"):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+        for dish_id, ingredient_id in (("dish_current", "missing"), ("dish_alternative", "stocked")):
+            conn.execute(
+                "INSERT INTO dishes (id,name_cn,name_en,category_id,meal_tags,protein_types,is_active) "
+                "VALUES (?,?,?,'vegetable','[\"lunch\"]','[]',1)",
+                (dish_id, dish_id, dish_id),
+            )
+            conn.execute(
+                "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                (dish_id, ingredient_id),
+            )
+        conn.execute(
+            "INSERT INTO current_pantry (location,ingredient_id,status,is_active) "
+            "VALUES ('shenzhen','stocked','available',1)"
+        )
+        conn.execute("INSERT INTO menus (id,date,location,status) VALUES (1,'2099-01-01','shenzhen','draft')")
+        conn.execute(
+            "INSERT INTO menu_items (id,menu_id,dish_id,meal_type,sort_order) "
+            "VALUES (1,1,'dish_current','lunch',1)"
+        )
+        conn.commit()
+        conn.close()
+
+        chosen = app.get_next_available_same_class_dish(1, 1, "shenzhen")
+        self.assertEqual(chosen["id"], "dish_alternative")
 
 
 if __name__ == "__main__":
