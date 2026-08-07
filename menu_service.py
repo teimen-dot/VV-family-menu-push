@@ -52,11 +52,29 @@ def _get_effective_diners_count(menu_id=None, menu_row=None):
     if diners_json:
         try:
             diner_ids = json.loads(diners_json)
-            return max(len(diner_ids), 1)
+            if diner_ids:
+                return len(diner_ids)
         except (json.JSONDecodeError, TypeError):
             pass
 
-    return menu_row["diners_count"] if menu_row["diners_count"] else 4
+    # 空数组表示沿用页面上的默认用餐成员，不是 1 人。与
+    # render_meal_plan_reference() 的 default_attends 规则保持一致。
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS count FROM diners WHERE default_attends=1"
+        ).fetchone()
+        if row and row["count"]:
+            return row["count"]
+    finally:
+        conn.close()
+
+    stored_count = (
+        menu_row["diners_count"]
+        if "diners_count" in menu_row.keys()
+        else None
+    )
+    return stored_count if stored_count else 4
 
 
 def _get_meal_diners_count(conn, menu_id, meal_type, default_count, is_banquet=False):

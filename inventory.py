@@ -501,7 +501,8 @@ def _is_default_staple_rice(dish_row, ingredient):
     """Treat only the basic rice requirement of a rice staple as always on hand."""
     if not dish_row:
         return False
-    if dish_row["category_id"] != "staple_carb" or dish_row["carb_type"] != "rice":
+    if (dish_row["category_id"] != "staple_carb"
+            or dish_row["carb_type"] not in ("rice", "coarse_grain")):
         return False
     ingredient_terms = {
         _normalize_exact_ingredient_value(ingredient.get("ingredient_id")),

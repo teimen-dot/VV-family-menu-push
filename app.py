@@ -890,12 +890,43 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
             )
         }
         used_ids.discard(current["dish_id"])
-        rows = conn.execute(
-            "SELECT id,meal_tags,carb_type,protein_types FROM dishes "
-            "WHERE is_active=1 AND category_id=? "
-            "ORDER BY updated_at DESC,id",
-            (current["category_id"],),
-        ).fetchall()
+        def protein_types(value):
+            try:
+                return json.loads(value or "[]")
+            except (json.JSONDecodeError, TypeError):
+                return []
+
+        def rice_family_ids():
+            rows = conn.execute(
+                "SELECT d.id,di.ingredient_id,i.name_cn,i.name_en "
+                "FROM dishes d JOIN dish_ingredients di ON di.dish_id=d.id "
+                "LEFT JOIN ingredients i ON i.ingredient_id=di.ingredient_id "
+                "WHERE d.is_active=1 AND d.category_id='staple_carb' "
+                "AND d.carb_type IN ('rice','coarse_grain') AND di.required=1"
+            ).fetchall()
+            result = set()
+            for row in rows:
+                terms = " ".join(str(row[key] or "") for key in ("ingredient_id", "name_cn", "name_en")).lower()
+                if "米" in terms or "rice" in terms:
+                    result.add(row["id"])
+            return result
+
+        current_proteins = protein_types(current["protein_types"])
+        tofu_family = "tofu" in current_proteins
+        rice_ids = rice_family_ids()
+        current_is_rice = current["dish_id"] in rice_ids
+        if tofu_family:
+            rows = conn.execute(
+                "SELECT id,meal_tags,carb_type,protein_types FROM dishes "
+                "WHERE is_active=1 ORDER BY updated_at DESC,id"
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT id,meal_tags,carb_type,protein_types FROM dishes "
+                "WHERE is_active=1 AND category_id=? "
+                "ORDER BY updated_at DESC,id",
+                (current["category_id"],),
+            ).fetchall()
 
         def primary_protein(value):
             try:
@@ -913,10 +944,16 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
                 meal_tags = []
             if current["meal_type"] not in meal_tags or row["id"] in used_ids:
                 continue
-            if (current["category_id"] == "staple_carb"
+            if current_is_rice:
+                if row["id"] not in rice_ids:
+                    continue
+            elif (current["category_id"] == "staple_carb"
                     and row["carb_type"] != current["carb_type"]):
                 continue
-            if (current["category_id"] == "egg_tofu"
+            if tofu_family:
+                if "tofu" not in protein_types(row["protein_types"]):
+                    continue
+            elif (current["category_id"] == "egg_tofu"
                     and primary_protein(row["protein_types"]) != current_primary):
                 continue
             peers.append(row)

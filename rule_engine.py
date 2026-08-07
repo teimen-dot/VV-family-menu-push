@@ -62,7 +62,8 @@ WEAK_CARB_TYPES = {"other", "dim_sum"}
 
 # 早餐搭配主食四选一
 BREAKFAST_COMPANION_STAPLES = {
-    "mantou", "jiaozi", "sourdough", "huajuan", "breakfast_staple_carb"
+    "mantou", "jiaozi", "sourdough", "huajuan", "breakfast_staple_carb",
+    "dim_sum",
 }
 
 # 早餐搭配主食菜名关键词（当 breakfast_staple_type 字段为空时按菜名识别）
@@ -120,6 +121,10 @@ class NutritionAnalyzer:
         vegetables = NutritionAnalyzer.filter_real_vegetables(dish.get("vegetables", []))
         carb_type = dish.get("carb_type")
         breakfast_staple_type = dish.get("breakfast_staple_type")
+        # 包点/饺子统一占用早餐搭配主食位；UI 校验、AI 补充和整餐生成
+        # 都通过 NutritionAnalyzer -> MealState -> analyze_meal_slots 使用此规则。
+        if carb_type == "dim_sum":
+            breakfast_staple_type = "dim_sum"
         # 如果 breakfast_staple_type 为空，按菜名识别
         name_cn = dish.get("name_cn", "")
         if not breakfast_staple_type:
@@ -789,7 +794,10 @@ def filter_candidates_for_slot(candidates, slot_name):
             continue
         # 要求早餐搭配主食
         if spec.get("require_breakfast_staple"):
-            from_rule = c.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
+            from_rule = (
+                c.get("carb_type") == "dim_sum"
+                or c.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
+            )
             if not from_rule:
                 continue
         # 要求有蔬菜
