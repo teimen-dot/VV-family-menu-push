@@ -2059,10 +2059,16 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
         key = f"{menu_id}:{meal_type}"
         setting = effective_by_key[key]
         dishes = [d for d in menu.get("meals", {}).get(meal_type, []) if not d.get("is_historical_combo")]
-        editable = (
-            is_owner
-            and menu_id == tomorrow_menu.get("menu_id")
-            and menu.get("status") in ("draft", "confirmed")
+        editable = is_owner and (
+            (
+                menu_id == tomorrow_menu.get("menu_id")
+                and menu.get("status") in ("draft", "confirmed")
+            )
+            or (
+                menu_id == today_menu.get("menu_id")
+                and meal_type == "dinner"
+                and menu.get("status") == "draft"
+            )
         )
         diner_label = bilingual(f'{len(setting["effective"])}人用餐', f'{len(setting["effective"])} diners ›')
         if is_owner:

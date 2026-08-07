@@ -15,7 +15,7 @@ from rule_engine import (
     get_inventory_ingredients,
     get_history_3day, get_history_7day,
     analyze_meal_slots, filter_candidates_for_slot,
-    BREAKFAST_COMPANION_STAPLES,
+    meal_slot_order, BREAKFAST_COMPANION_STAPLES,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -596,17 +596,12 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
     返回: items_added (int)
     """
     items_added = 0
-    max_rounds = 8
+    max_rounds = 12
 
     if seen_unmet is None:
         seen_unmet = set()
     if added_dishes is None:
         added_dishes = []
-
-    BREAKFAST_SLOT_ORDER = [
-        "porridge", "companion_staple", "egg", "tofu",
-        "vegetable", "protein_main", "coarse_grain"
-    ]
 
     for round_i in range(max_rounds):
         # Step 1: 分析当前槽位
@@ -618,10 +613,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             break  # 所有槽位已满足 — V10: 幂等 STOP
 
         # Step 3: 逐个补齐缺失槽位
-        if meal_type == "breakfast":
-            ordered_slots = [s for s in BREAKFAST_SLOT_ORDER if s in missing]
-        else:
-            ordered_slots = list(missing.keys())
+        ordered_slots = [s for s in meal_slot_order(meal_type) if s in missing]
 
         for slot_name in ordered_slots:
             # V12: Re-check if slot is still missing (may have been satisfied by a dish added earlier in this round)
@@ -632,6 +624,11 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             # 获取该槽位的候选菜
             all_candidates = gf.get_candidates(meal_type, exclude_ids=day_history)
             slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
+            if meal_type == "breakfast":
+                slot_candidates = [
+                    c for c in slot_candidates
+                    if not c.get("is_soup") and not c.get("manual_only_breakfast")
+                ]
 
             # V11: 过滤掉已删除的菜品（re-validate is_active）
             if active_dish_ids:

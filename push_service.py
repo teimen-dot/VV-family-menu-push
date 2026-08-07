@@ -169,7 +169,8 @@ def format_menu(menu, h5_base_url=None):
     diners_cn = "、".join(person.get("name_cn") or person["id"] for person in diners) or "未设置"
     diners_en = ", ".join(person.get("name_en") or person.get("name_cn") or person["id"] for person in diners) or "Not set"
     sections = []
-    for meal_type in ("breakfast", "lunch", "afternoon_snack", "dinner"):
+    # Afternoon snack remains browsable in the app but is excluded from formal pushes.
+    for meal_type in ("breakfast", "lunch", "dinner"):
         items = [item for item in menu["items"] if item["meal_type"] == meal_type]
         if not items:
             continue
