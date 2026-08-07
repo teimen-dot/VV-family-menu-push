@@ -67,6 +67,12 @@ class MealPlanExtensionTests(unittest.TestCase):
         self.assertNotIn("···", html)
         self.assertIn("＋", html)
         self.assertIn("Add breakfast", html)
+        self.assertNotIn("全天默认成员", html)
+        self.assertNotIn("All-day default diners", html)
+        self.assertNotIn("营养概览", html)
+        self.assertNotIn("Nutrition overview", html)
+        self.assertNotIn("明日餐单搭配", html)
+        self.assertNotIn("Tomorrow balance", html)
 
     def test_meal_diners_note_skip_restore_and_clear_persist(self):
         ok, _ = self.app.update_meal_setting(2, "lunch", diners_marker=True, diners=["vv"])

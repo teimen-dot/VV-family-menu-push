@@ -59,6 +59,22 @@ def _get_effective_diners_count(menu_id=None, menu_row=None):
     return menu_row["diners_count"] if menu_row["diners_count"] else 4
 
 
+def _get_meal_diners_count(conn, menu_id, meal_type, default_count, is_banquet=False):
+    """Use a meal-specific diner override for daily menus without changing stored defaults."""
+    if is_banquet:
+        return default_count
+    row = conn.execute(
+        "SELECT diners FROM menu_meal_settings WHERE menu_id=? AND meal_type=?",
+        (menu_id, meal_type),
+    ).fetchone()
+    if not row or row["diners"] is None:
+        return default_count
+    try:
+        return max(len(json.loads(row["diners"])), 1)
+    except (json.JSONDecodeError, TypeError):
+        return default_count
+
+
 def _load_pool():
     """V6: 从 SQLite 加载菜品池（Single Source of Truth）。
     只加载 is_active=1 的菜品。
@@ -515,6 +531,11 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             if mt not in meals_existing:
                 continue
 
+            meal_diners_count = _get_meal_diners_count(
+                conn, menu_id, mt, diners_count,
+                is_banquet=context["is_banquet"],
+            )
+
             # V11 FIX: 不再跳过空餐次 — 从空 state 开始补齐
             existing_ids = [did for did in meals_existing[mt] if did in dish_map]
 
@@ -525,11 +546,11 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 state.add_dish(analysis, is_locked=True)
 
             # V11: 记录 slot analysis before
-            slots_before = analyze_meal_slots(mt, state, diners_count)
+            slots_before = analyze_meal_slots(mt, state, meal_diners_count)
 
             added = _fill_missing_slots_v8(
                 conn, menu_id, mt, state, gf, dish_map, context,
-                day_history, day_proteins, diners_count, loc,
+                day_history, day_proteins, meal_diners_count, loc,
                 unmet_slots, seen_unmet, active_dish_ids, added_dishes
             )
 
@@ -538,6 +559,10 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         # V11: 重新分析 slot analysis after
         slot_analysis_after = {}
         for mt in target_meals:
+            meal_diners_count = _get_meal_diners_count(
+                conn, menu_id, mt, diners_count,
+                is_banquet=context["is_banquet"],
+            )
             state_after = MealState()
             items_after = conn.execute(
                 "SELECT dish_id FROM menu_items WHERE menu_id = ? AND meal_type = ?",
@@ -548,7 +573,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 if did in dish_map:
                     analysis = NutritionAnalyzer.analyze(dish_map[did])
                     state_after.add_dish(analysis, is_locked=True)
-            slot_analysis_after[mt] = analyze_meal_slots(mt, state_after, diners_count)
+            slot_analysis_after[mt] = analyze_meal_slots(mt, state_after, meal_diners_count)
 
         # Final Review
         menu_data = get_menu_with_dishes(date_str)

@@ -90,24 +90,33 @@ class TomorrowSearchMobileTests(unittest.TestCase):
         self.assertTrue(english)
         self.assertLessEqual(len(english), 20)
 
-    def test_smart_replace_is_same_meal_category_available_and_persistent(self):
+    def test_smart_replace_keeps_same_meal_category_without_stock_filter(self):
         ok, message, replacement = self.app.smart_replace_menu_item(1, 10, "shenzhen")
         self.assertTrue(ok, message)
-        self.assertEqual(replacement, "dish_available")
+        self.assertEqual(replacement, "dish_missing")
+        self.assertIn("豆腐", message)
+        self.assertIn("需要购买", message)
         conn = self.db.get_db()
         row = conn.execute(
             "SELECT mi.dish_id,mi.meal_type,d.category_id FROM menu_items mi JOIN dishes d ON d.id=mi.dish_id WHERE mi.id=10"
         ).fetchone()
         conn.close()
-        self.assertEqual(tuple(row), ("dish_available", "lunch", "vegetable_mushroom"))
+        self.assertEqual(tuple(row), ("dish_missing", "lunch", "vegetable_mushroom"))
 
-    def test_smart_replace_does_not_repeat_last_eight_dishes(self):
+    def test_smart_replace_cycles_after_all_legal_candidates(self):
+        conn = self.db.get_db()
+        pool_size = conn.execute(
+            "SELECT COUNT(*) FROM dishes WHERE is_active=1 "
+            "AND category_id='vegetable_mushroom' AND meal_tags LIKE '%lunch%'"
+        ).fetchone()[0]
+        conn.close()
         replacements = []
-        for _ in range(9):
+        for _ in range(pool_size + 2):
             ok, message, replacement = self.app.smart_replace_menu_item(1, 10, "shenzhen")
             self.assertTrue(ok, message)
             replacements.append(replacement)
-        self.assertEqual(len(set(replacements)), 9)
+        self.assertEqual(pool_size, len(set(replacements[:pool_size])))
+        self.assertEqual(replacements[:2], replacements[pool_size:pool_size + 2])
 
     def test_owner_mobile_markup_is_stable_and_worker_has_no_replace_controls(self):
         owner = self.app.render_tomorrow_reference_preview("owner", "shenzhen")
@@ -126,7 +135,7 @@ class TomorrowSearchMobileTests(unittest.TestCase):
 
         os.environ["LOCAL_PREVIEW_UI"] = "false"
         legacy = self.app.render_tomorrow("owner", "shenzhen")
-        self.assertIn("智能换一道 Smart replace", legacy)
+        self.assertIn("普通切换 Switch", legacy)
         self.assertIn("搜索更换 Search replace", legacy)
         self.assertIn("requestId!==_searchRequestId", legacy)
         self.assertIn('loading="lazy"', legacy)

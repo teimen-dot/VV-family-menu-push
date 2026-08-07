@@ -872,7 +872,7 @@ def validate_menu_after_mutation(menu_id):
 
 
 def smart_replace_menu_item(menu_id, menu_item_id, location):
-    """Pick the next in-stock peer within the dish's real subtype."""
+    """Cycle to the next legal peer; inventory only affects the user prompt."""
     conn = get_db()
     try:
         current = conn.execute(
@@ -934,21 +934,18 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
         candidates = [dish_id for dish_id in candidates if dish_id != current["dish_id"]]
     finally:
         conn.close()
-    availability = check_dishes_availability_batch(candidates, location)
-    available_candidates = [
-        dish_id for dish_id in candidates
-        if availability.get(dish_id, {}).get("status") == "available"
-    ]
     if current["category_id"] == "protein_main" and current_primary:
-        same_protein_available = [
-            dish_id for dish_id in available_candidates
+        same_protein_candidates = [
+            dish_id for dish_id in candidates
             if primary_by_id.get(dish_id) == current_primary
         ]
-        if same_protein_available:
-            available_candidates = same_protein_available
-    replacement_id = available_candidates[0] if available_candidates else None
+        if same_protein_candidates:
+            candidates = same_protein_candidates
+    replacement_id = candidates[0] if candidates else None
     if not replacement_id:
-        return False, "没有同餐次、同类别且库存可做的其他菜", None
+        return False, "没有同餐次、同类别的其他菜", None
+    availability = check_dishes_availability_batch([replacement_id], location)
+    replacement_availability = availability.get(replacement_id, {})
     ok, message = replace_dish_in_menu(menu_id, menu_item_id, replacement_id)
     if ok:
         conn = get_db()
@@ -966,6 +963,18 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
             conn.commit()
         finally:
             conn.close()
+    if ok and replacement_availability.get("status") != "available":
+        missing_names = [
+            item.get("name_cn", "")
+            for item in replacement_availability.get("missing_required", [])
+            if item.get("name_cn")
+        ]
+        if missing_names:
+            message = f"已替换；缺少食材：{'、'.join(missing_names)}，需要购买"
+        elif replacement_availability.get("status") == "incomplete":
+            message = "已替换；食材资料待完善，请确认并准备所需食材"
+        else:
+            message = "已替换；当前库存不足，需要购买食材"
     return ok, message, replacement_id if ok else None
 
 
@@ -2146,24 +2155,6 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
         value = datetime.strptime(date_str, "%Y-%m-%d")
         return f'<div class="date-band"><div><h2>{bilingual(label_cn,label_en)}</h2><p>{value.year}年{value.month}月{value.day}日 · {value.strftime("%A")}</p></div></div>'
 
-    people_html = ""
-    for diner in all_diners:
-        selected = diner["id"] in tomorrow_defaults
-        name_cn = "先生" if diner["id"] == "sir" else diner["name_cn"]
-        name_en = "Sir" if diner["id"] == "sir" else diner["name_en"]
-        action = (
-            f' onclick="toggleDiner(\'{diner["id"]}\')"'
-            if is_owner and tomorrow_menu.get("status") in ("draft", "confirmed")
-            else " disabled"
-        )
-        people_html += f'<button class="person {"selected" if selected else ""}" type="button"{action}><span class="person-avatar">{escape((name_en or name_cn or "?")[0].upper())}</span><span class="person-name">{bilingual(escape(name_cn),escape(name_en or ""))}</span></button>'
-
-    nutrition_html = ""
-    pending_count = 0
-    if tomorrow_menu.get("menu_id"):
-        missing = validation_by_menu[tomorrow_menu["menu_id"]].get("missing_by_meal", {})
-        pending_count = len(independent_missing_issue_keys(missing))
-        nutrition_html = f'<section class="nutrition-card"><div class="nutrition-heading"><div><small>{bilingual("营养概览","Nutrition overview")}</small><h2>{bilingual("明日餐单搭配","Tomorrow balance")}</h2></div><span>{bilingual(f"{pending_count} 项待补",f"{pending_count} items needed")}</span></div></section>'
     tomorrow_editable = is_owner and tomorrow_menu.get("status") == "draft"
     action_bar = ""
     desktop_actions = ""
@@ -2177,9 +2168,13 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
 
     today_sections = meal_section(today_menu, "dinner")
     tomorrow_sections = "".join(meal_section(tomorrow_menu, mt) for mt in MEAL_TYPES)
+    menu_content = f'<div class="menu-content">{date_heading("今天","Today",today_str)}{today_sections}{date_heading("明天","Tomorrow",tomorrow_str)}{tomorrow_sections}</div>'
+    desktop_content = (
+        f'<div class="desktop-layout"><aside class="planner-panel">{desktop_actions}</aside>{menu_content}</div>'
+        if desktop_actions else menu_content
+    )
     body = f"""<main id="main" class="page-shell"><section class="page-heading"><div><p class="eyebrow">{bilingual('按真实日期安排','Plan by actual date')}</p><h1>{bilingual('餐单','Meal Plan')}</h1></div></section>
-<section class="settings-block diners-panel"><div class="section-label"><span>{bilingual('全日默认成员','All-day default diners')}</span><small>{bilingual(f'{len(tomorrow_defaults)} 人',f'{len(tomorrow_defaults)} people')}</small></div><div class="people-grid">{people_html}</div></section>
-<div class="desktop-layout"><aside class="planner-panel">{nutrition_html}{desktop_actions}</aside><div class="menu-content">{date_heading('今天','Today',today_str)}{today_sections}{date_heading('明天','Tomorrow',tomorrow_str)}{tomorrow_sections}</div></div></main>{action_bar}"""
+{desktop_content}</main>{action_bar}"""
 
     settings_json = json.dumps(effective_by_key, ensure_ascii=False)
     diners_json = json.dumps([{"id": d["id"], "cn": d["name_cn"], "en": d["name_en"] or ""} for d in all_diners], ensure_ascii=False)
@@ -2206,8 +2201,10 @@ function openDishSearch(mid,meal,replaceId,currentDishId,categoryId){{searchMode
 function resultRow(d,state){{return '<button class="recommendation-item" onclick="doPickDish(&quot;'+d.id+'&quot;,this)">'+(d.image?'<img loading="lazy" decoding="async" src="/photos/'+d.image+'">':'<span class="rec-no-img">No image</span>')+'<span class="recommendation-copy"><strong>'+d.name_cn+'<small>'+((d.name_en)||'')+'</small></strong><em class="'+state+'">'+(state==='available'?'Available now':state==='almost'?'Almost available':'All dishes')+'</em></span></button>'}}
 async function loadDishPicker(){{let id=++searchRequestId,c=document.getElementById('dishSearchResults');try{{let rec=await postJSON('/api/dishes/recommend',{{meal_type:searchMode.meal,current_dish_id:searchMode.currentDishId,category_id:searchMode.categoryId,location:currentLoc}});if(id!==searchRequestId)return;let available=(rec.available||[]).filter(x=>x.id!==searchMode.currentDishId),almost=(rec.almost_available||[]).filter(x=>x.id!==searchMode.currentDishId);c.innerHTML='<div class="rec-section-title">库存可做 / Available now</div>'+available.map(d=>resultRow(d,'available')).join('')+'<div class="rec-section-title">差少量 / Almost available</div>'+almost.map(d=>resultRow(d,'almost')).join('')}}catch(e){{if(id===searchRequestId)c.insertAdjacentHTML('afterbegin','<div class="inline-warning">推荐加载失败：'+e.message+'</div>')}}}}
 async function doDishSearch(q){{let id=++searchRequestId,c=document.getElementById('dishSearchResults');try{{let d=await requestJSON('/api/dishes?search='+encodeURIComponent(q));if(id!==searchRequestId)return;d=d.filter(x=>x.id!==searchMode.currentDishId).slice(0,20);let a=d.length?await postJSON('/api/dishes/availability',{{dish_ids:d.map(x=>x.id),location:currentLoc}}):{{}};if(id!==searchRequestId)return;c.innerHTML=d.map(x=>resultRow(x,(a[x.id]||{{}}).status==='available'?'available':(a[x.id]||{{}}).status==='almost_available'?'almost':'all')).join('')||'<div class="empty-state">没有结果 / No results</div>'}}catch(e){{if(id===searchRequestId)c.insertAdjacentHTML('afterbegin','<div class="inline-warning">搜索失败：'+e.message+'</div>')}}}}
-async function doPickDish(did,b){{if(pickBusy)return;pickBusy=true;b.disabled=true;b.textContent='处理中… Processing…';try{{await postJSON(searchMode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add',searchMode.replaceId?{{menu_id:searchMode.menuId,menu_item_id:searchMode.replaceId,new_dish_id:did}}:{{menu_id:searchMode.menuId,dish_id:did,meal_type:searchMode.meal}});location.reload()}}catch(e){{snack(e.message);b.disabled=false}}finally{{pickBusy=false}}}}
-async function smartReplace(mid,meal,item,b){{b.disabled=true;try{{await postJSON('/api/tomorrow/smart-replace',{{menu_id:mid,menu_item_id:item,location:currentLoc}});location.reload()}}catch(e){{snack(e.message);b.disabled=false}}}} async function removeDish(mid,item){{if(!confirm('确认删除?'))return;await postJSON('/api/tomorrow/remove',{{menu_id:mid,menu_item_id:item}});location.reload()}} async function aiFillMeal(mid,meal,b){{b.disabled=true;try{{await postJSON('/api/tomorrow/ai-fill',{{menu_id:mid,location:currentLoc,meal_type:meal}});location.reload()}}catch(e){{snack(e.message);b.disabled=false}}}}
+async function refreshMealSection(mid,meal){{let x=window.scrollX,y=window.scrollY,selector='.meal-section[data-menu-id="'+mid+'"][data-meal="'+meal+'"]',response=await fetch('/tomorrow',{{headers:{{'Accept':'text/html'}}}});if(!response.ok)throw Error('刷新餐区失败 HTTP '+response.status);let doc=new DOMParser().parseFromString(await response.text(),'text/html'),current=document.querySelector(selector),fresh=doc.querySelector(selector);if(!current||!fresh)throw Error('无法更新当前餐区');current.replaceWith(document.importNode(fresh,true));requestAnimationFrame(()=>window.scrollTo(x,y))}}
+function replacementNotice(result,fallback){{let missing=(result.availability||{{}}).missing_names||[];if(missing.length)return '已更换；缺少：'+missing.join('、')+'，需购买';if((result.availability||{{}}).status&&result.availability.status!=='available')return result.message||'已更换；库存不足，需购买食材';return result.message||fallback}}
+async function doPickDish(did,b){{if(pickBusy)return;let mode={{...searchMode}};pickBusy=true;b.disabled=true;b.textContent='处理中… Processing…';try{{let result=await postJSON(mode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add',mode.replaceId?{{menu_id:mode.menuId,menu_item_id:mode.replaceId,new_dish_id:did}}:{{menu_id:mode.menuId,dish_id:did,meal_type:mode.meal}});await refreshMealSection(mode.menuId,mode.meal);closeDishSearch();snack(result.message||(mode.replaceId?'已替换 Replaced':'已添加 Added'))}}catch(e){{snack(e.message);b.disabled=false}}finally{{pickBusy=false}}}}
+async function smartReplace(mid,meal,item,b){{b.disabled=true;try{{let result=await postJSON('/api/tomorrow/smart-replace',{{menu_id:mid,menu_item_id:item,location:currentLoc}});await refreshMealSection(mid,meal);snack(replacementNotice(result,'已切换 Switched'))}}catch(e){{snack(e.message);b.disabled=false}}}} async function removeDish(mid,item){{if(!confirm('确认删除?'))return;await postJSON('/api/tomorrow/remove',{{menu_id:mid,menu_item_id:item}});location.reload()}} async function aiFillMeal(mid,meal,b){{b.disabled=true;try{{let result=await postJSON('/api/tomorrow/ai-fill',{{menu_id:mid,location:currentLoc,meal_type:meal}});await refreshMealSection(mid,meal);let added=((result.review||{{}}).added_details||[]);if(added.length)snack('已补充：'+added.map(x=>x.name_cn).join('、'));else{{let unmet=((result.review||{{}}).unmet_slots||[]);snack(unmet.length?unmet[0].message:(result.message||'当前餐次无需补充'))}}}}catch(e){{snack(e.message);b.disabled=false}}}}
 async function repairMenu(){{if(confirm('重新生成明日菜单?')){{await postJSON('/api/tomorrow/repair',{{menu_id:menuId,location:currentLoc}});location.reload()}}}} async function confirmMenu(){{await postJSON('/api/tomorrow/confirm',{{menu_id:menuId}});location.reload()}} async function editMenu(){{await postJSON('/api/tomorrow/revert',{{menu_id:menuId}});location.reload()}}
 </script></body></html>"""
     return tomorrow_preview_head("餐单 · Meal Plan", "tomorrow", location) + body + js
@@ -4152,15 +4149,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 body["menu_id"], body["menu_item_id"], body.get("location", location)
             )
             validation = validate_menu_after_mutation(body["menu_id"]) if ok else None
+            availability = get_dish_availability([replacement_id], body.get("location", location)).get(replacement_id, {}) if ok else None
             self.send_json({
                 "ok": ok, "error": msg if not ok else None,
-                "new_dish_id": replacement_id, "validation": validation,
+                "message": msg if ok else None, "new_dish_id": replacement_id,
+                "availability": availability, "validation": validation,
             })
 
         elif path == "/api/tomorrow/ai-fill":
             meal_type = body.get("meal_type")
             ok, msg, review = ai_fill_menu(body["menu_id"], body.get("location", location), meal_type=meal_type)
-            self.send_json({"ok": ok, "error": msg if not ok else None, "review": review})
+            self.send_json({"ok": ok, "error": msg if not ok else None, "message": msg if ok else None, "review": review})
 
         elif path == "/api/tomorrow/repair":
             ok, msg, review = repair_menu(body["menu_id"], body.get("location", location), seed=body.get("seed"))

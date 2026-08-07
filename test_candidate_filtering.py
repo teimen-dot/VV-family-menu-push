@@ -142,7 +142,67 @@ class SmartReplaceTests(unittest.TestCase):
             }
             self.assertEqual({primary}, observed)
 
-    def test_main_protein_prefers_available_same_primary_protein(self):
+    def test_dim_sum_cycles_through_dumplings_and_buns(self):
+        conn = self.connect()
+        pool = conn.execute(
+            "SELECT id FROM dishes WHERE is_active=1 AND category_id='staple_carb' "
+            "AND carb_type='dim_sum' AND meal_tags LIKE '%breakfast%'"
+        ).fetchall()
+        conn.close()
+        replacements = self.cycle("dish_0217", "breakfast", len(pool) + 1)
+        conn = self.connect()
+        names = {
+            row["name_cn"] for row in conn.execute(
+                "SELECT name_cn FROM dishes WHERE id IN (%s)" % ",".join("?" for _ in replacements),
+                replacements,
+            ).fetchall()
+        }
+        conn.close()
+        self.assertTrue(any("饺" in name for name in names))
+        self.assertTrue(any("包" in name for name in names))
+        self.assertEqual(replacements[0], replacements[len(pool)])
+
+    def test_rice_candidates_cycle_even_when_all_are_unavailable(self):
+        conn = self.connect()
+        for dish_id, name in (("test_rice_a", "杂粮米饭"), ("test_rice_b", "糙米饭")):
+            conn.execute(
+                "INSERT INTO dishes(id,name_cn,category_id,meal_tags,carb_type,is_active) "
+                "VALUES(?,?,'staple_carb','[\"lunch\",\"dinner\"]','rice',1)",
+                (dish_id, name),
+            )
+        conn.commit()
+        conn.close()
+
+        def unavailable(dish_ids, _location):
+            return {
+                dish_id: {"status": "missing", "missing_required": [{"name_cn": "米"}]}
+                for dish_id in dish_ids
+            }
+
+        replacements = self.cycle("dish_0094", "lunch", 5, unavailable)
+        self.assertEqual(["test_rice_a", "test_rice_b", "dish_0094", "test_rice_a", "test_rice_b"], replacements)
+
+    def test_tofu_can_switch_to_missing_tofu_dish_with_purchase_prompt(self):
+        item_id = self.add_menu_item("dish_0001", "breakfast")
+
+        def unavailable(dish_ids, _location):
+            return {
+                dish_id: {"status": "missing", "missing_required": [{"name_cn": "牛油果"}]}
+                for dish_id in dish_ids
+            }
+
+        with patch.object(app, "get_db", side_effect=self.connect), patch.object(
+            app, "check_dishes_availability_batch", side_effect=unavailable
+        ), patch.object(app, "replace_dish_in_menu", side_effect=self.replace_in_test_db):
+            ok, message, replacement_id = app.smart_replace_menu_item(
+                self.menu_id, item_id, "shenzhen"
+            )
+        self.assertTrue(ok)
+        self.assertEqual("dish_0148", replacement_id)
+        self.assertIn("牛油果", message)
+        self.assertIn("需要购买", message)
+
+    def test_main_protein_prefers_same_primary_even_when_unavailable(self):
         replacements = self.cycle(
             "dish_0023",
             "lunch",
@@ -152,7 +212,7 @@ class SmartReplaceTests(unittest.TestCase):
         row = self.dish_rows(replacements)[0]
         self.assertEqual("chicken", json.loads(row["protein_types"])[0])
 
-    def test_main_protein_falls_back_when_same_primary_is_unavailable(self):
+    def test_main_protein_does_not_fall_back_while_same_primary_exists(self):
         replacements = self.cycle(
             "dish_0023",
             "lunch",
@@ -160,7 +220,18 @@ class SmartReplaceTests(unittest.TestCase):
             self.availability_for_primary_proteins({"beef"}),
         )
         row = self.dish_rows(replacements)[0]
-        self.assertEqual("beef", json.loads(row["protein_types"])[0])
+        self.assertEqual("chicken", json.loads(row["protein_types"])[0])
+
+    def test_fish_cycles_across_different_fish_dishes_without_stock_filter(self):
+        replacements = self.cycle(
+            "dish_0028", "dinner", 4,
+            self.availability_for_primary_proteins(set()),
+        )
+        rows = self.dish_rows(replacements)
+        self.assertEqual({"fish"}, {
+            (json.loads(row["protein_types"] or "[]") or [None])[0] for row in rows
+        })
+        self.assertGreater(len(set(replacements)), 2)
 
 
 class DishPickerTests(unittest.TestCase):
@@ -207,6 +278,19 @@ class DishPickerTests(unittest.TestCase):
         }
         conn.close()
         self.assertTrue(all("breakfast" in meal_tags[item["id"]] for item in recommended))
+
+    def test_reference_ui_mutations_use_local_meal_refresh(self):
+        source = Path(app.__file__).read_text(encoding="utf-8")
+        active = source[source.index("def render_meal_plan_reference"):source.index("def render_tomorrow(")]
+        self.assertIn("async function refreshMealSection", active)
+        for start, end in (
+            ("async function doPickDish", "async function smartReplace"),
+            ("async function smartReplace", "async function removeDish"),
+            ("async function aiFillMeal", "async function repairMenu"),
+        ):
+            function_source = active.split(start, 1)[1].split(end, 1)[0]
+            self.assertIn("refreshMealSection", function_source)
+            self.assertNotIn("location.reload", function_source)
 
 
 if __name__ == "__main__":
