@@ -272,6 +272,19 @@ def post_path_allowed(role, path):
     return role == "owner"
 
 
+def ensure_owner_tomorrow_draft(role, menu_id, menu_row):
+    """Return a confirmed tomorrow menu to draft on the owner's first edit."""
+    if menu_row["status"] == "draft":
+        return True, ""
+    if (
+        role == "owner"
+        and menu_row["status"] == "confirmed"
+        and menu_row["date"] == get_tomorrow_date()
+    ):
+        return revert_to_draft(menu_id)
+    return False, "已确认菜单不可直接修改，请先回退到草稿"
+
+
 def health_result():
     try:
         conn = get_db()
@@ -2015,7 +2028,11 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
         key = f"{menu_id}:{meal_type}"
         setting = effective_by_key[key]
         dishes = [d for d in menu.get("meals", {}).get(meal_type, []) if not d.get("is_historical_combo")]
-        editable = is_owner and menu.get("status") == "draft"
+        editable = (
+            is_owner
+            and menu_id == tomorrow_menu.get("menu_id")
+            and menu.get("status") in ("draft", "confirmed")
+        )
         diner_label = bilingual(f'{len(setting["effective"])}人用餐', f'{len(setting["effective"])} diners ›')
         if is_owner:
             note_label = bilingual("修改备注", "Edit note") if setting["note"] else bilingual("添加备注", "Add note")
@@ -2097,7 +2114,11 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
         selected = diner["id"] in tomorrow_defaults
         name_cn = "先生" if diner["id"] == "sir" else diner["name_cn"]
         name_en = "Sir" if diner["id"] == "sir" else diner["name_en"]
-        action = f' onclick="toggleDiner(\'{diner["id"]}\')"' if is_owner and tomorrow_menu.get("status") == "draft" else " disabled"
+        action = (
+            f' onclick="toggleDiner(\'{diner["id"]}\')"'
+            if is_owner and tomorrow_menu.get("status") in ("draft", "confirmed")
+            else " disabled"
+        )
         people_html += f'<button class="person {"selected" if selected else ""}" type="button"{action}><span class="person-avatar">{escape((name_en or name_cn or "?")[0].upper())}</span><span class="person-name">{bilingual(escape(name_cn),escape(name_en or ""))}</span></button>'
 
     nutrition_html = ""
@@ -3859,14 +3880,20 @@ class AppHandler(BaseHTTPRequestHandler):
             menu_id = body.get("menu_id")
             conn = get_db()
             try:
-                menu_row = conn.execute("SELECT status, location FROM menus WHERE id=?", (menu_id,)).fetchone()
+                menu_row = conn.execute(
+                    "SELECT status, location, date FROM menus WHERE id=?", (menu_id,)
+                ).fetchone()
             finally:
                 conn.close()
-            if not menu_row or menu_row["status"] != "draft":
-                self.send_json({"ok": False, "error": "已确认菜单不可直接修改，请先回退到草稿"}, 409)
+            if not menu_row:
+                self.send_json({"ok": False, "error": "菜单不存在"}, 404)
                 return
             if menu_row["location"] != location:
                 self.send_json({"ok": False, "error": "menu location mismatch"}, 403)
+                return
+            editable, message = ensure_owner_tomorrow_draft(role, menu_id, menu_row)
+            if not editable:
+                self.send_json({"ok": False, "error": message}, 409)
                 return
 
         if path == "/api/pantry/submit":

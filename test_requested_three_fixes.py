@@ -86,6 +86,7 @@ class RequestedThreeFixesTests(unittest.TestCase):
         }
 
     def test_1_confirmed_owner_can_edit_and_reconfirm_new_revision(self):
+        self.assertTrue(self.menu_service.add_dish_to_menu(1, "dish_egg", "breakfast"))
         self.assertTrue(self.menu_service.confirm_menu(1)[0])
         conn = self.db.get_db()
         first_revision = conn.execute("SELECT confirmed_revision FROM menus WHERE id=1").fetchone()[0]
@@ -99,10 +100,28 @@ class RequestedThreeFixesTests(unittest.TestCase):
         preview_owner = self.app.render_tomorrow("owner", "shenzhen")
         preview_worker = self.app.render_tomorrow("worker", "shenzhen")
         self.assertEqual(preview_owner.count('<button class="secondary-button" onclick="editMenu()">'), 2)
+        for meal_type in ("breakfast", "lunch", "dinner"):
+            self.assertIn(f"openDishSearch(1,'{meal_type}')", preview_owner)
+        self.assertIn("智能换一道", preview_owner)
+        self.assertIn("搜索更换", preview_owner)
+        self.assertIn("删除", preview_owner)
+        self.assertIn("openMealDiners(1,'breakfast')", preview_owner)
         self.assertNotIn('onclick="editMenu()"', preview_worker)
+        self.assertNotIn("openDishSearch(1,'breakfast')", preview_worker)
         os.environ.pop("LOCAL_PREVIEW_UI", None)
         self.assertFalse(self.app.post_path_allowed("worker", "/api/tomorrow/revert"))
-        self.assertTrue(self.menu_service.revert_to_draft(1)[0])
+        conn = self.db.get_db()
+        menu_row = conn.execute(
+            "SELECT status, location, date FROM menus WHERE id=1"
+        ).fetchone()
+        conn.close()
+        self.assertFalse(self.app.ensure_owner_tomorrow_draft("worker", 1, menu_row)[0])
+        self.assertTrue(self.app.ensure_owner_tomorrow_draft("owner", 1, menu_row)[0])
+        conn = self.db.get_db()
+        self.assertEqual(
+            conn.execute("SELECT status FROM menus WHERE id=1").fetchone()[0], "draft"
+        )
+        conn.close()
         draft_html = self.app.render_tomorrow("owner", "shenzhen")
         self.assertIn("AI 补充 AI Fill", draft_html)
         self.assertIn("确认菜单", draft_html)
