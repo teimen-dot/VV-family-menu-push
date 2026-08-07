@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 
 class MealPlanExtensionTests(unittest.TestCase):
@@ -53,7 +54,14 @@ class MealPlanExtensionTests(unittest.TestCase):
         conn.close()
 
     def test_real_dates_and_existing_ui_actions_render(self):
-        html = self.app.render_tomorrow("owner", "shenzhen")
+        availability = {
+            "lunch_dish": {
+                "status": "missing", "missing_names": ["牛肉"],
+                "missing_names_en": ["Beef"],
+            }
+        }
+        with patch.object(self.app, "get_dish_availability", return_value=availability):
+            html = self.app.render_tomorrow("owner", "shenzhen")
         self.assertIn("餐单", html)
         self.assertIn("Meal Plan", html)
         today_block = html.split("今天", 1)[1].split("明天", 1)[0]
@@ -73,6 +81,9 @@ class MealPlanExtensionTests(unittest.TestCase):
         self.assertNotIn("Nutrition overview", html)
         self.assertNotIn("明日餐单搭配", html)
         self.assertNotIn("Tomorrow balance", html)
+        self.assertIn('class="dish-shortage"', html)
+        self.assertIn("缺食材 / 需购买", html)
+        self.assertIn("缺少：牛肉", html)
 
     def test_meal_diners_note_skip_restore_and_clear_persist(self):
         ok, _ = self.app.update_meal_setting(2, "lunch", diners_marker=True, diners=["vv"])

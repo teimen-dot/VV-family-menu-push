@@ -90,24 +90,27 @@ class TomorrowSearchMobileTests(unittest.TestCase):
         self.assertTrue(english)
         self.assertLessEqual(len(english), 20)
 
-    def test_smart_replace_keeps_same_meal_category_without_stock_filter(self):
+    def test_smart_replace_keeps_same_meal_category_and_requires_available(self):
         ok, message, replacement = self.app.smart_replace_menu_item(1, 10, "shenzhen")
         self.assertTrue(ok, message)
-        self.assertEqual(replacement, "dish_missing")
-        self.assertIn("豆腐", message)
-        self.assertIn("需要购买", message)
+        self.assertNotEqual(replacement, "dish_missing")
+        self.assertEqual(
+            "available",
+            self.inventory.check_dish_availability(replacement, "shenzhen")["status"],
+        )
         conn = self.db.get_db()
         row = conn.execute(
             "SELECT mi.dish_id,mi.meal_type,d.category_id FROM menu_items mi JOIN dishes d ON d.id=mi.dish_id WHERE mi.id=10"
         ).fetchone()
         conn.close()
-        self.assertEqual(tuple(row), ("dish_missing", "lunch", "vegetable_mushroom"))
+        self.assertEqual(tuple(row), (replacement, "lunch", "vegetable_mushroom"))
 
     def test_smart_replace_cycles_after_all_legal_candidates(self):
         conn = self.db.get_db()
         pool_size = conn.execute(
-            "SELECT COUNT(*) FROM dishes WHERE is_active=1 "
-            "AND category_id='vegetable_mushroom' AND meal_tags LIKE '%lunch%'"
+            "SELECT COUNT(DISTINCT d.id) FROM dishes d JOIN dish_ingredients di ON di.dish_id=d.id "
+            "WHERE d.is_active=1 AND d.category_id='vegetable_mushroom' "
+            "AND d.meal_tags LIKE '%lunch%' AND di.ingredient_id='asparagus' AND di.required=1"
         ).fetchone()[0]
         conn.close()
         replacements = []

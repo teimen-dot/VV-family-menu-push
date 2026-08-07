@@ -872,7 +872,7 @@ def validate_menu_after_mutation(menu_id):
 
 
 def smart_replace_menu_item(menu_id, menu_item_id, location):
-    """Cycle to the next legal peer; inventory only affects the user prompt."""
+    """Cycle through available peers without exhausting the candidate pool."""
     conn = get_db()
     try:
         current = conn.execute(
@@ -922,10 +922,6 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
             peers.append(row)
 
         peer_ids = [row["id"] for row in peers]
-        primary_by_id = {
-            row["id"]: primary_protein(row["protein_types"])
-            for row in peers
-        }
         if current["dish_id"] in peer_ids:
             current_index = peer_ids.index(current["dish_id"])
             candidates = peer_ids[current_index + 1:] + peer_ids[:current_index]
@@ -934,18 +930,14 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
         candidates = [dish_id for dish_id in candidates if dish_id != current["dish_id"]]
     finally:
         conn.close()
-    if current["category_id"] == "protein_main" and current_primary:
-        same_protein_candidates = [
-            dish_id for dish_id in candidates
-            if primary_by_id.get(dish_id) == current_primary
-        ]
-        if same_protein_candidates:
-            candidates = same_protein_candidates
-    replacement_id = candidates[0] if candidates else None
+    availability = check_dishes_availability_batch(candidates, location)
+    available_candidates = [
+        dish_id for dish_id in candidates
+        if availability.get(dish_id, {}).get("status") == "available"
+    ]
+    replacement_id = available_candidates[0] if available_candidates else None
     if not replacement_id:
-        return False, "没有同餐次、同类别的其他菜", None
-    availability = check_dishes_availability_batch([replacement_id], location)
-    replacement_availability = availability.get(replacement_id, {})
+        return False, "暂无库存可做的同类菜，可使用搜索更换查看其他菜品", None
     ok, message = replace_dish_in_menu(menu_id, menu_item_id, replacement_id)
     if ok:
         conn = get_db()
@@ -963,18 +955,6 @@ def smart_replace_menu_item(menu_id, menu_item_id, location):
             conn.commit()
         finally:
             conn.close()
-    if ok and replacement_availability.get("status") != "available":
-        missing_names = [
-            item.get("name_cn", "")
-            for item in replacement_availability.get("missing_required", [])
-            if item.get("name_cn")
-        ]
-        if missing_names:
-            message = f"已替换；缺少食材：{'、'.join(missing_names)}，需要购买"
-        elif replacement_availability.get("status") == "incomplete":
-            message = "已替换；食材资料待完善，请确认并准备所需食材"
-        else:
-            message = "已替换；当前库存不足，需要购买食材"
     return ok, message, replacement_id if ok else None
 
 
@@ -1515,6 +1495,7 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .dish-grid{display:grid;grid-template-columns:1fr}.dish-card{min-width:0;min-height:128px;display:grid;grid-template-columns:112px minmax(0,1fr);grid-template-rows:1fr auto;column-gap:12px;padding:8px 12px;border-bottom:1px solid #edf0ed}
 .dish-card:last-child{border-bottom:0}.dish-card img,.dish-card .no-img{grid-row:1/3;width:112px;height:112px;align-self:center;border-radius:13px;object-fit:cover;background:#edf0ed}
 .dish-card .no-img{display:grid;place-items:center;color:var(--muted);font-size:12px}.dish-card .no-img[hidden]{display:none!important}.dish-copy{min-width:0;align-self:center;padding-right:110px}.dish-copy h3{margin:0;font-size:17px;line-height:1.35;letter-spacing:-.015em}.dish-copy h3 .lang-en{margin-top:3px;font-size:12px;line-height:1.35;font-weight:550}
+.dish-shortage{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:max-content;max-width:100%;margin-top:7px;padding:5px 7px;border-radius:6px;color:#80520a;background:#fff1cf;font-size:10px;line-height:1.35}.dish-shortage strong{font-size:11px}.dish-shortage span{max-width:100%;overflow-wrap:anywhere;color:#76571e}
 .dish-actions{grid-column:2;display:flex;justify-content:flex-end;gap:5px;margin-top:-32px;align-self:end}.dish-actions button{width:32px;min-height:32px;overflow:hidden;padding:0;border-radius:7px;background:white;color:transparent;font-size:0;cursor:pointer}
 .smart-button,.search-button{border:1px solid #ccd5cf}.remove-button{border:1px solid #ead0cd}.smart-button:after{content:"↻";color:#526058;font-size:17px}.search-button:after{content:"⌕";color:#356b52;font-size:18px}.remove-button:after{content:"×";color:var(--danger);font-size:18px}
 .date-band{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:24px 2px 10px}.date-band h2{margin:0;font-size:22px}.date-band p{margin:2px 0 0;color:var(--muted);font-size:11px}.meal-links{display:flex;flex-wrap:wrap;align-items:center;gap:7px 10px;margin-top:7px}.meal-link{padding:0;border:0;color:var(--accent-dark);background:transparent;font-size:11px;font-weight:700;cursor:pointer}.meal-link[disabled]{color:var(--muted);cursor:default}.meal-link small{display:block;font-size:8px;font-weight:550}.meal-note-button{min-height:30px;padding:5px 9px;border:1px solid #94baa3;border-radius:7px;color:var(--accent-dark);background:var(--accent-soft);font-size:11px;font-weight:750;cursor:pointer}.meal-skip-button{width:34px;height:34px;padding:0;border:1px solid #ead0cd;border-radius:8px;color:var(--danger);background:#fff;font-size:20px;line-height:1;cursor:pointer}.meal-note{margin:0 14px 10px;padding:8px 11px;border-radius:8px;color:#526058;background:#f3f6f3;font-size:11px}.skipped-meal,.add-meal-card{margin:0 14px 14px;padding:18px;border:1px dashed #aac0b1;border-radius:11px;color:var(--accent-dark);background:var(--accent-soft);font-size:13px;font-weight:750}.skipped-meal{display:flex;align-items:center;justify-content:space-between;gap:12px}.restore-meal-button{min-height:36px;padding:6px 10px;border:1px solid #94baa3;border-radius:7px;color:var(--accent-dark);background:#fff;font-weight:750;cursor:pointer}.add-meal-card{width:calc(100% - 28px);text-align:left;cursor:pointer}.meal-bottom-sheet{width:min(560px,100%);padding:18px 16px calc(16px + env(safe-area-inset-bottom))}.meal-bottom-sheet h2{margin:0 0 14px}.sheet-diners{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.sheet-diners button.selected{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft)}.sheet-note{width:100%;min-height:110px;padding:12px;border:1px solid var(--line);border-radius:9px;font:inherit;resize:vertical}.sheet-footer{display:flex;gap:8px;margin-top:14px}.sheet-footer button{flex:1;text-align:center}
@@ -2021,6 +2002,14 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
         ensure_tomorrow_menu(location)
     today_menu = get_menu_with_dishes(today_str)
     tomorrow_menu = get_menu_with_dishes(tomorrow_str)
+    visible_dish_ids = list(dict.fromkeys(
+        dish.get("dish_id")
+        for menu in (today_menu, tomorrow_menu)
+        for dishes in menu.get("meals", {}).values()
+        for dish in dishes
+        if dish.get("dish_id")
+    ))
+    visible_availability = get_dish_availability(visible_dish_ids, location)
     all_diners = get_all_diners()
     default_ids = [d["id"] for d in all_diners if d["default_attends"]]
 
@@ -2135,6 +2124,19 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
                 f'<img src="/photos/{quote(dish["image"])}" alt="{dish_cn}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><div class="no-img" hidden>No image</div>'
                 if dish.get("image") else '<div class="no-img">No image</div>'
             )
+            dish_availability = visible_availability.get(dish.get("dish_id"), {})
+            shortage_html = ""
+            if dish_availability.get("status") not in (None, "available"):
+                missing_names = [escape(name) for name in dish_availability.get("missing_names", []) if name]
+                detail = (
+                    f'缺少：{"、".join(missing_names)}'
+                    if missing_names else
+                    ("食材资料待完善" if dish_availability.get("status") == "incomplete" else "当前库存不足")
+                )
+                shortage_html = (
+                    f'<div class="dish-shortage" data-availability="{escape(dish_availability.get("status", "missing"))}">'
+                    f'<strong>缺食材 / 需购买</strong><span>{detail}</span></div>'
+                )
             card_actions = ""
             if editable:
                 card_actions = (
@@ -2142,7 +2144,7 @@ def render_meal_plan_reference(role="owner", location="shenzhen"):
                     f'<button class="search-button" type="button" title="搜索更换 Search replace" onclick="openDishSearch({menu_id},\'{meal_type}\',{dish["menu_item_id"]},\'{dish.get("dish_id","")}\',\'{dish.get("category_id") or ""}\')">更换</button>'
                     f'<button class="remove-button" type="button" title="删除 Delete" onclick="removeDish({menu_id},{dish["menu_item_id"]})">删除</button></div>'
                 )
-            cards += f'<article class="dish-card" data-item-id="{dish["menu_item_id"]}">{image_html}<div class="dish-copy"><h3>{bilingual(dish_cn,dish_en)}</h3></div>{card_actions}</article>'
+            cards += f'<article class="dish-card" data-item-id="{dish["menu_item_id"]}">{image_html}<div class="dish-copy"><h3>{bilingual(dish_cn,dish_en)}</h3>{shortage_html}</div>{card_actions}</article>'
         if not cards:
             add_action = f' onclick="openDishSearch({menu_id},\'{meal_type}\')"' if editable else " disabled"
             cards = f'<button class="add-meal-card" type="button"{add_action}>＋ {bilingual(f"添加{cn}", f"Add {en.lower()}")}</button>'
@@ -2198,9 +2200,11 @@ async function skipMeal(mid,meal){{if(!confirm('本餐不在家用餐？可随�
 async function restoreMeal(mid,meal){{await postJSON('/api/meal-plan/meal-state',{{menu_id:mid,meal_type:meal,is_skipped:false}});location.reload()}}
 async function toggleDiner(id){{let next=selectedDiners.includes(id)?selectedDiners.filter(v=>v!==id):selectedDiners.concat(id);if(!next.length)return snack('至少选择一人');await postJSON('/api/tomorrow/diners',{{menu_id:menuId,diners:next,location:currentLoc}});location.reload()}}
 function openDishSearch(mid,meal,replaceId,currentDishId,categoryId){{searchMode={{menuId:mid,meal,replaceId:replaceId||null,currentDishId:currentDishId||null,categoryId:categoryId||null}};document.getElementById('dishSearchModal').classList.add('show');document.getElementById('dishSearchInput').value='';loadDishPicker()}} function closeDishSearch(){{searchRequestId++;document.getElementById('dishSearchModal').classList.remove('show')}} function onDishSearchInput(){{clearTimeout(searchTimer);let q=document.getElementById('dishSearchInput').value.trim();searchTimer=setTimeout(()=>q?doDishSearch(q):loadDishPicker(),300)}}
-function resultRow(d,state){{return '<button class="recommendation-item" onclick="doPickDish(&quot;'+d.id+'&quot;,this)">'+(d.image?'<img loading="lazy" decoding="async" src="/photos/'+d.image+'">':'<span class="rec-no-img">No image</span>')+'<span class="recommendation-copy"><strong>'+d.name_cn+'<small>'+((d.name_en)||'')+'</small></strong><em class="'+state+'">'+(state==='available'?'Available now':state==='almost'?'Almost available':'All dishes')+'</em></span></button>'}}
-async function loadDishPicker(){{let id=++searchRequestId,c=document.getElementById('dishSearchResults');try{{let rec=await postJSON('/api/dishes/recommend',{{meal_type:searchMode.meal,current_dish_id:searchMode.currentDishId,category_id:searchMode.categoryId,location:currentLoc}});if(id!==searchRequestId)return;let available=(rec.available||[]).filter(x=>x.id!==searchMode.currentDishId),almost=(rec.almost_available||[]).filter(x=>x.id!==searchMode.currentDishId);c.innerHTML='<div class="rec-section-title">库存可做 / Available now</div>'+available.map(d=>resultRow(d,'available')).join('')+'<div class="rec-section-title">差少量 / Almost available</div>'+almost.map(d=>resultRow(d,'almost')).join('')}}catch(e){{if(id===searchRequestId)c.insertAdjacentHTML('afterbegin','<div class="inline-warning">推荐加载失败：'+e.message+'</div>')}}}}
-async function doDishSearch(q){{let id=++searchRequestId,c=document.getElementById('dishSearchResults');try{{let d=await requestJSON('/api/dishes?search='+encodeURIComponent(q));if(id!==searchRequestId)return;d=d.filter(x=>x.id!==searchMode.currentDishId).slice(0,20);let a=d.length?await postJSON('/api/dishes/availability',{{dish_ids:d.map(x=>x.id),location:currentLoc}}):{{}};if(id!==searchRequestId)return;c.innerHTML=d.map(x=>resultRow(x,(a[x.id]||{{}}).status==='available'?'available':(a[x.id]||{{}}).status==='almost_available'?'almost':'all')).join('')||'<div class="empty-state">没有结果 / No results</div>'}}catch(e){{if(id===searchRequestId)c.insertAdjacentHTML('afterbegin','<div class="inline-warning">搜索失败：'+e.message+'</div>')}}}}
+function mergeAvailability(d,a){{return Object.assign({{}},d,{{availability:a.status||'incomplete',missing_required:a.missing_names||[],missing_required_en:a.missing_names_en||[]}})}}
+function resultRow(d){{let missing=d.missing_required||[],available=d.availability==='available',detail=missing.length?'<small>缺少：'+missing.join('、')+'</small>':(!available?'<small>'+(d.availability==='incomplete'?'食材资料待完善':'当前库存不足')+'</small>':'');return '<button class="recommendation-item" onclick="doPickDish(&quot;'+d.id+'&quot;,this)">'+(d.image?'<img loading="lazy" decoding="async" src="/photos/'+d.image+'">':'<span class="rec-no-img">No image</span>')+'<span class="recommendation-copy"><strong>'+d.name_cn+'<small>'+((d.name_en)||'')+'</small></strong><em class="'+(available?'available':'missing')+'">'+(available?'库存可做 / Available now':'缺食材 / 需购买')+'</em>'+detail+'</span></button>'}}
+async function catalogRows(data,id){{data=data.filter(x=>x.id!==searchMode.currentDishId);let availability=data.length?await postJSON('/api/dishes/availability',{{dish_ids:data.map(x=>x.id),location:currentLoc}}):{{}};if(id!==searchRequestId)return null;return data.map(d=>mergeAvailability(d,availability[d.id]||{{}}))}}
+async function loadDishPicker(){{let id=++searchRequestId,c=document.getElementById('dishSearchResults');try{{let results=await Promise.all([postJSON('/api/dishes/recommend',{{meal_type:searchMode.meal,current_dish_id:searchMode.currentDishId,category_id:searchMode.categoryId,location:currentLoc}}),requestJSON('/api/dishes')]);if(id!==searchRequestId)return;let rows=await catalogRows(results[1],id);if(!rows)return;let recommended=(results[0].available||[]).map(d=>mergeAvailability(d,{{status:'available'}})),section=(title,items)=>'<div class="rec-section-title">'+title+'</div>'+(items.length?items.map(resultRow).join(''):'<div class="empty-state">暂无结果 / No results</div>');c.innerHTML=section('推荐库存可做 / Available recommendations',recommended)+section('全部菜品 / All dishes',rows)}}catch(e){{if(id===searchRequestId)c.insertAdjacentHTML('afterbegin','<div class="inline-warning">推荐加载失败：'+e.message+'</div>')}}}}
+async function doDishSearch(q){{let id=++searchRequestId,c=document.getElementById('dishSearchResults');try{{let data=await requestJSON('/api/dishes?search='+encodeURIComponent(q));if(id!==searchRequestId)return;let rows=await catalogRows(data.slice(0,20),id);if(!rows)return;c.innerHTML='<div class="rec-section-title">搜索结果 / Search results</div>'+(rows.length?rows.map(resultRow).join(''):'<div class="empty-state">没有结果 / No results</div>')}}catch(e){{if(id===searchRequestId)c.insertAdjacentHTML('afterbegin','<div class="inline-warning">搜索失败：'+e.message+'</div>')}}}}
 async function refreshMealSection(mid,meal){{let x=window.scrollX,y=window.scrollY,selector='.meal-section[data-menu-id="'+mid+'"][data-meal="'+meal+'"]',response=await fetch('/tomorrow',{{headers:{{'Accept':'text/html'}}}});if(!response.ok)throw Error('刷新餐区失败 HTTP '+response.status);let doc=new DOMParser().parseFromString(await response.text(),'text/html'),current=document.querySelector(selector),fresh=doc.querySelector(selector);if(!current||!fresh)throw Error('无法更新当前餐区');current.replaceWith(document.importNode(fresh,true));requestAnimationFrame(()=>window.scrollTo(x,y))}}
 function replacementNotice(result,fallback){{let missing=(result.availability||{{}}).missing_names||[];if(missing.length)return '已更换；缺少：'+missing.join('、')+'，需购买';if((result.availability||{{}}).status&&result.availability.status!=='available')return result.message||'已更换；库存不足，需购买食材';return result.message||fallback}}
 async function doPickDish(did,b){{if(pickBusy)return;let mode={{...searchMode}};pickBusy=true;b.disabled=true;b.textContent='处理中… Processing…';try{{let result=await postJSON(mode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add',mode.replaceId?{{menu_id:mode.menuId,menu_item_id:mode.replaceId,new_dish_id:did}}:{{menu_id:mode.menuId,dish_id:did,meal_type:mode.meal}});await refreshMealSection(mode.menuId,mode.meal);closeDishSearch();snack(result.message||(mode.replaceId?'已替换 Replaced':'已添加 Added'))}}catch(e){{snack(e.message);b.disabled=false}}finally{{pickBusy=false}}}}
