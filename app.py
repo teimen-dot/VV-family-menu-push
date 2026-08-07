@@ -41,7 +41,7 @@ from menu_service import (
     get_tomorrow_date, revert_to_draft, push_menu,
 )
 from photo_security import PhotoValidationError, resolve_photo_path
-from runtime_config import photo_dir, server_host, validate_app_startup
+from runtime_config import app_env, photo_dir, server_host, validate_app_startup
 from ingredient_service import add_or_get_ingredient, update_ingredient_names
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -2242,8 +2242,16 @@ async function repairMenu(){{if(confirm('重新生成明日菜单?')){{await pos
 </script></body></html>"""
     return tomorrow_preview_head("餐单 · Meal Plan", "tomorrow", location) + body + js
 
+def _use_formal_meal_plan_ui():
+    """Use the accepted meal-plan renderer in production and isolated previews."""
+    return (
+        app_env() == "production"
+        or os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true"
+    )
+
+
 def render_tomorrow(role="owner", location="shenzhen"):
-    if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true":
+    if _use_formal_meal_plan_ui():
         return render_meal_plan_reference(role, location)
     tomorrow = get_tomorrow_date()
     # Viewing as Worker must never create or regenerate menu data.

@@ -85,6 +85,22 @@ class MealPlanExtensionTests(unittest.TestCase):
         self.assertIn("缺食材 / 需购买", html)
         self.assertIn("缺少：牛肉", html)
 
+    def test_production_uses_accepted_meal_plan_without_preview_flag(self):
+        with patch.dict(os.environ, {
+            "APP_ENV": "production", "LOCAL_PREVIEW_UI": "false",
+        }, clear=False):
+            html = self.app.render_tomorrow("owner", "shenzhen")
+        self.assertIn("餐单", html)
+        self.assertIn("Meal Plan", html)
+        self.assertIn("按真实日期安排", html)
+        self.assertIn("Plan by actual date", html)
+        self.assertIn("今天", html)
+        self.assertIn("明天", html)
+        self.assertNotIn("全天默认成员", html)
+        self.assertNotIn("All-day default diners", html)
+        self.assertNotIn("营养概览", html)
+        self.assertNotIn("Nutrition overview", html)
+
     def test_meal_diners_note_skip_restore_and_clear_persist(self):
         ok, _ = self.app.update_meal_setting(2, "lunch", diners_marker=True, diners=["vv"])
         self.assertTrue(ok)
