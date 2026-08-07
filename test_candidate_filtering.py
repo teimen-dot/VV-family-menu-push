@@ -163,6 +163,40 @@ class SmartReplaceTests(unittest.TestCase):
         self.assertTrue(any("包" in name for name in names))
         self.assertEqual(replacements[0], replacements[len(pool)])
 
+    def test_dim_sum_complete_named_pool_cycles_and_excludes_unavailable(self):
+        conn = self.connect()
+        fixtures = (
+            ("test_dim_tang", "验收汤饺"), ("test_dim_shui", "验收水饺"),
+            ("test_dim_jian", "验收煎饺"), ("test_dim_bao", "验收包子"),
+            ("test_dim_hua", "验收花卷"), ("test_dim_missing", "缺货饭团"),
+        )
+        conn.executemany(
+            "INSERT INTO dishes(id,name_cn,category_id,meal_tags,carb_type,is_active) "
+            "VALUES(?,?,'staple_carb','[\"breakfast\"]','dim_sum',1)",
+            fixtures,
+        )
+        conn.commit()
+        conn.close()
+
+        fixture_ids = {dish_id for dish_id, _ in fixtures}
+        available_ids = fixture_ids - {"test_dim_missing"}
+
+        def fixture_availability(dish_ids, _location):
+            return {
+                dish_id: {
+                    "status": "available" if dish_id in available_ids else "missing"
+                }
+                for dish_id in dish_ids
+            }
+
+        replacements = self.cycle(
+            "test_dim_tang", "breakfast", len(available_ids) + 1,
+            fixture_availability,
+        )
+        self.assertEqual(available_ids, set(replacements[:len(available_ids)]))
+        self.assertNotIn("test_dim_missing", replacements)
+        self.assertEqual(replacements[0], replacements[len(available_ids)])
+
     def test_rice_candidates_cycle_when_available(self):
         conn = self.connect()
         for dish_id, name in (("test_rice_a", "杂粮米饭"), ("test_rice_b", "糙米饭")):

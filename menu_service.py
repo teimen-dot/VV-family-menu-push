@@ -520,6 +520,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         added_dishes = []  # V11: track mutations
         unmet_slots = []
         seen_unmet = set()
+        slot_analysis_before = {}
 
         for mt in ["breakfast", "lunch", "dinner"]:
             for did in meals_existing[mt]:
@@ -546,7 +547,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 state.add_dish(analysis, is_locked=True)
 
             # V11: 记录 slot analysis before
-            slots_before = analyze_meal_slots(mt, state, meal_diners_count)
+            slot_analysis_before[mt] = analyze_meal_slots(mt, state, meal_diners_count)
 
             added = _fill_missing_slots_v8(
                 conn, menu_id, mt, state, gf, dish_map, context,
@@ -592,6 +593,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         review["added"] = [d["dish_id"] for d in added_dishes]
         review["added_details"] = added_dishes
         review["removed"] = []
+        review["slot_analysis_before"] = slot_analysis_before
         review["slot_analysis_after"] = slot_analysis_after
 
         log_event("ai_fill_menu", "menu", str(menu_id), {

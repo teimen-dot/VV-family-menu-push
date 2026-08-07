@@ -72,6 +72,9 @@ class DinnerAiFillAcceptanceTests(unittest.TestCase):
                 self.menu_id, "shenzhen", seed=42, meal_type="dinner"
             )
         self.assertTrue(ok, message)
+        dinner_before = review["slot_analysis_before"]["dinner"]
+        self.assertEqual(1, dinner_before["protein_main"]["missing_min"])
+        self.assertEqual(1, dinner_before["protein_main"]["current"])
         protein_additions = [
             item for item in review["added_details"]
             if item["slot_role"] == "protein_main"
