@@ -240,11 +240,11 @@ class ReadonlyBootstrapTests(unittest.TestCase):
                 finally:
                     check.close()
 
-                # The existing default retains its historical audit side effect.
+                # All menu reads are now strictly read-only, including the legacy default.
                 menu_service.get_menu_with_dishes("2026-08-18", "shenzhen")
                 check = sqlite3.connect(db_path)
                 try:
-                    self.assertEqual(check.execute("SELECT COUNT(*) FROM events").fetchone()[0], 1)
+                    self.assertEqual(check.execute("SELECT COUNT(*) FROM events").fetchone()[0], 0)
                 finally:
                     check.close()
 

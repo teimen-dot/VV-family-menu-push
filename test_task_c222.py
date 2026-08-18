@@ -29,12 +29,14 @@ class NewFamilyUiTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def test_shell_injects_only_server_verified_role(self):
+    def test_frozen_shell_leaves_role_and_location_to_authenticated_bootstrap(self):
         owner = self.app.render_family_ui("owner", "shenzhen")
         worker = self.app.render_family_ui("worker", "hongkong")
-        self.assertIn('data-role="owner"', owner)
-        self.assertIn('data-role="worker"', worker)
+        self.assertEqual(owner, worker)
+        self.assertNotIn('data-role=', owner + worker)
         self.assertNotIn("__ROLE__", owner + worker)
+        self.assertNotIn("__LOCATION__", owner + worker)
+        self.assertIn("/api/family-menu/bootstrap", owner)
         self.assertEqual(self.app.authenticated_role("vivian"), "owner")
         self.assertEqual(self.app.authenticated_role("kitchen"), "worker")
         self.assertEqual(self.app.authenticated_role("admin"), "unknown")

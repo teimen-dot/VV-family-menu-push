@@ -24,8 +24,6 @@ from db import get_db, log_event, init_db
 from inventory import (
     get_latest_inventory, submit_inventory,
     get_available_ingredient_ids, check_shortages,
-    create_purchase_requests, get_purchase_requests,
-    update_purchase_status,
     save_pantry_changes, get_current_pantry,
     check_dish_availability, check_dishes_availability_batch,
     check_dish_availability_debug,
@@ -80,7 +78,6 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/delete-meal",
     "/api/tomorrow/cycle-replace",
     "/api/menu/diners",
-    "/api/purchase/update",
 }
 PANTRY_POST_PATHS = {
     "/api/pantry/submit",
@@ -1106,28 +1103,6 @@ def get_last_inventory_items(location):
             for i in inv["items"]]
 
 
-def get_menu_purchase_requests(menu_id):
-    """获取某菜单的采购任务，按食材分组"""
-    conn = get_db()
-    try:
-        menu = conn.execute("SELECT date, location FROM menus WHERE id = ?", (menu_id,)).fetchone()
-        if not menu:
-            return []
-        reqs = conn.execute(
-            "SELECT pr.*, i.name_cn as ingredient_name, i.name_en as ingredient_name_en, "
-            "d.name_cn as dish_name "
-            "FROM purchase_requests pr "
-            "LEFT JOIN ingredients i ON pr.ingredient_id = i.ingredient_id "
-            "LEFT JOIN dishes d ON pr.dish_id = d.id "
-            "WHERE pr.menu_date = ? AND pr.location = ? "
-            "ORDER BY pr.status, pr.created_at",
-            (menu["date"], menu["location"])
-        ).fetchall()
-        return [dict(r) for r in reqs]
-    finally:
-        conn.close()
-
-
 def get_dish_availability(dish_ids, location):
     """V6: 检查菜品食材可用性（使用统一 InventoryService）。
     返回 {dish_id: {available, missing_count, missing_names, total_ingredients, status}}"""
@@ -1683,8 +1658,6 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     """Render the interactive local preview with the supplied prototype DOM."""
     tomorrow = get_tomorrow_date()
     is_owner = role == "owner"
-    if is_owner:
-        ensure_tomorrow_menu(location)
     menu = get_menu_with_dishes(tomorrow, location)
     if not menu.get("exists"):
         return tomorrow_preview_head("菜单 · Menu", "tomorrow", location) + \
@@ -1996,9 +1969,6 @@ def render_tomorrow(role="owner", location="shenzhen"):
     if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true":
         return render_tomorrow_reference_preview(role, location)
     tomorrow = get_tomorrow_date()
-    # Viewing as Worker must never create or regenerate menu data.
-    if role == "owner":
-        ensure_tomorrow_menu(location)
     menu = get_menu_with_dishes(tomorrow, location)
 
     meal_colors = {
@@ -2115,15 +2085,6 @@ def render_tomorrow(role="owner", location="shenzhen"):
             warn_items = "".join(f'<div class="warn-item">⚠️ {w}</div>' for w in menu_warnings)
             sections.append(f'<div class="warning-box"><div class="warn-title">提示 Warnings ({len(menu_warnings)})</div>{warn_items}<div style="margin-top:4px;font-size:13px;color:#a89060">VV 仍可确认 · VV can still confirm</div></div>')
 
-        # 获取采购任务
-        purchase_reqs = get_menu_purchase_requests(menu["menu_id"]) if menu.get("menu_id") else []
-        # 按食材分组
-        req_by_ingredient = {}
-        for r in purchase_reqs:
-            ing_id = r["ingredient_id"]
-            if ing_id not in req_by_ingredient:
-                req_by_ingredient[ing_id] = r
-
         # 各餐次
         for mt in ["breakfast", "lunch", "afternoon_snack", "dinner"]:
             dishes = menu["meals"].get(mt, [])
@@ -2180,20 +2141,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
                     missing_names = ", ".join(short_ings[:3])
                     if len(short_ings) > 3:
                         missing_names += f" 等{len(short_ings)}种"
-                    # 检查采购任务状态
-                    req_status = None
-                    for r in purchase_reqs:
-                        if r.get("dish_id") == d["dish_id"]:
-                            req_status = r["status"]
-                            break
-                    if req_status == "notified":
-                        shortage_badge = f'<span class="badge badge-shortage-notified">已通知采购: {missing_names}</span>'
-                    elif req_status == "purchased":
-                        shortage_badge = f'<span class="badge badge-shortage-purchased">已购买: {missing_names}</span>'
-                    elif req_status == "needed":
-                        shortage_badge = f'<span class="badge badge-shortage-tobuy">待采购: {missing_names}</span>'
-                    else:
-                        shortage_badge = f'<span class="badge badge-shortage-missing">缺: {missing_names}</span>'
+                    shortage_badge = f'<span class="badge badge-shortage-missing">缺: {missing_names}</span>'
 
                 cat_label = d.get("category_id", "")
                 cat_badge = f'<span class="badge badge-cat">{cat_label}</span>' if cat_label else ""
@@ -2215,36 +2163,6 @@ def render_tomorrow(role="owner", location="shenzhen"):
             sections.append(f"""<div class="meal-section">
 <div class="meal-header"><div class="meal-bar" style="background:{color}"></div><div><span class="meal-title">{cn}</span><span class="meal-title-en">{en}</span>{optional_label}</div>{meal_actions}</div>
 {slot_hint}<div class="meal-items">{items_html}</div></div>""")
-
-        # 采购任务区（可操作）
-        if purchase_reqs and role == "owner":
-            reqs_html = ""
-            for r in purchase_reqs:
-                ing_name = r.get("ingredient_name") or r["ingredient_id"]
-                ing_en = r.get("ingredient_name_en") or ""
-                dish_name = r.get("dish_name") or ""
-                status = r["status"]
-                if status == "needed":
-                    action_btn = f'<button class="act-btn act-notify" onclick="notifyPurchase({r["id"]})">通知采购 Notify</button>'
-                    status_label = ""
-                elif status == "notified":
-                    action_btn = f'<button class="act-btn act-purchased" onclick="markPurchased({r["id"]})">已购买 Purchased</button>'
-                    status_label = '<span class="badge badge-shortage-notified">已通知</span>'
-                elif status == "purchased":
-                    action_btn = '<span class="act-btn act-purchased">✓ 已购买</span>'
-                    status_label = ""
-                else:
-                    action_btn = f'<span class="badge badge-cat">{status}</span>'
-                    status_label = ""
-
-                reqs_html += f"""<div class="purchase-task">
-<div class="info">
-<div class="dish-name-sm">{ing_name} <span style="font-size:13px;color:#a89888">{ing_en}</span></div>
-{f'<div class="missing-list">用于: {dish_name}</div>' if dish_name else ''}
-{status_label}
-</div>{action_btn}</div>"""
-
-            sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks</h3>{reqs_html}</div>')
 
         # 底部操作
         if role == "owner":
@@ -2453,16 +2371,6 @@ async function editMenu(){{
   }}else{{
     snack(result.error||'操作失败');
   }}
-}}
-async function notifyPurchase(reqId){{
-  let r=await fetch('/api/purchase/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:reqId,status:'notified',by:'owner'}})}});
-  let result=await r.json();
-  if(result.ok){{snack('已通知采购 Notified');location.reload();}}else{{snack('失败');}}
-}}
-async function markPurchased(reqId){{
-  let r=await fetch('/api/purchase/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:reqId,status:'purchased',by:'owner'}})}});
-  let result=await r.json();
-  if(result.ok){{snack('已标记购买 Purchased');location.reload();}}else{{snack('失败');}}
 }}
 </script>"""
 
@@ -2973,7 +2881,6 @@ def render_pantry(role="nanny", location="shenzhen"):
     if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true":
         return render_pantry_reference_preview(role, location)
     pantry = get_current_pantry(location)
-    reqs = get_purchase_requests(location=location) if location else []
     common = get_common_ingredients()
     all_ings = get_all_ingredients()
 
@@ -3029,36 +2936,6 @@ def render_pantry(role="nanny", location="shenzhen"):
 <h3>常用食材 Common</h3>
 <div class="ing-picker" id="commonList"></div>
 </div>""")
-
-    # 采购任务（可操作）
-    if reqs:
-        active_reqs = [r for r in reqs if r["status"] in ("needed", "notified")]
-        if active_reqs:
-            reqs_html = ""
-            for r in active_reqs:
-                ing_name = r.get("ingredient_name") or r["ingredient_id"]
-                ing_en = r.get("ingredient_name_en") or ""
-                dish_name = r.get("dish_name") or ""
-                status = r["status"]
-
-                if status == "needed":
-                    action_btn = f'<button class="act-btn act-notify" onclick="notifyPurchase({r["id"]})">通知采购 Notify</button>'
-                    status_badge = ""
-                elif status == "notified":
-                    action_btn = f'<button class="act-btn act-purchased" onclick="markPurchased({r["id"]})">已购买 Purchased</button>'
-                    status_badge = '<span class="badge badge-shortage-notified">已通知 Notified</span>'
-                else:
-                    action_btn = f'<span class="badge badge-cat">{status}</span>'
-                    status_badge = ""
-
-                reqs_html += f"""<div class="purchase-task">
-<div class="info">
-<div class="dish-name-sm">{ing_name} <span style="font-size:13px;color:#a89888">{ing_en}</span></div>
-{f'<div class="missing-list">用于: {dish_name}</div>' if dish_name else ''}
-{status_badge}
-</div>{action_btn}</div>"""
-
-            sections.append(f'<div class="card"><h3>采购任务 Purchase Tasks ({len(active_reqs)})</h3>{reqs_html}</div>')
 
     # V6: 保存状态提示
     sections.append('<div id="saveIndicator" style="text-align:center;padding:8px;color:#a89888;font-size:14px;display:none">✓ 已保存 Saved</div>')
@@ -3150,16 +3027,6 @@ async function sameAsLast(){{
 function showSaved(){{
   let s=document.getElementById('saveIndicator');
   if(s){{s.style.display='block';setTimeout(()=>s.style.display='none',1500);}}
-}}
-async function notifyPurchase(reqId){{
-  let r=await fetch('/api/purchase/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:reqId,status:'notified',by:'nanny'}})}});
-  let result=await r.json();
-  if(result.ok){{snack('已通知采购 Notified');location.reload();}}else{{snack('失败');}}
-}}
-async function markPurchased(reqId){{
-  let r=await fetch('/api/purchase/update',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{id:reqId,status:'purchased',by:'nanny'}})}});
-  let result=await r.json();
-  if(result.ok){{snack('已标记购买 Purchased');location.reload();}}else{{snack('失败');}}
 }}
 init();
 </script>"""
@@ -3537,8 +3404,6 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(get_all_ingredients())
         elif path == "/api/tomorrow":
             tomorrow = get_tomorrow_date()
-            if role == "owner":
-                ensure_tomorrow_menu(location)
             self.send_json(get_menu_with_dishes(tomorrow, location))
         elif path == "/api/family-menu/bootstrap":
             self.send_json(build_family_menu_bootstrap(location, role))
@@ -3553,9 +3418,6 @@ class AppHandler(BaseHTTPRequestHandler):
             # V4: 兼容旧接口，返回 current_pantry items
             pantry = get_current_pantry(location)
             self.send_json(pantry["items"] if pantry else [])
-        elif path == "/api/purchase-requests":
-            reqs = get_purchase_requests(location=location, status=qs.get("status", [None])[0])
-            self.send_json(reqs)
         elif path == "/api/categories":
             self.send_json(get_categories())
         elif path == "/api/diners":
@@ -3984,10 +3846,6 @@ class AppHandler(BaseHTTPRequestHandler):
             from push_service import push_confirmed_menu
             ok, msg = push_confirmed_menu(body["menu_id"], triggered_by=username, allow_retry=True)
             self.send_json({"ok": ok, "error": msg if not ok else None, "message": msg})
-
-        elif path == "/api/purchase/update":
-            update_purchase_status(body["id"], body["status"], resolved_by=body.get("by", "nanny"))
-            self.send_json({"ok": True})
 
         elif path == "/api/menu/diners":
             diners = body.get("diners")
