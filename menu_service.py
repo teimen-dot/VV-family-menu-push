@@ -343,6 +343,11 @@ def get_menu_with_dishes(date_str, location=None):
         except (TypeError, json.JSONDecodeError):
             meal_notes = {}
 
+        try:
+            diners = json.loads(menu["diners"] or "[]") if "diners" in menu.keys() else []
+        except (TypeError, json.JSONDecodeError):
+            diners = []
+
         return {
             "date": date_str,
             "exists": True,
@@ -354,6 +359,13 @@ def get_menu_with_dishes(date_str, location=None):
             "push_error": menu["push_error"] if "push_error" in menu.keys() else None,
             "location": location,
             "meals": meals,
+            "diners": diners,
+            "diners_count": _get_effective_diners_count(menu_row=menu),
+            "meal_mode": menu["meal_mode"] if "meal_mode" in menu.keys() else "daily",
+            "banquet_total_diners": (
+                menu["banquet_total_diners"] if "banquet_total_diners" in menu.keys() else None
+            ),
+            "availability": avail_batch,
             "shortages": shortage_map,
             "review_issues": menu["notes_zh"] or "",
             "meal_notes": meal_notes,

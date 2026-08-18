@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs
+from zoneinfo import ZoneInfo
 from db import get_db, log_event, init_db
 from inventory import (
     get_latest_inventory, submit_inventory,
@@ -54,6 +55,7 @@ HOST = server_host()
 PHOTOS_DIR = photo_dir(BASE_DIR)
 PWA_DIR = os.path.join(BASE_DIR, "pwa", "family")
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
+FAMILY_MENU_UI_DIR = os.path.join(PUBLIC_DIR, "family-menu")
 LOCATIONS = {"shenzhen": "深圳 Shenzhen", "hongkong": "香港 Hong Kong"}
 SESSION_COOKIE_NAME = "__Host-family_session"
 SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -976,6 +978,144 @@ def get_history_menus(days=30, location=None):
         return result
     finally:
         conn.close()
+
+
+# ============================================================
+# Final Family UI — phase 1 read-only menu bootstrap
+# ============================================================
+
+READONLY_MEAL_TYPES = ("breakfast", "lunch", "dinner")
+READONLY_MEAL_CUTOFFS = (
+    ("breakfast", (10, 30)),
+    ("lunch", (15, 0)),
+    ("dinner", (22, 0)),
+)
+DAY_LABELS = (
+    ("今天", "Today"),
+    ("明天", "Tomorrow"),
+    ("后天", "Day After Tomorrow"),
+    ("大后天", "Three Days Ahead"),
+)
+WEEKDAY_LABELS = (
+    ("星期一", "Monday"), ("星期二", "Tuesday"), ("星期三", "Wednesday"),
+    ("星期四", "Thursday"), ("星期五", "Friday"), ("星期六", "Saturday"),
+    ("星期日", "Sunday"),
+)
+FAMILY_TIMEZONE = ZoneInfo("Asia/Shanghai")
+
+
+def _readonly_starting_meal(now):
+    """Return the current/next meal slot using the server's local China/HK time."""
+    current_minutes = now.hour * 60 + now.minute
+    for meal_type, (hour, minute) in READONLY_MEAL_CUTOFFS:
+        if current_minutes < hour * 60 + minute:
+            return 0, meal_type
+    return 1, "breakfast"
+
+
+def _empty_readonly_menu(date_str, location):
+    return {
+        "date": date_str,
+        "exists": False,
+        "location": location,
+        "menu_id": None,
+        "status": "not_generated",
+        "diners": [],
+        "diners_count": None,
+        "meal_notes": {},
+        "availability": {},
+        "shortages": {},
+        "meals": {meal_type: [] for meal_type in READONLY_MEAL_TYPES},
+    }
+
+
+def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
+    """Build the final UI's four-day read-only view without generating or mutating data."""
+    if location not in LOCATIONS:
+        location = "shenzhen"
+    now = now or datetime.now(FAMILY_TIMEZONE)
+    today = now.date()
+    days = []
+    for offset, (label_cn, label_en) in enumerate(DAY_LABELS):
+        day_date = today + timedelta(days=offset)
+        date_str = day_date.isoformat()
+        menu = get_menu_with_dishes(date_str, location)
+        if not menu.get("exists"):
+            menu = _empty_readonly_menu(date_str, location)
+        else:
+            # Phase 1 intentionally exposes only breakfast/lunch/dinner.
+            menu["meals"] = {
+                meal_type: menu.get("meals", {}).get(meal_type, [])
+                for meal_type in READONLY_MEAL_TYPES
+            }
+        weekday_cn, weekday_en = WEEKDAY_LABELS[day_date.weekday()]
+        days.append({
+            "offset": offset,
+            "label_cn": label_cn,
+            "label_en": label_en,
+            "weekday_cn": weekday_cn,
+            "weekday_en": weekday_en,
+            "date": date_str,
+            "menu": menu,
+        })
+
+    start_offset, start_meal = _readonly_starting_meal(now)
+    start_index = READONLY_MEAL_TYPES.index(start_meal)
+    candidates = []
+    for day_offset in range(start_offset, len(days)):
+        meal_start = start_index if day_offset == start_offset else 0
+        for meal_type in READONLY_MEAL_TYPES[meal_start:]:
+            candidates.append((day_offset, meal_type))
+
+    selected = None
+    for day_offset, meal_type in candidates:
+        menu = days[day_offset]["menu"]
+        if menu.get("exists") and menu.get("meals", {}).get(meal_type):
+            selected = (day_offset, meal_type)
+            break
+    if selected is None and candidates:
+        selected = candidates[0]
+
+    next_meal = None
+    if selected:
+        day_offset, meal_type = selected
+        day = days[day_offset]
+        menu = day["menu"]
+        next_meal = {
+            "day_offset": day_offset,
+            "date": day["date"],
+            "day_label_cn": day["label_cn"],
+            "day_label_en": day["label_en"],
+            "meal_type": meal_type,
+            "menu_id": menu.get("menu_id"),
+            "status": menu.get("status"),
+            "diners_count": menu.get("diners_count"),
+            "note": menu.get("meal_notes", {}).get(meal_type, ""),
+            "dishes": menu.get("meals", {}).get(meal_type, []),
+            "availability": menu.get("availability", {}),
+        }
+
+    return {
+        "readonly": True,
+        "role": role,
+        "location": location,
+        "location_label": LOCATIONS[location],
+        "server_now": now.isoformat(timespec="seconds"),
+        "days": days,
+        "next_meal": next_meal,
+    }
+
+
+def render_family_menu_readonly(role="owner", location="shenzhen"):
+    index_path = os.path.join(FAMILY_MENU_UI_DIR, "index.html")
+    with open(index_path, encoding="utf-8") as handle:
+        html = handle.read()
+    return html.replace("__ROLE__", role).replace("__LOCATION__", location)
+
+
+def render_family_ui(role="owner", location="shenzhen"):
+    """Compatibility entry point for the authenticated Family UI shell."""
+    return render_family_menu_readonly(role, location)
 
 
 def get_last_inventory_items(location):
@@ -3415,6 +3555,10 @@ class AppHandler(BaseHTTPRequestHandler):
             self.serve_public_asset(path[1:])
             return
 
+        if path.startswith("/family-menu/"):
+            self.serve_family_menu_asset(path[len("/family-menu/"):])
+            return
+
         if path in ("/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/favicon.png"):
             self.serve_pwa_asset(path[1:])
             return
@@ -3442,7 +3586,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
         elif path == "/" or path == "/tomorrow":
-            self.send_html(render_tomorrow(role, location))
+            self.send_html(render_family_menu_readonly(role, location))
         elif path == "/pantry":
             self.send_html(render_pantry(role, location))
         elif path == "/pantry/submit":
@@ -3486,6 +3630,8 @@ class AppHandler(BaseHTTPRequestHandler):
             if role == "owner":
                 ensure_tomorrow_menu(location)
             self.send_json(get_menu_with_dishes(tomorrow, location))
+        elif path == "/api/family-menu/bootstrap":
+            self.send_json(build_family_menu_bootstrap(location, role))
         elif path == "/api/history":
             days = int(qs.get("days", ["30"])[0])
             self.send_json(get_history_menus(days, location))
@@ -4086,6 +4232,25 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "public, max-age=86400")
+        self.end_headers()
+        self.wfile.write(data)
+
+    def serve_family_menu_asset(self, filename):
+        allowed = {
+            "app.js": "application/javascript; charset=utf-8",
+            "styles.css": "text/css; charset=utf-8",
+        }
+        content_type = allowed.get(filename)
+        filepath = os.path.join(FAMILY_MENU_UI_DIR, filename)
+        if not content_type or not os.path.isfile(filepath):
+            self.send_error(404, "Not Found")
+            return
+        with open(filepath, "rb") as handle:
+            data = handle.read()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         self.wfile.write(data)
 
