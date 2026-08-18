@@ -46,6 +46,57 @@ def menu_for(date_str, location, with_dishes=True, **_kwargs):
     }
 
 
+class EffectiveDinersCountTests(unittest.TestCase):
+    @staticmethod
+    def _menu_row(**overrides):
+        row = {
+            "diners": None,
+            "diners_count": 4,
+            "meal_mode": "daily",
+            "banquet_total_diners": None,
+        }
+        row.update(overrides)
+        return row
+
+    def test_empty_diners_list_falls_back_to_positive_diners_count(self):
+        row = self._menu_row(diners="[]", diners_count=4)
+        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
+
+    def test_nonempty_diners_list_uses_list_length(self):
+        row = self._menu_row(diners='["a","b","c"]', diners_count=4)
+        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 3)
+
+    def test_null_or_empty_diners_falls_back_to_positive_diners_count(self):
+        for diners in (None, ""):
+            with self.subTest(diners=diners):
+                row = self._menu_row(diners=diners, diners_count=4)
+                self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
+
+    def test_non_array_json_falls_back_to_positive_diners_count(self):
+        for diners in ("{}", "null"):
+            with self.subTest(diners=diners):
+                row = self._menu_row(diners=diners, diners_count=4)
+                self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
+
+    def test_positive_banquet_total_remains_highest_priority(self):
+        row = self._menu_row(
+            diners='["a","b","c"]',
+            diners_count=4,
+            meal_mode="banquet",
+            banquet_total_diners=8,
+        )
+        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 8)
+
+    def test_all_invalid_values_keep_final_fallback(self):
+        row = self._menu_row(
+            diners="not-json",
+            diners_count=0,
+            meal_mode="daily",
+            banquet_total_diners=None,
+        )
+        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
+
+
 class ReadonlyBootstrapTests(unittest.TestCase):
     def test_bootstrap_reads_exact_four_days_and_keeps_location_boundary(self):
         now = datetime(2026, 8, 18, 11, 0)

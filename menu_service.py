@@ -27,13 +27,14 @@ _catalog_cache = {"version": None, "pool": None}
 
 def _get_effective_diners_count(menu_id=None, menu_row=None):
     """V11: 获取有效用餐人数，支持 banquet 模式。
-    banquet 模式下使用 banquet_total_diners；daily 模式下使用 diners 数组长度。
+    banquet 模式下优先使用 banquet_total_diners；daily 模式下优先使用有效 diners 名单。
     """
     if menu_row is None and menu_id:
         conn = get_db()
         try:
             menu_row = conn.execute(
-                "SELECT diners, meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+                "SELECT diners, diners_count, meal_mode, banquet_total_diners "
+                "FROM menus WHERE id = ?",
                 (menu_id,)
             ).fetchone()
         finally:
@@ -45,18 +46,23 @@ def _get_effective_diners_count(menu_id=None, menu_row=None):
     meal_mode = menu_row["meal_mode"] if "meal_mode" in menu_row.keys() else "daily"
     if meal_mode == "banquet":
         banquet_total = menu_row["banquet_total_diners"] if "banquet_total_diners" in menu_row.keys() else None
-        if banquet_total and banquet_total > 0:
+        if isinstance(banquet_total, int) and not isinstance(banquet_total, bool) and banquet_total > 0:
             return banquet_total
 
-    diners_json = menu_row["diners"]
+    diners_json = menu_row["diners"] if "diners" in menu_row.keys() else None
     if diners_json:
         try:
             diner_ids = json.loads(diners_json)
-            return max(len(diner_ids), 1)
         except (json.JSONDecodeError, TypeError):
             pass
+        else:
+            if isinstance(diner_ids, list) and diner_ids:
+                return len(diner_ids)
 
-    return menu_row["diners_count"] if menu_row["diners_count"] else 4
+    diners_count = menu_row["diners_count"] if "diners_count" in menu_row.keys() else None
+    if isinstance(diners_count, int) and not isinstance(diners_count, bool) and diners_count > 0:
+        return diners_count
+    return 4
 
 
 def _load_pool():
@@ -145,7 +151,7 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     conn_pre = get_db()
     try:
         existing = conn_pre.execute(
-            "SELECT diners, meal_mode, banquet_total_diners FROM menus "
+            "SELECT diners, diners_count, meal_mode, banquet_total_diners FROM menus "
             "WHERE date = ? AND location = ?",
             (date_str, location)
         ).fetchone()
@@ -523,7 +529,8 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
     conn = get_db()
     try:
         menu = conn.execute(
-            "SELECT date, location, diners, meal_mode, banquet_total_diners FROM menus WHERE id = ?",
+            "SELECT date, location, diners, diners_count, meal_mode, banquet_total_diners "
+            "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
         if not menu:
@@ -834,7 +841,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
     conn = get_db()
     try:
         menu = conn.execute(
-            "SELECT date, location, diners, meal_mode, banquet_total_diners "
+            "SELECT date, location, diners, diners_count, meal_mode, banquet_total_diners "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
@@ -1070,7 +1077,7 @@ def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include
     try:
         conn.execute("BEGIN IMMEDIATE")
         menu = conn.execute(
-            "SELECT date, location, status, diners, meal_mode, banquet_total_diners "
+            "SELECT date, location, status, diners, diners_count, meal_mode, banquet_total_diners "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
