@@ -12,6 +12,8 @@ import inventory
 import menu_service
 from apply_adjudication_20260817 import (
     apply_adjudication, ensure_schema, PROTECTED_PENDING_IDS,
+    BEEF_BRAISED_RICE_ID, BRAISED_RICE_SOURCE_ID, BRAISED_RICE_SOURCE_NAME,
+    FISH_BRAISED_RICE_NAME, MUSHROOM_SOUPS,
 )
 from rule_engine import (
     GapFiller,
@@ -265,49 +267,132 @@ class DatabaseRuleTests(unittest.TestCase):
 
 
 class MigrationProtectionTests(unittest.TestCase):
-    def test_migration_is_idempotent_and_preserves_six_pending_rows(self):
-        source = os.path.join(os.path.dirname(__file__), "family_menu.db")
+    def _production_backup(self):
+        source = os.environ.get(
+            "ADJUDICATION_PRODUCTION_BACKUP",
+            os.path.join(os.path.dirname(__file__), "family_menu.db"),
+        )
         if not os.path.isfile(source):
             self.skipTest("frozen local database not present")
+        return source
+
+    def _copy_database(self, source, target):
+        source_conn = sqlite3.connect(
+            f"file:{source}?mode=ro&immutable=1", uri=True,
+        )
+        target_conn = sqlite3.connect(target)
+        source_conn.backup(target_conn)
+        target_conn.close()
+        source_conn.close()
+
+    def _pending_snapshot(self, conn):
+        values = {}
+        for dish_id in PROTECTED_PENDING_IDS:
+            row = conn.execute("SELECT * FROM dishes WHERE id=?", (dish_id,)).fetchone()
+            req = conn.execute(
+                "SELECT ingredient_id,required FROM dish_ingredients "
+                "WHERE dish_id=? ORDER BY ingredient_id", (dish_id,),
+            ).fetchall()
+            values[dish_id] = (
+                tuple(row) if row else None,
+                tuple((item["ingredient_id"], item["required"]) for item in req),
+            )
+        return values
+
+    def _adjudicated_snapshot(self, conn):
+        dish_ids = (BRAISED_RICE_SOURCE_ID, BEEF_BRAISED_RICE_ID, *MUSHROOM_SOUPS)
+        dishes = {
+            row["id"]: tuple(row)
+            for row in conn.execute(
+                "SELECT id,name_cn,name_en,category_id,meal_tags,protein_types,carb_type,"
+                "meal_roles,quick_soup,slow_soup,image,image_uploaded,is_active,deleted_at,"
+                "ingredients_pending,pending_review FROM dishes WHERE id IN ({}) "
+                "ORDER BY id".format(",".join("?" for _ in dish_ids)),
+                dish_ids,
+            )
+        }
+        required = {
+            dish_id: tuple(
+                row["ingredient_id"] for row in conn.execute(
+                    "SELECT ingredient_id FROM dish_ingredients "
+                    "WHERE dish_id=? AND required=1 ORDER BY ingredient_id", (dish_id,),
+                )
+            )
+            for dish_id in dish_ids
+        }
+        return dishes, required
+
+    def test_production_shape_strict_dry_run_split_and_idempotency(self):
+        source = self._production_backup()
         with tempfile.TemporaryDirectory() as tempdir:
             target = os.path.join(tempdir, "copy.db")
-            source_conn = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-            target_conn = sqlite3.connect(target)
-            source_conn.backup(target_conn)
-            target_conn.close()
-            source_conn.close()
+            self._copy_database(source, target)
             conn = sqlite3.connect(target)
             conn.row_factory = sqlite3.Row
             conn.execute("PRAGMA foreign_keys=OFF")
             ensure_schema(conn)
             conn.commit()
 
-            def snapshot():
-                values = {}
-                for dish_id in PROTECTED_PENDING_IDS:
-                    row = conn.execute("SELECT * FROM dishes WHERE id=?", (dish_id,)).fetchone()
-                    req = conn.execute(
-                        "SELECT ingredient_id,required FROM dish_ingredients "
-                        "WHERE dish_id=? ORDER BY ingredient_id", (dish_id,),
-                    ).fetchall()
-                    values[dish_id] = (
-                        tuple(row) if row else None,
-                        tuple((item["ingredient_id"], item["required"]) for item in req),
-                    )
-                return values
+            before = self._pending_snapshot(conn)
 
-            before = snapshot()
+            # Default dry-run semantics: strict migration succeeds, then rolls back.
             conn.execute("BEGIN IMMEDIATE")
-            apply_adjudication(conn, strict=False)
-            conn.commit()
-            after_first = snapshot()
+            apply_adjudication(conn, strict=True)
+            dry_run_state = self._adjudicated_snapshot(conn)
+            self.assertIn(BEEF_BRAISED_RICE_ID, dry_run_state[0])
+            conn.rollback()
+            self.assertEqual(
+                conn.execute(
+                    "SELECT name_cn FROM dishes WHERE id=?", (BRAISED_RICE_SOURCE_ID,)
+                ).fetchone()["name_cn"],
+                BRAISED_RICE_SOURCE_NAME,
+            )
+            self.assertIsNone(conn.execute(
+                "SELECT 1 FROM dishes WHERE id=?", (BEEF_BRAISED_RICE_ID,)
+            ).fetchone())
+
             conn.execute("BEGIN IMMEDIATE")
-            apply_adjudication(conn, strict=False)
+            apply_adjudication(conn, strict=True)
             conn.commit()
-            after_second = snapshot()
-            self.assertEqual(before, after_first)
-            self.assertEqual(before, after_second)
+            after_first_pending = self._pending_snapshot(conn)
+            after_first = self._adjudicated_snapshot(conn)
+
+            fish = after_first[0][BRAISED_RICE_SOURCE_ID]
+            beef = after_first[0][BEEF_BRAISED_RICE_ID]
+            self.assertEqual(fish[1], FISH_BRAISED_RICE_NAME)
+            self.assertEqual(fish[5], '["fish"]')
+            self.assertEqual(beef[1:3], ("牛肉焖饭", "Beef Braised Rice"))
+            self.assertEqual(beef[5], '["beef"]')
+            self.assertIsNone(beef[10])
+            self.assertEqual(beef[11], 0)
+            self.assertEqual(after_first[1][BRAISED_RICE_SOURCE_ID], ("any_available_fish",))
+            self.assertEqual(after_first[1][BEEF_BRAISED_RICE_ID], ("beef",))
+            self.assertFalse(conn.execute(
+                "SELECT 1 FROM dishes WHERE name_cn=? AND is_active=1",
+                (BRAISED_RICE_SOURCE_NAME,),
+            ).fetchone())
+            for dish_id, accepted_names in MUSHROOM_SOUPS.items():
+                self.assertIn(after_first[0][dish_id][1], accepted_names)
+                self.assertIn("any_available_mushroom", after_first[1][dish_id])
+                self.assertIn("quick_soup", json.loads(after_first[0][dish_id][7]))
+
+            conn.execute("BEGIN IMMEDIATE")
+            apply_adjudication(conn, strict=True)
+            conn.commit()
+            after_second_pending = self._pending_snapshot(conn)
+            after_second = self._adjudicated_snapshot(conn)
+
+            self.assertEqual(before, after_first_pending)
+            self.assertEqual(before, after_second_pending)
+            self.assertEqual(after_first, after_second)
+            self.assertEqual(
+                conn.execute(
+                    "SELECT COUNT(*) FROM dishes WHERE id=?", (BEEF_BRAISED_RICE_ID,)
+                ).fetchone()[0],
+                1,
+            )
             self.assertEqual(conn.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
             indexes = {
                 tuple(row["name"] for row in conn.execute(f"PRAGMA index_info('{idx['name']}')"))
                 for idx in conn.execute("PRAGMA index_list(menus)") if idx["unique"]

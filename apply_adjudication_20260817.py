@@ -28,8 +28,19 @@ VEGETABLE_ROLE_BACKFILL = (
     "蒜蓉上海青", "清炒生菜", "清炒上海青", "清炒红苋菜",
 )
 
-QUICK_SOUPS = ("番茄菌菇小白菜汤", "番茄菌菇豆腐汤", "肉饼汤")
+QUICK_SOUPS = ("肉饼汤",)
 SLOW_SOUPS = ("莲藕松茸芹菜粒鸡汤", "白萝卜炖鸡汤")
+
+BRAISED_RICE_SOURCE_ID = "dish_0177"
+BRAISED_RICE_SOURCE_NAME = "姜葱鱼 或 牛肉 焖饭"
+FISH_BRAISED_RICE_NAME = "姜葱鱼焖饭"
+BEEF_BRAISED_RICE_ID = "d9002"
+BEEF_BRAISED_RICE_NAME = "牛肉焖饭"
+
+MUSHROOM_SOUPS = {
+    "dish_0072": ("番茄菌菇小白菜汤", "番茄（西红柿）菌菇小白菜汤"),
+    "dish_0073": ("番茄菌菇豆腐汤", "番茄（西红柿）菌菇豆腐汤"),
+}
 
 PLACEHOLDERS = {
     "any_available_vegetable": ("任意可用蔬菜", "Any Available Vegetable", "vegetable"),
@@ -149,6 +160,22 @@ def _merge_json_field(conn, name, field, add=(), remove=()):
         )
 
 
+def _merge_json_field_by_id(conn, dish_id, field, add=(), remove=()):
+    row = conn.execute(
+        f"SELECT {field} FROM dishes WHERE id=?", (dish_id,)
+    ).fetchone()
+    if not row:
+        return
+    values = [value for value in _json_list(row[field]) if value not in set(remove)]
+    for value in add:
+        if value not in values:
+            values.append(value)
+    conn.execute(
+        f"UPDATE dishes SET {field}=?, updated_at=datetime('now') WHERE id=?",
+        (json.dumps(values, ensure_ascii=False), dish_id),
+    )
+
+
 def _dish_ids(conn, name):
     return [row["id"] for row in conn.execute("SELECT id FROM dishes WHERE name_cn=?", (name,))]
 
@@ -171,6 +198,15 @@ def _set_required(conn, dish_name, required_ids):
             )
 
 
+def _set_required_by_id(conn, dish_id, required_ids):
+    conn.execute("DELETE FROM dish_ingredients WHERE dish_id=?", (dish_id,))
+    for ingredient_id in required_ids:
+        conn.execute(
+            "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+            (dish_id, ingredient_id),
+        )
+
+
 def _replace_required(conn, dish_name, remove_ids, add_ids):
     for dish_id in _dish_ids(conn, dish_name):
         if remove_ids:
@@ -185,6 +221,78 @@ def _replace_required(conn, dish_name, remove_ids, add_ids):
                 "ON CONFLICT(dish_id,ingredient_id) DO UPDATE SET required=1",
                 (dish_id, ingredient_id),
             )
+
+
+def _replace_mushroom_required_by_id(conn, dish_id):
+    conn.execute(
+        "DELETE FROM dish_ingredients WHERE dish_id=? AND ingredient_id IN ("
+        "SELECT ingredient_id FROM ingredient_classifications WHERE class_id='mushroom'"
+        ")",
+        (dish_id,),
+    )
+    conn.execute(
+        "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES "
+        "(?,'any_available_mushroom',1) "
+        "ON CONFLICT(dish_id,ingredient_id) DO UPDATE SET required=1",
+        (dish_id,),
+    )
+
+
+def _clone_dish(conn, source_id, new_id):
+    columns = _columns(conn, "dishes")
+    quoted = ", ".join(f'"{column}"' for column in columns)
+    values = ", ".join("?" if column == "id" else f'"{column}"' for column in columns)
+    conn.execute(
+        f"INSERT INTO dishes ({quoted}) SELECT {values} FROM dishes WHERE id=?",
+        (new_id, source_id),
+    )
+
+
+def _split_braised_rice(conn):
+    source = conn.execute(
+        "SELECT id,name_cn FROM dishes WHERE id=?", (BRAISED_RICE_SOURCE_ID,)
+    ).fetchone()
+    if not source:
+        raise AssertionError(f"missing braised-rice source ID: {BRAISED_RICE_SOURCE_ID}")
+
+    beef = conn.execute(
+        "SELECT id,name_cn FROM dishes WHERE id=?", (BEEF_BRAISED_RICE_ID,)
+    ).fetchone()
+    name_collisions = conn.execute(
+        "SELECT id FROM dishes WHERE name_cn=? AND id<>?",
+        (BEEF_BRAISED_RICE_NAME, BEEF_BRAISED_RICE_ID),
+    ).fetchall()
+    if name_collisions:
+        raise AssertionError(
+            f"deterministic beef dish ID conflicts with existing name: "
+            f"{[row['id'] for row in name_collisions]}"
+        )
+    if beef and beef["name_cn"] != BEEF_BRAISED_RICE_NAME:
+        raise AssertionError(
+            f"deterministic beef dish ID already belongs to: {beef['name_cn']}"
+        )
+    if not beef:
+        _clone_dish(conn, BRAISED_RICE_SOURCE_ID, BEEF_BRAISED_RICE_ID)
+
+    conn.execute(
+        "UPDATE dishes SET name_cn=?,category_id='one_pot_meal',"
+        "meal_tags='[\"lunch\"]',protein_types='[\"fish\"]',carb_type='rice',"
+        "meal_roles='[\"one_pot_meal\"]',is_active=1,deleted_at=NULL,"
+        "ingredients_pending=0,pending_review=NULL,updated_at=datetime('now') WHERE id=?",
+        (FISH_BRAISED_RICE_NAME, BRAISED_RICE_SOURCE_ID),
+    )
+    _set_required_by_id(conn, BRAISED_RICE_SOURCE_ID, ("any_available_fish",))
+
+    conn.execute(
+        "UPDATE dishes SET name_cn=?,name_en='Beef Braised Rice',"
+        "category_id='one_pot_meal',meal_tags='[\"lunch\"]',"
+        "protein_types='[\"beef\"]',vegetables='[]',vegetable_count=0,"
+        "carb_type='rice',meal_roles='[\"one_pot_meal\"]',image=NULL,image_uploaded=0,"
+        "is_active=1,deleted_at=NULL,ingredients_pending=0,pending_review=NULL,"
+        "updated_at=datetime('now') WHERE id=?",
+        (BEEF_BRAISED_RICE_NAME, BEEF_BRAISED_RICE_ID),
+    )
+    _set_required_by_id(conn, BEEF_BRAISED_RICE_ID, ("beef",))
 
 
 def _classify_existing_ingredients(conn):
@@ -231,9 +339,9 @@ def _assert_strict_source_records(conn):
     exact_names = {
         "汤饺", "水饺", "牛油果洋葱酱三文鱼籽", "酱油凉拌豆腐牛油果",
         "鸡丝青瓜丝嫩豆腐", "豆腐蒸蛋", "鱼籽寿司卷", "水煮鱼",
-        "清蒸红斑鱼", "姜葱鱼焖饭", "番茄菌菇小白菜汤", "番茄菌菇豆腐汤",
+        "清蒸红斑鱼",
         "杂蔬虾仁藜麦炒饭", "酸辣娃娃菜", "沙拉菜", "日式溏心蛋",
-        "金银蛋炒虾仁", "酸种面包", "牛肉焖饭", "黑鱼子酱配豆腐",
+        "金银蛋炒虾仁", "酸种面包", "黑鱼子酱配豆腐",
         "四味豆腐沙拉", "火腿松茸豆腐汤",
         *QUICK_SOUPS, *SLOW_SOUPS, *VEGETABLE_ROLE_BACKFILL, *PROTEIN_ROLE_BACKFILL,
     }
@@ -248,6 +356,35 @@ def _assert_strict_source_records(conn):
     missing = sorted(exact_names - found)
     if missing:
         raise AssertionError(f"strict source is missing adjudicated dishes: {missing}")
+
+    braised_rice = conn.execute(
+        "SELECT name_cn FROM dishes WHERE id=?", (BRAISED_RICE_SOURCE_ID,)
+    ).fetchone()
+    if not braised_rice or braised_rice["name_cn"] not in (
+        BRAISED_RICE_SOURCE_NAME, FISH_BRAISED_RICE_NAME,
+    ):
+        raise AssertionError(
+            f"strict source is missing {BRAISED_RICE_SOURCE_ID} / {BRAISED_RICE_SOURCE_NAME}"
+        )
+    beef = conn.execute(
+        "SELECT name_cn FROM dishes WHERE id=?", (BEEF_BRAISED_RICE_ID,)
+    ).fetchone()
+    if beef and beef["name_cn"] != BEEF_BRAISED_RICE_NAME:
+        raise AssertionError(f"strict source has conflicting ID: {BEEF_BRAISED_RICE_ID}")
+    if braised_rice["name_cn"] == FISH_BRAISED_RICE_NAME and not beef:
+        raise AssertionError("strict source has a partial braised-rice split")
+    if conn.execute(
+        "SELECT 1 FROM dishes WHERE name_cn=? AND id<>? LIMIT 1",
+        (BEEF_BRAISED_RICE_NAME, BEEF_BRAISED_RICE_ID),
+    ).fetchone():
+        raise AssertionError("strict source has a conflicting beef braised-rice ID")
+
+    for dish_id, accepted_names in MUSHROOM_SOUPS.items():
+        row = conn.execute("SELECT name_cn FROM dishes WHERE id=?", (dish_id,)).fetchone()
+        if not row or row["name_cn"] not in accepted_names:
+            raise AssertionError(
+                f"strict source is missing {dish_id} / {' or '.join(accepted_names)}"
+            )
     if not conn.execute(
         "SELECT 1 FROM dishes WHERE name_cn LIKE '牛油果%早餐盘%' LIMIT 1"
     ).fetchone():
@@ -274,6 +411,7 @@ def _update_dishes(conn):
     _ensure_ingredient(conn, "baby_cabbage", "娃娃菜", "Baby Chinese Cabbage", "vegetable")
     _ensure_ingredient(conn, "三文鱼籽", "三文鱼籽", "Salmon Roe", "protein")
     _classify_existing_ingredients(conn)
+    _split_braised_rice(conn)
 
     # Onepot and source-dependent meal coverage.
     conn.execute(
@@ -332,15 +470,11 @@ def _update_dishes(conn):
 
     # Required-ingredient adjudications.
     _replace_required(conn, "鱼籽寿司卷", ("fish", "鱼籽", "黑鱼子酱"), ("三文鱼籽",))
-    for name in ("水煮鱼", "姜葱鱼焖饭"):
+    for name in ("水煮鱼",):
         _replace_required(conn, name, ("fish", "cod", "mackerel"), ("any_available_fish",))
     _replace_required(conn, "清蒸红斑鱼", ("fish", "cod", "mackerel"), ("any_available_grouper",))
-    for name in ("番茄菌菇小白菜汤", "番茄菌菇豆腐汤"):
-        _replace_required(
-            conn, name,
-            ("mushroom", "mushroom_generic", "button_mushroom", "buna_mushroom", "maitake"),
-            ("any_available_mushroom",),
-        )
+    for dish_id in MUSHROOM_SOUPS:
+        _replace_mushroom_required_by_id(conn, dish_id)
     _replace_required(
         conn, "杂蔬虾仁藜麦炒饭", ("西兰花", "broccoli", "mixed_veg", "蔬菜"),
         ("any_available_vegetable",),
@@ -356,6 +490,12 @@ def _update_dishes(conn):
         _merge_json_field(conn, name, "meal_roles", add=("egg_dish",))
     for name in QUICK_SOUPS:
         _merge_json_field(conn, name, "meal_roles", add=("quick_soup",))
+    for dish_id in MUSHROOM_SOUPS:
+        conn.execute(
+            "UPDATE dishes SET category_id='soup',quick_soup=1,slow_soup=0,"
+            "updated_at=datetime('now') WHERE id=?", (dish_id,),
+        )
+        _merge_json_field_by_id(conn, dish_id, "meal_roles", add=("quick_soup",))
     for name in SLOW_SOUPS:
         _merge_json_field(conn, name, "meal_roles", add=("slow_soup",))
     for name in VEGETABLE_ROLE_BACKFILL:
@@ -369,10 +509,6 @@ def _update_dishes(conn):
         "updated_at=datetime('now') WHERE name_cn='酸种面包'"
     )
     conn.execute(
-        "UPDATE dishes SET name_en='Beef Braised Rice',image=NULL,image_uploaded=0,"
-        "updated_at=datetime('now') WHERE name_cn='牛肉焖饭'"
-    )
-    conn.execute(
         "UPDATE dishes SET category_id='cold_dish',updated_at=datetime('now') "
         "WHERE name_cn IN ('黑鱼子酱配豆腐','四味豆腐沙拉')"
     )
@@ -382,6 +518,86 @@ def _update_dishes(conn):
 def _assert_adjudication(conn, pending_before, legacy_protein_pool):
     if _snapshot_pending(conn) != pending_before:
         raise AssertionError("protected pending_review dishes changed")
+
+    fish = conn.execute(
+        "SELECT name_cn,category_id,meal_tags,meal_roles,protein_types,is_active "
+        "FROM dishes WHERE id=?", (BRAISED_RICE_SOURCE_ID,)
+    ).fetchone()
+    beef = conn.execute(
+        "SELECT name_cn,name_en,category_id,meal_tags,meal_roles,protein_types,"
+        "carb_type,image,image_uploaded,is_active FROM dishes WHERE id=?",
+        (BEEF_BRAISED_RICE_ID,),
+    ).fetchone()
+    if not fish or (
+        fish["name_cn"] != FISH_BRAISED_RICE_NAME
+        or fish["category_id"] != "one_pot_meal"
+        or _json_list(fish["meal_tags"]) != ["lunch"]
+        or _json_list(fish["meal_roles"]) != ["one_pot_meal"]
+        or _json_list(fish["protein_types"]) != ["fish"]
+        or fish["is_active"] != 1
+    ):
+        raise AssertionError("fish braised-rice split is incomplete")
+    if not beef or (
+        beef["name_cn"] != BEEF_BRAISED_RICE_NAME
+        or beef["name_en"] != "Beef Braised Rice"
+        or beef["category_id"] != "one_pot_meal"
+        or _json_list(beef["meal_tags"]) != ["lunch"]
+        or _json_list(beef["meal_roles"]) != ["one_pot_meal"]
+        or _json_list(beef["protein_types"]) != ["beef"]
+        or beef["carb_type"] != "rice"
+        or beef["image"] is not None
+        or beef["image_uploaded"] != 0
+        or beef["is_active"] != 1
+    ):
+        raise AssertionError("beef braised-rice split is incomplete")
+    if conn.execute(
+        "SELECT 1 FROM dishes WHERE name_cn=? AND is_active=1 LIMIT 1",
+        (BRAISED_RICE_SOURCE_NAME,),
+    ).fetchone():
+        raise AssertionError("active combined braised-rice dish remains")
+    for dish_id, required_ids in (
+        (BRAISED_RICE_SOURCE_ID, {"any_available_fish"}),
+        (BEEF_BRAISED_RICE_ID, {"beef"}),
+    ):
+        actual = {
+            row["ingredient_id"] for row in conn.execute(
+                "SELECT ingredient_id FROM dish_ingredients "
+                "WHERE dish_id=? AND required=1", (dish_id,),
+            )
+        }
+        if actual != required_ids:
+            raise AssertionError(f"wrong required ingredients for {dish_id}: {sorted(actual)}")
+
+    for dish_id, accepted_names in MUSHROOM_SOUPS.items():
+        soup = conn.execute(
+            "SELECT name_cn,category_id,meal_roles,quick_soup,slow_soup "
+            "FROM dishes WHERE id=?", (dish_id,),
+        ).fetchone()
+        if not soup or (
+            soup["name_cn"] not in accepted_names
+            or soup["category_id"] != "soup"
+            or "quick_soup" not in _json_list(soup["meal_roles"])
+            or soup["quick_soup"] != 1
+            or soup["slow_soup"] != 0
+        ):
+            raise AssertionError(f"quick-soup adjudication incomplete: {dish_id}")
+        required = {
+            row["ingredient_id"] for row in conn.execute(
+                "SELECT ingredient_id FROM dish_ingredients "
+                "WHERE dish_id=? AND required=1", (dish_id,),
+            )
+        }
+        if "any_available_mushroom" not in required:
+            raise AssertionError(f"mushroom placeholder missing: {dish_id}")
+        extra_mushrooms = conn.execute(
+            "SELECT di.ingredient_id FROM dish_ingredients di "
+            "JOIN ingredient_classifications ic USING(ingredient_id) "
+            "WHERE di.dish_id=? AND di.required=1 AND ic.class_id='mushroom' "
+            "AND di.ingredient_id<>'any_available_mushroom'",
+            (dish_id,),
+        ).fetchall()
+        if extra_mushrooms:
+            raise AssertionError(f"mushroom double-AND remains: {dish_id}")
 
     tang = conn.execute(
         "SELECT meal_tags,meal_roles,breakfast_staple_type FROM dishes WHERE name_cn='汤饺'"
