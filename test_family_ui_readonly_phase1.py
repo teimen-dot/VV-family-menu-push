@@ -4,6 +4,7 @@
 import hashlib
 import io
 import os
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -180,47 +181,86 @@ class ReadonlyBootstrapTests(unittest.TestCase):
 
 
 class ReadonlyUiAssetTests(unittest.TestCase):
+    SOURCE_PATH = "/Users/heymen/Documents/kimi/Workspaces/菜单系统ui重组/deploy/index.html"
+    BRIDGE_START = b"<!-- PHASE1_REAL_DATA_BRIDGE_START -->"
+    BRIDGE_END = b"<!-- PHASE1_REAL_DATA_BRIDGE_END -->"
+
     @classmethod
     def setUpClass(cls):
         cls.root = os.path.join(os.path.dirname(__file__), "public", "family-menu")
-        with open(os.path.join(cls.root, "index.html"), encoding="utf-8") as handle:
-            cls.html = handle.read()
+        with open(cls.SOURCE_PATH, "rb") as handle:
+            cls.source_bytes = handle.read()
+        with open(os.path.join(cls.root, "index.html"), "rb") as handle:
+            cls.target_bytes = handle.read()
+        cls.html = cls.target_bytes.decode("utf-8")
+        cls.bridge = cls.target_bytes.split(cls.BRIDGE_START, 1)[1].split(cls.BRIDGE_END, 1)[0].decode("utf-8")
         with open(os.path.join(cls.root, "app.js"), encoding="utf-8") as handle:
             cls.js = handle.read()
         with open(os.path.join(cls.root, "styles.css"), encoding="utf-8") as handle:
             cls.css = handle.read()
 
-    def test_final_ui_uses_only_readonly_bootstrap_for_business_data(self):
-        sources = self.html + self.js
-        self.assertIn("/api/family-menu/bootstrap", self.js)
-        self.assertNotIn("DISH_DB", sources)
-        self.assertNotIn("localStorage", sources)
+    def test_source_is_byte_for_byte_identical_after_bridge_is_removed(self):
+        self.assertEqual(self.target_bytes.count(self.BRIDGE_START), 1)
+        self.assertEqual(self.target_bytes.count(self.BRIDGE_END), 1)
+        stripped = re.sub(
+            self.BRIDGE_START + br".*?" + self.BRIDGE_END + br"\n\n",
+            b"",
+            self.target_bytes,
+            count=1,
+            flags=re.DOTALL,
+        )
+        self.assertEqual(stripped, self.source_bytes)
+
+    def test_original_style_content_sha_is_unchanged(self):
+        source_style = re.search(br"<style>(.*?)</style>", self.source_bytes, re.DOTALL).group(1)
+        target_style = re.search(br"<style>(.*?)</style>", self.target_bytes, re.DOTALL).group(1)
+        self.assertEqual(
+            hashlib.sha256(target_style).hexdigest(),
+            hashlib.sha256(source_style).hexdigest(),
+        )
+
+    def test_bridge_uses_only_readonly_bootstrap_for_menu_business_data(self):
+        self.assertIn("DISH_DB", self.source_bytes.decode("utf-8"))
+        self.assertNotIn("DISH_DB", self.bridge)
+        self.assertIn("/api/family-menu/bootstrap", self.bridge)
+        self.assertNotIn("/api/tomorrow", self.bridge)
         for endpoint in (
             "/api/tomorrow/add", "/api/tomorrow/remove", "/api/tomorrow/replace",
             "/api/tomorrow/confirm", "/api/tomorrow/ai-fill", "/api/tomorrow/repair",
         ):
-            self.assertNotIn(endpoint, sources)
-        self.assertEqual(self.js.count("fetch("), 1)
+            self.assertNotIn(endpoint, self.bridge)
+        self.assertEqual(self.bridge.count("fetch("), 1)
 
-    def test_ui_renders_real_identifiers_and_mobile_contract(self):
-        self.assertIn('data-menu-id=', self.js)
-        self.assertIn('data-menu-item-id=', self.js)
-        self.assertIn('data-dish-id=', self.js)
-        self.assertIn("dish.image", self.js)
-        self.assertIn("menu.diners_count", self.js)
-        self.assertIn("menu.meal_notes", self.js)
-        self.assertIn("menu.status", self.js)
-        self.assertIn("@media (max-width: 390px)", self.css)
+    def test_bridge_binds_real_menu_fields_and_blocks_menu_writes_in_capture_phase(self):
+        self.assertIn("dataset.menuId", self.bridge)
+        self.assertIn("dataset.menuItemId", self.bridge)
+        self.assertIn("dataset.dishId", self.bridge)
+        self.assertIn("dish.image", self.bridge)
+        self.assertIn("menu.diners_count", self.bridge)
+        self.assertIn("menu.meal_notes", self.bridge)
+        self.assertIn("nextMeal?.note", self.bridge)
+        self.assertIn("availability", self.bridge)
+        self.assertIn("document.addEventListener('click', stopWrite, true)", self.bridge)
+        self.assertIn("document.addEventListener('input', stopWrite, true)", self.bridge)
+        self.assertIn("stopImmediatePropagation()", self.bridge)
+        self.assertIn("当前为只读预览", self.bridge)
+        for selector in (
+            ".stepper button", ".meal-skip", ".op-btn.fav", ".op-btn.shuf",
+            ".op-btn.find", ".op-btn.del", ".foot-btn[data-act]",
+            ".confirm-meal-btn", "#regenBtn", ".add-meal-btn",
+        ):
+            self.assertIn(selector, self.bridge)
+
+    def test_target_does_not_reference_superseded_external_assets(self):
+        self.assertNotIn('/family-menu/styles.css', self.html)
+        self.assertNotIn('/family-menu/app.js', self.html)
         self.assertIn("viewport-fit=cover", self.html)
 
-    def test_server_injects_role_and_location_without_touching_source(self):
+    def test_server_serves_frozen_source_plus_bridge_without_rewriting_it(self):
         rendered = app.render_family_menu_readonly("worker", "hongkong")
-        self.assertIn('data-role="worker"', rendered)
-        self.assertIn('data-location="hongkong"', rendered)
-        self.assertNotIn("__ROLE__", rendered)
-        self.assertIn("__ROLE__", self.html)
+        self.assertEqual(rendered, self.html)
 
-    def test_http_routes_serve_styled_page_css_and_javascript(self):
+    def test_http_routes_serve_inline_source_ui_and_bridge(self):
         html = self._get("/tomorrow", role="owner")
         css = self._get("/family-menu/styles.css")
         js = self._get("/family-menu/app.js")
@@ -230,9 +270,11 @@ class ReadonlyUiAssetTests(unittest.TestCase):
         self.assertIn("text/html", html["headers"]["Content-Type"])
         self.assertIn("text/css", css["headers"]["Content-Type"])
         self.assertIn("javascript", js["headers"]["Content-Type"])
-        self.assertIn(b"/family-menu/styles.css", html["body"])
-        self.assertIn(b".meal-grid", css["body"])
-        self.assertIn(b"/api/family-menu/bootstrap", js["body"])
+        self.assertIn(b"<style>", html["body"])
+        self.assertIn(self.BRIDGE_START, html["body"])
+        self.assertIn(b"/api/family-menu/bootstrap", html["body"])
+        self.assertNotIn(b"/family-menu/styles.css", html["body"])
+        self.assertNotIn(b"/family-menu/app.js", html["body"])
 
     @staticmethod
     def _get(path, role="owner"):
