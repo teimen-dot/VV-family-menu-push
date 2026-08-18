@@ -33,13 +33,17 @@ from inventory import (
     update_ingredient_status, confirm_pantry_unchanged,
     is_ingredient_in_pantry,
     _invalidate_availability_cache, _increment_inventory_version,
-    get_inventory_version,
+    get_inventory_version, normalize_ingredient_id,
 )
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
     replace_dish_in_menu, lock_dish, ai_fill_menu, repair_menu,
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
-    get_tomorrow_date, revert_to_draft, push_menu,
+    get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
+)
+from rule_engine import (
+    NutritionAnalyzer, filter_candidates_for_slot,
+    get_rotation_context, is_auto_candidate, NO_CANDIDATE_MESSAGE,
 )
 from photo_security import PhotoValidationError, resolve_photo_path
 from runtime_config import photo_dir, server_host, validate_app_startup
@@ -108,6 +112,7 @@ def resolve_ingredient_name(raw_name, ingredient_rows):
     if mapped:
         corrected_from, normalized = normalized, mapped
     key = normalized.casefold()
+    exact_matches = []
     for row in ingredient_rows:
         aliases = row["aliases"] if "aliases" in row.keys() else "[]"
         try:
@@ -116,9 +121,16 @@ def resolve_ingredient_name(raw_name, ingredient_rows):
             aliases = []
         values = [row["name_cn"], row["name_en"], *(aliases or [])]
         if any(_normalize_ingredient_name(value).casefold() == key for value in values if value):
-            if normalized != row["name_cn"] and corrected_from is None:
-                corrected_from = _normalize_ingredient_name(raw_name)
-            return row, row["name_cn"], corrected_from
+            exact_matches.append(row)
+    if exact_matches:
+        canonical_id = normalize_ingredient_id(normalized)
+        row = next(
+            (candidate for candidate in exact_matches if candidate["ingredient_id"] == canonical_id),
+            exact_matches[0],
+        )
+        if normalized != row["name_cn"] and corrected_from is None:
+            corrected_from = _normalize_ingredient_name(raw_name)
+        return row, row["name_cn"], corrected_from
     # Similar matching is deliberately limited to longer names and a very high threshold.
     if len(normalized) >= 3:
         scored = []
@@ -133,12 +145,14 @@ def resolve_ingredient_name(raw_name, ingredient_rows):
 
 
 def get_next_available_same_class_dish(menu_id, menu_item_id, location):
-    """Select the next available same-class dish with bounded list/index arithmetic."""
+    """Select the next available dish that preserves the current rule-engine slot."""
     conn = get_db()
     try:
         current = conn.execute(
-            "SELECT mi.dish_id, mi.meal_type, d.category_id, d.protein_types "
+            "SELECT mi.dish_id, mi.meal_type, d.category_id, d.protein_types, "
+            "m.date, m.location "
             "FROM menu_items mi JOIN dishes d ON d.id=mi.dish_id "
+            "JOIN menus m ON m.id=mi.menu_id "
             "WHERE mi.id=? AND mi.menu_id=?", (menu_item_id, menu_id)
         ).fetchone()
         if not current:
@@ -147,39 +161,74 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
             current_proteins = set(json.loads(current["protein_types"] or "[]"))
         except (TypeError, json.JSONDecodeError):
             current_proteins = set()
-        rows = conn.execute(
-            "SELECT id, name_cn, name_en, category_id, image, meal_tags, protein_types "
-            "FROM dishes WHERE (is_active=1 OR is_active IS NULL) AND category_id=? "
-            "ORDER BY name_cn, id", (current["category_id"],)
-        ).fetchall()
+        pool = _load_pool()["dishes"]
+        analyzed = {dish["id"]: NutritionAnalyzer.analyze(dish) for dish in pool}
+        current_analysis = analyzed.get(current["dish_id"])
+        slot_name = None
+        if current_analysis:
+            slot_candidates = [
+                "tofu", "egg", "coarse_grain", "porridge", "companion_staple",
+                "quick_soup", "slow_soup", "protein_main",
+            ]
+            slot_candidates.append(
+                "vegetable" if current["meal_type"] == "breakfast" else "vegetable_dish"
+            )
+            slot_candidates.append("staple")
+            for candidate_slot in slot_candidates:
+                if filter_candidates_for_slot([current_analysis], candidate_slot):
+                    slot_name = candidate_slot
+                    break
+
         occupied = {row["dish_id"] for row in conn.execute(
-            "SELECT dish_id FROM menu_items WHERE menu_id=? AND meal_type=? AND id<>?",
-            (menu_id, current["meal_type"], menu_item_id)
+            "SELECT dish_id FROM menu_items WHERE menu_id=? AND id<>?",
+            (menu_id, menu_item_id)
         ).fetchall()}
+        rotation = get_rotation_context(
+            current["date"], current["location"] or location, exclude_menu_id=menu_id
+        )
+        hard_locked = rotation["hard_locked_dish_ids"]
         candidates = []
-        for row in rows:
-            try:
-                meal_tags = set(json.loads(row["meal_tags"] or "[]"))
-                proteins = set(json.loads(row["protein_types"] or "[]"))
-            except (TypeError, json.JSONDecodeError):
+        for dish in pool:
+            analysis = analyzed[dish["id"]]
+            if (dish["id"] == current["dish_id"]
+                    or dish["id"] in occupied
+                    or dish["id"] in hard_locked
+                    or current["meal_type"] not in analysis["meal_tags"]
+                    or not is_auto_candidate(analysis, current["meal_type"])):
                 continue
-            if current["meal_type"] not in meal_tags or row["id"] in occupied:
-                continue
-            if current["category_id"] == "protein_main" and current_proteins and not (proteins & current_proteins):
-                continue
-            candidates.append(dict(row))
+            if slot_name:
+                if not filter_candidates_for_slot([analysis], slot_name):
+                    continue
+            else:
+                if dish.get("category_id") != current["category_id"]:
+                    continue
+                proteins = set(analysis["proteins"])
+                if current["category_id"] == "protein_main" and current_proteins and not (proteins & current_proteins):
+                    continue
+            candidates.append(dish)
         if not candidates:
             return None
         availability = check_dishes_availability_batch([row["id"] for row in candidates], location)
         available = [row for row in candidates if availability.get(row["id"], {}).get("status") == "available"]
         if not available:
             return None
-        ids = [row["id"] for row in available]
-        if ids == [current["dish_id"]]:
-            return None
-        next_index = (ids.index(current["dish_id"]) + 1) % len(ids) if current["dish_id"] in ids else 0
-        chosen = available[next_index]
-        return None if chosen["id"] == current["dish_id"] else chosen
+        last_used = rotation["historical_last_used"]
+        def rotation_group(dish_id):
+            used = last_used.get(dish_id)
+            return (1 if used else 0, used or "")
+
+        best_group = min(rotation_group(dish["id"]) for dish in available)
+        best = sorted(
+            (dish for dish in available if rotation_group(dish["id"]) == best_group),
+            key=lambda dish: dish["id"],
+        )
+        # Within the same LRU group, continue after the current dish.  This keeps
+        # repeated direct-switch clicks useful without adding separate round state.
+        if rotation_group(current["dish_id"]) == best_group:
+            later = [dish for dish in best if dish["id"] > current["dish_id"]]
+            if later:
+                return later[0]
+        return best[0]
     finally:
         conn.close()
 
@@ -702,6 +751,7 @@ def update_menu_meal_mode(menu_id, meal_mode, banquet_total_diners=None):
 
 SLOT_LABELS = {
     "protein_main": ("蛋白质", "Protein"),
+    "meat_main": ("独立肉类菜", "Separate meat/seafood dish"),
     "vegetable_dish": ("蔬菜", "Vegetable"),
     "vegetable": ("蔬菜", "Vegetable"),
     "staple": ("主食", "Staple"),
@@ -731,6 +781,7 @@ def validate_menu_meals(menu, diners_count):
                 state.add_dish(
                     NutritionAnalyzer.analyze(dish),
                     is_locked=item.get("is_locked", False),
+                    source=item.get("source", "ai"),
                 )
         day_result[meal_type] = {"state": state}
         meal_slots[meal_type] = analyze_meal_slots(meal_type, state, diners_count)
@@ -835,15 +886,22 @@ def _lookup_english_name(cn_name, name_map):
     return ""
 
 
-def get_history_menus(days=30):
+def get_history_menus(days=30, location=None):
     conn = get_db()
     try:
         today = date.today().isoformat()
         past = (date.today() - timedelta(days=days)).isoformat()
-        menus = conn.execute(
-            "SELECT * FROM menus WHERE date >= ? AND date < ? ORDER BY date DESC",
-            (past, today)
-        ).fetchall()
+        if location:
+            menus = conn.execute(
+                "SELECT * FROM menus WHERE location=? AND date >= ? AND date < ? "
+                "ORDER BY date DESC",
+                (location, past, today),
+            ).fetchall()
+        else:
+            menus = conn.execute(
+                "SELECT * FROM menus WHERE date >= ? AND date < ? ORDER BY date DESC",
+                (past, today),
+            ).fetchall()
 
         # 加载菜名映射用于历史数据英文补全
         dish_name_map = _load_dish_name_map()
@@ -1511,7 +1569,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     is_owner = role == "owner"
     if is_owner:
         ensure_tomorrow_menu(location)
-    menu = get_menu_with_dishes(tomorrow)
+    menu = get_menu_with_dishes(tomorrow, location)
     if not menu.get("exists"):
         return tomorrow_preview_head("菜单 · Menu", "tomorrow", location) + \
             '<main class="page-shell"><div class="empty">明日菜单未生成</div></main></body></html>'
@@ -1532,7 +1590,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         for meal_type, dishes in menu["meals"].items()
     }
     meal_notes = menu.get("meal_notes") or {}
-    today_menu = get_menu_with_dishes(date.today().isoformat())
+    today_menu = get_menu_with_dishes(date.today().isoformat(), location)
     today_dinner = []
     today_menu_id = None
     today_diners = []
@@ -1811,7 +1869,7 @@ async function loadDishPicker(){{let c=document.getElementById('dishSearchResult
 async function doDishSearch(q){{let c=document.getElementById('dishSearchResults');try{{let data=await requestJSON('/api/dishes?search='+encodeURIComponent(q)),availability=data.length?await postJSON('/api/dishes/availability',{{dish_ids:data.map(d=>d.id),location:currentLoc}}):{{}};window.recommendationMap={{}};data.forEach(d=>window.recommendationMap[d.id]=Object.assign({{}},d,availability[d.id]||{{}}));let stateOf=a=>a.status==='available'?'available':a.status==='almost_available'?'almost':a.status==='incomplete'?'incomplete':'missing';c.innerHTML='<div class="rec-section-title">'+pairMarkup('搜索结果','Search results')+'</div>'+data.slice(0,40).map(d=>recommendationResult(window.recommendationMap[d.id],stateOf(availability[d.id]||{{}}))).join('')}}catch(e){{c.innerHTML='<div class="inline-warning">'+e.message+'</div>'}}}}
 function pickRecommendation(dishId,isMissing){{let d=window.recommendationMap&&window.recommendationMap[dishId];if(isMissing&&d&&d.missing_required&&d.missing_required.length&&!confirm('这道菜还缺：'+d.missing_required.join('、')+'\\n\\n仍然选择? Choose anyway?'))return;doPickDish(dishId)}}
 async function doPickDish(dishId){{let path=searchMode.replaceId?'/api/tomorrow/replace':'/api/tomorrow/add';let payload=searchMode.replaceId?{{menu_id:searchMode.menuId,menu_item_id:searchMode.replaceId,new_dish_id:dishId}}:{{menu_id:searchMode.menuId,dish_id:dishId,meal_type:searchMode.meal}};try{{await postJSON(path,payload);closeDishSearch();location.reload()}}catch(e){{snack(e.message)}}}}
-async function cycleDish(button,targetMenuId,itemId){{button.disabled=true;try{{let result=await postJSON('/api/tomorrow/cycle-replace',{{menu_id:targetMenuId,menu_item_id:itemId,location:currentLoc}});if(!result.replaced){{snack('暂无其他可做同类菜品 / No other available dish');button.disabled=false;return}}snack('已切换为：'+result.dish.name_cn);location.reload()}}catch(e){{snack(e.message);button.disabled=false}}}}
+async function cycleDish(button,targetMenuId,itemId){{button.disabled=true;try{{let result=await postJSON('/api/tomorrow/cycle-replace',{{menu_id:targetMenuId,menu_item_id:itemId,location:currentLoc}});if(!result.replaced){{snack(result.message||'暂无符合条件菜品，请手动选择或补录');button.disabled=false;return}}snack('已切换为：'+result.dish.name_cn);location.reload()}}catch(e){{snack(e.message);button.disabled=false}}}}
 function editMealNote(targetMenuId,meal){{noteMenuId=targetMenuId;noteMealType=meal;let notes=mealNotesByMenu[String(targetMenuId)]||{{}};document.getElementById('mealNoteInput').value=notes[meal]||'';document.getElementById('mealNoteModal').classList.add('show');document.getElementById('mealNoteInput').focus()}}
 function closeMealNote(){{document.getElementById('mealNoteModal').classList.remove('show');noteMenuId=null;noteMealType=null}}
 async function saveMealNote(){{if(!noteMenuId||!noteMealType)return;let note=document.getElementById('mealNoteInput').value;try{{await postJSON('/api/tomorrow/meal-note',{{menu_id:noteMenuId,meal_type:noteMealType,note:note}});location.reload()}}catch(e){{snack(e.message)}}}}
@@ -1838,7 +1896,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
     # Viewing as Worker must never create or regenerate menu data.
     if role == "owner":
         ensure_tomorrow_menu(location)
-    menu = get_menu_with_dishes(tomorrow)
+    menu = get_menu_with_dishes(tomorrow, location)
 
     meal_colors = {
         "breakfast": ("#f0a040", "早餐", "Breakfast"),
@@ -3238,7 +3296,7 @@ init();
 # ============================================================
 
 def render_history(role="owner", location="shenzhen"):
-    menus = get_history_menus(30)
+    menus = get_history_menus(30, location)
 
     if not menus:
         body = '<div class="empty"><h2>暂无历史记录 No History</h2></div>'
@@ -3427,10 +3485,10 @@ class AppHandler(BaseHTTPRequestHandler):
             tomorrow = get_tomorrow_date()
             if role == "owner":
                 ensure_tomorrow_menu(location)
-            self.send_json(get_menu_with_dishes(tomorrow))
+            self.send_json(get_menu_with_dishes(tomorrow, location))
         elif path == "/api/history":
             days = int(qs.get("days", ["30"])[0])
-            self.send_json(get_history_menus(days))
+            self.send_json(get_history_menus(days, location))
         elif path == "/api/pantry":
             # V4: 从 current_pantry 读取
             pantry = get_current_pantry(location)
@@ -3755,7 +3813,10 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/tomorrow/add":
             ok = add_dish_to_menu(body["menu_id"], body["dish_id"], body["meal_type"])
-            self.send_json({"ok": ok})
+            self.send_json(
+                {"ok": ok, "error": None if ok else "菜品不可添加或处于当前厨房的全局4天锁定中"},
+                200 if ok else 409,
+            )
 
         elif path == "/api/tomorrow/remove":
             ok, msg = remove_dish_from_menu(body["menu_id"], body["menu_item_id"])
@@ -3769,7 +3830,9 @@ class AppHandler(BaseHTTPRequestHandler):
             loc = body.get("location", location)
             chosen = get_next_available_same_class_dish(body["menu_id"], body["menu_item_id"], loc)
             if not chosen:
-                self.send_json({"ok": True, "replaced": False})
+                self.send_json({
+                    "ok": True, "replaced": False, "message": NO_CANDIDATE_MESSAGE,
+                })
                 return
             ok, msg = replace_dish_in_menu(body["menu_id"], body["menu_item_id"], chosen["id"])
             self.send_json({"ok": ok, "replaced": ok, "dish": chosen if ok else None,

@@ -70,16 +70,34 @@ INGREDIENT_ALIASES = {
     "Sweet Potato": "红薯",
     "红薯": "红薯",
     "番薯": "红薯",
+    # Mushroom
+    "mushroom": "mushroom",
+    "Mushroom": "mushroom",
+    "mushroom_generic": "mushroom",
+    "菌菇": "mushroom",
+    "蘑菇": "mushroom",
     # Chinese yam
     "yam": "yam",
     "Chinese Yam": "yam",
     "山药": "yam",
-    "淮山": "淮山",
+    "淮山": "yam",
+    # Cabbage: strict classes must not merge baby cabbage with ordinary cabbage.
+    "白菜": "white_cabbage",
+    "娃娃菜": "baby_cabbage",
 }
 
 # Pantry-exempt staples are still required recipe ingredients, but do not need
 # to be entered in Current Pantry to count as available.
 PANTRY_EXEMPT_INGREDIENT_IDS = {"rice"}
+PANTRY_EXEMPT_INGREDIENT_CLASSES = {"noodle"}
+
+PLACEHOLDER_CLASS = {
+    "any_available_vegetable": "vegetable",
+    "any_available_fish": "fish",
+    "any_available_grouper": "grouper",
+    "any_available_mushroom": "mushroom",
+    "any_available_protein": "protein",
+}
 
 
 def normalize_ingredient_id(raw_id):
@@ -89,6 +107,23 @@ def normalize_ingredient_id(raw_id):
     if not raw_id:
         return raw_id
     return INGREDIENT_ALIASES.get(raw_id, raw_id)
+
+
+def _ingredient_classes(conn, ingredient_ids):
+    """Return strict controlled classes for the requested ingredient IDs."""
+    ids = {value for value in ingredient_ids if value}
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"SELECT ingredient_id, class_id FROM ingredient_classifications "
+        f"WHERE ingredient_id IN ({placeholders})",
+        tuple(sorted(ids)),
+    ).fetchall()
+    result = {}
+    for row in rows:
+        result.setdefault(row["ingredient_id"], set()).add(row["class_id"])
+    return result
 
 
 # ============================================================
@@ -542,10 +577,19 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         for pid in available_ings:
             normalized_pantry.add(normalize_ingredient_id(pid))
 
+        class_ids = set(available_ings) | normalized_pantry | {
+            normalize_ingredient_id(row["ingredient_id"]) for row in ings
+        } | {row["ingredient_id"] for row in ings}
+        class_map = _ingredient_classes(conn, class_ids)
+        available_classes = set()
+        for pantry_id in available_ings | normalized_pantry:
+            available_classes.update(class_map.get(pantry_id, set()))
+
         required = []
         available_required = []
         missing_required = []
         optional = []
+        seen_required_ids = set()
 
         for ing in ings:
             # V10: 归一化菜品食材 ID
@@ -554,8 +598,23 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                         "name_cn": ing["name_cn"],
                         "name_en": ing["name_en"] if ing["name_en"] else ""}
             if ing["required"]:
+                # Synonymous required rows represent one canonical ingredient.
+                if norm_id in seen_required_ids:
+                    continue
+                seen_required_ids.add(norm_id)
                 required.append(ing_data)
-                if (norm_id in PANTRY_EXEMPT_INGREDIENT_IDS
+                placeholder_class = PLACEHOLDER_CLASS.get(norm_id)
+                required_classes = (
+                    class_map.get(ing["ingredient_id"], set())
+                    | class_map.get(norm_id, set())
+                )
+                if placeholder_class:
+                    if placeholder_class in available_classes:
+                        available_required.append(ing_data)
+                    else:
+                        missing_required.append(ing_data)
+                elif (norm_id in PANTRY_EXEMPT_INGREDIENT_IDS
+                        or bool(required_classes & PANTRY_EXEMPT_INGREDIENT_CLASSES)
                         or norm_id in normalized_pantry
                         or ing["ingredient_id"] in available_ings):
                     available_required.append(ing_data)
@@ -743,40 +802,28 @@ def check_shortages(dish_ids, location, target_date=None):
 
     conn = get_db()
     try:
-        # 获取菜品所需食材
-        placeholders = ",".join("?" * len(dish_ids))
-        rows = conn.execute(
-            f"SELECT di.dish_id, di.ingredient_id, d.name_cn as dish_name, "
-            f"i.name_cn as ingredient_name "
-            f"FROM dish_ingredients di "
-            f"JOIN dishes d ON di.dish_id = d.id "
-            f"JOIN ingredients i ON di.ingredient_id = i.ingredient_id "
-            f"WHERE di.dish_id IN ({placeholders}) AND di.required = 1",
-            dish_ids
-        ).fetchall()
-
-        # 获取库存
-        available, _, _ = get_available_ingredient_ids(location, target_date)
-        # V10: 归一化库存 ID
-        normalized_available = set()
-        for pid in available:
-            normalized_available.add(normalize_ingredient_id(pid))
-
-        shortages = []
-        for r in rows:
-            norm_id = normalize_ingredient_id(r["ingredient_id"])
-            if norm_id not in normalized_available and r["ingredient_id"] not in available:
-                shortages.append({
-                    "dish_id": r["dish_id"],
-                    "dish_name": r["dish_name"],
-                    "ingredient_id": r["ingredient_id"],
-                    "ingredient_name": r["ingredient_name"],
-                    "missing": True
-                })
-
-        return shortages
+        names = {
+            row["id"]: row["name_cn"]
+            for row in conn.execute(
+                f"SELECT id, name_cn FROM dishes WHERE id IN ({','.join('?' for _ in dish_ids)})",
+                dish_ids,
+            ).fetchall()
+        }
     finally:
         conn.close()
+
+    availability = check_dishes_availability_batch(dish_ids, location)
+    shortages = []
+    for dish_id in dish_ids:
+        for missing in availability.get(dish_id, {}).get("missing_required", []):
+            shortages.append({
+                "dish_id": dish_id,
+                "dish_name": names.get(dish_id, dish_id),
+                "ingredient_id": missing["ingredient_id"],
+                "ingredient_name": missing["name_cn"],
+                "missing": True,
+            })
+    return shortages
 
 
 def check_menu_shortages(menu_id, location):

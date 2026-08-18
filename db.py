@@ -72,6 +72,9 @@ def init_db():
             slow_soup               INTEGER DEFAULT 0,
             manual_only_for_breakfast INTEGER DEFAULT 0,
             meal_roles               TEXT DEFAULT '[]',
+            drink                    TEXT,
+            ingredients_pending      INTEGER DEFAULT 0,
+            pending_review           TEXT,
             image                   TEXT,
             image_uploaded          INTEGER DEFAULT 0,
             needs_review            INTEGER DEFAULT 0,
@@ -94,6 +97,11 @@ def init_db():
 
     # V8 迁移：dishes 表增加 meal_roles（多选角色字段）
     _safe_add_column(c, "dishes", "meal_roles", "TEXT DEFAULT '[]'")
+
+    # 2026-08-17 裁决：自动池需区分饮品、食材待完善和业务待裁决。
+    _safe_add_column(c, "dishes", "drink", "TEXT")
+    _safe_add_column(c, "dishes", "ingredients_pending", "INTEGER DEFAULT 0")
+    _safe_add_column(c, "dishes", "pending_review", "TEXT")
 
     # ========== V11: dish_preference_stats - VV 常选菜统计 ==========
     c.execute("""
@@ -123,6 +131,17 @@ def init_db():
     # V4 迁移：为已存在的 ingredients 表添加 is_common 列（幂等）
     _safe_add_column(c, "ingredients", "is_common", "INTEGER DEFAULT 0")
     _safe_add_column(c, "ingredients", "ingredient_group", "TEXT")
+
+    # 受控食材类目：占位符和“面类家庭常备”只读取这里的严格映射。
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS ingredient_classifications (
+            ingredient_id   TEXT NOT NULL,
+            class_id        TEXT NOT NULL,
+            created_at      TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (ingredient_id, class_id),
+            FOREIGN KEY (ingredient_id) REFERENCES ingredients(ingredient_id)
+        )
+    """)
 
     # ========== 4. dish_ingredients - 菜品-食材关联 ==========
     c.execute("""
@@ -203,7 +222,7 @@ def init_db():
     c.execute("""
         CREATE TABLE IF NOT EXISTS menus (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            date            TEXT NOT NULL UNIQUE,
+            date            TEXT NOT NULL,
             location        TEXT NOT NULL,
             status          TEXT DEFAULT 'draft',
             auto_confirmed  INTEGER DEFAULT 0,
@@ -214,7 +233,8 @@ def init_db():
             notes_zh        TEXT,
             notes_en        TEXT,
             created_at      TEXT DEFAULT (datetime('now')),
-            updated_at      TEXT DEFAULT (datetime('now'))
+            updated_at      TEXT DEFAULT (datetime('now')),
+            UNIQUE(date, location)
         )
     """)
 
@@ -401,11 +421,16 @@ INGREDIENT_ALIASES = {
     # 豆腐/嫩豆腐
     "豆腐": "tofu", "嫩豆腐": "silken_tofu",
     # 菌菇/口蘑/蟹味菇/舞茸
-    "菌菇": "mushroom", "口蘑": "button_mushroom", "蟹味菇": "buna_mushroom", "舞茸": "maitake",
+    "菌菇": "mushroom", "蘑菇": "mushroom", "mushroom_generic": "mushroom",
+    "口蘑": "button_mushroom", "蟹味菇": "buna_mushroom", "舞茸": "maitake",
+    # 山药/淮山
+    "山药": "yam", "淮山": "yam",
     # 虾/黑虎虾/虾滑
     "虾": "shrimp", "黑虎虾": "black_tiger_shrimp", "虾滑": "shrimp_paste",
     # 鱼/银鳕鱼/青花鱼
     "鱼": "fish", "银鳕鱼": "cod", "青花鱼": "mackerel",
+    # 白菜/娃娃菜严格区分，不做近似合并
+    "白菜": "white_cabbage", "娃娃菜": "baby_cabbage",
     # 葱/蒜/姜 (调味类)
     "葱": "scallion", "蒜": "garlic", "姜": "ginger",
     # 蓝莓/黑莓
@@ -438,6 +463,7 @@ INGREDIENT_EN_NAMES = {
     "mackerel": "Mackerel", "scallion": "Scallion", "garlic": "Garlic",
     "ginger": "Ginger", "blueberry": "Blueberry", "blackberry": "Blackberry",
     "orange": "Orange", "tangerine": "Tangerine",
+    "white_cabbage": "Chinese Cabbage", "baby_cabbage": "Baby Chinese Cabbage",
     "16谷米": "16-Grain Rice", "XO酱": "XO Sauce", "三文鱼籽": "Salmon Roe",
     "丝瓜": "Luffa", "云南小瓜": "Zucchini", "冬瓜": "Winter Melon",
     "南瓜": "Pumpkin", "味噌": "Miso", "土豆": "Potato",

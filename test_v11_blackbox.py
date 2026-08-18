@@ -23,7 +23,7 @@ from menu_service import (
 from rule_engine import (
     RuleEngine, NutritionAnalyzer, MealState, ScoringEngine,
     analyze_meal_slots, filter_candidates_for_slot, GapFiller,
-    get_dish_ingredients_map, get_history_3day, get_history_7day,
+    get_dish_ingredients_map, get_history_3day,
     get_inventory_ingredients,
 )
 

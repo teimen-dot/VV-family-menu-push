@@ -13,9 +13,9 @@ from rule_engine import (
     GapFiller, RuleEngine, NutritionAnalyzer, MealState,
     generate_afternoon_snack, get_dish_ingredients_map,
     get_inventory_ingredients,
-    get_history_3day, get_history_7day,
+    get_rotation_context, choose_rotation_candidate, is_manual_source,
     analyze_meal_slots, filter_candidates_for_slot,
-    BREAKFAST_COMPANION_STAPLES,
+    BREAKFAST_COMPANION_STAPLES, NO_CANDIDATE_MESSAGE,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -99,12 +99,13 @@ def invalidate_catalog_cache():
     _catalog_cache["pool"] = None
 
 
-def _store_menu_items(conn, menu_id, result):
+def _store_menu_items(conn, menu_id, result, locked=None):
     """将 rule_engine 生成结果存入 menu_items（每道菜一行）
     V6: 跳过 dish_id 为 None/空的候选，不写入 null menu_item"""
     # 先清除旧条目
     conn.execute("DELETE FROM menu_items WHERE menu_id = ?", (menu_id,))
 
+    locked = locked or {}
     sort = 0
     for meal_type in ["breakfast", "lunch", "afternoon_snack", "dinner"]:
         dishes = result.get(meal_type, {}).get("dishes", [])
@@ -113,10 +114,12 @@ def _store_menu_items(conn, menu_id, result):
             dish_id = d.get("id")
             if not dish_id or dish_id == "None":
                 continue
+            is_manual = dish_id in set(locked.get(meal_type, []))
             conn.execute(
                 "INSERT INTO menu_items (menu_id, dish_id, meal_type, is_locked, sort_order, source) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
-                (menu_id, dish_id, meal_type, 0, sort, "ai")
+                (menu_id, dish_id, meal_type, 1 if is_manual else 0, sort,
+                 "owner" if is_manual else "ai")
             )
             sort += 1
     conn.commit()
@@ -142,8 +145,9 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     conn_pre = get_db()
     try:
         existing = conn_pre.execute(
-            "SELECT diners, meal_mode, banquet_total_diners FROM menus WHERE date = ?",
-            (date_str,)
+            "SELECT diners, meal_mode, banquet_total_diners FROM menus "
+            "WHERE date = ? AND location = ?",
+            (date_str, location)
         ).fetchone()
         if existing:
             diners_count = _get_effective_diners_count(menu_row=existing)
@@ -156,9 +160,18 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     vv_prefs = get_preference_scores(all_dish_ids)
     dish_availability = check_dishes_availability_batch(all_dish_ids, location)
 
+    conn_rotation = get_db()
+    try:
+        existing_menu = conn_rotation.execute(
+            "SELECT id FROM menus WHERE date=? AND location=?", (date_str, location)
+        ).fetchone()
+    finally:
+        conn_rotation.close()
+    rotation = get_rotation_context(
+        date_str, location, existing_menu["id"] if existing_menu else None
+    )
     context = {
-        "history_3day": get_history_3day(),
-        "history_7day": get_history_7day(),
+        **rotation,
         "inventory_ingredients": inv_avail,
         "priority_ingredients": inv_pri,
         "expiring_ingredients": inv_exp,
@@ -174,7 +187,13 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
 
     # 生成下午茶
     rng = random.Random((seed or 42) + 1000)
-    snacks = generate_afternoon_snack(pool, rng=rng)
+    used_ids = {
+        dish["id"] for meal in result.values()
+        for dish in meal.get("dishes", [])
+    }
+    snacks = generate_afternoon_snack(
+        pool, rng=rng, context=context, exclude_ids=used_ids
+    )
     result["afternoon_snack"] = {"dishes": snacks, "state": None}
 
     # Final Review
@@ -187,8 +206,8 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         conn.execute(
             "INSERT INTO menus (date, location, status, notes_zh, notes_en) "
             "VALUES (?, ?, 'draft', ?, ?) "
-            "ON CONFLICT(date) DO UPDATE SET "
-            "location=excluded.location, status='draft', "
+            "ON CONFLICT(date, location) DO UPDATE SET "
+            "status='draft', "
             "notes_zh=excluded.notes_zh, notes_en=excluded.notes_en",
             (date_str, location,
              "；".join(review.get("issues", [])) if not review["passed"] else "",
@@ -196,10 +215,12 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         )
         conn.commit()
 
-        row = conn.execute("SELECT id FROM menus WHERE date = ?", (date_str,)).fetchone()
+        row = conn.execute(
+            "SELECT id FROM menus WHERE date = ? AND location = ?", (date_str, location)
+        ).fetchone()
         menu_id = row["id"]
 
-        _store_menu_items(conn, menu_id, result)
+        _store_menu_items(conn, menu_id, result, locked=locked)
 
         # 存 LOCKED 标记
         for meal_type, dish_ids in locked.items():
@@ -223,14 +244,21 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         conn.close()
 
 
-def get_menu_with_dishes(date_str):
+def get_menu_with_dishes(date_str, location=None):
     """
     获取某天菜单，带完整菜品信息。
     返回: {date, exists, menu_id, status, location, meals: {breakfast: [...], ...}, review}
     """
     conn = get_db()
     try:
-        menu = conn.execute("SELECT * FROM menus WHERE date = ?", (date_str,)).fetchone()
+        if location:
+            menu = conn.execute(
+                "SELECT * FROM menus WHERE date = ? AND location = ?", (date_str, location)
+            ).fetchone()
+        else:
+            menu = conn.execute(
+                "SELECT * FROM menus WHERE date = ? ORDER BY id LIMIT 1", (date_str,)
+            ).fetchone()
         if not menu:
             return {"date": date_str, "exists": False}
 
@@ -334,6 +362,27 @@ def get_menu_with_dishes(date_str):
         conn.close()
 
 
+def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None):
+    menu = conn.execute(
+        "SELECT date, location FROM menus WHERE id=?", (menu_id,)
+    ).fetchone()
+    if not menu:
+        return True
+    params = [menu_id, dish_id]
+    ignore_sql = ""
+    if ignore_item_id is not None:
+        ignore_sql = " AND id<>?"
+        params.append(ignore_item_id)
+    duplicate = conn.execute(
+        "SELECT 1 FROM menu_items WHERE menu_id=? AND dish_id=?" + ignore_sql + " LIMIT 1",
+        tuple(params),
+    ).fetchone()
+    if duplicate:
+        return True
+    rotation = get_rotation_context(menu["date"], menu["location"], exclude_menu_id=menu_id)
+    return dish_id in rotation["hard_locked_dish_ids"]
+
+
 def add_dish_to_menu(menu_id, dish_id, meal_type):
     """添加一道菜到菜单的指定餐次。Owner 添加的菜自动锁定。"""
     conn = get_db()
@@ -342,6 +391,8 @@ def add_dish_to_menu(menu_id, dish_id, meal_type):
             "SELECT 1 FROM dishes WHERE id=? AND is_active=1", (dish_id,)
         ).fetchone()
         if not active:
+            return False
+        if _dish_blocked_for_menu(conn, menu_id, dish_id):
             return False
         # 获取当前最大 sort_order
         row = conn.execute(
@@ -403,11 +454,13 @@ def replace_dish_in_menu(menu_id, menu_item_id, new_dish_id):
         ).fetchone()
         if not item:
             return False, "菜品不存在"
+        if _dish_blocked_for_menu(conn, menu_id, new_dish_id, ignore_item_id=menu_item_id):
+            return False, "该菜品处于当前厨房的全局4天锁定中"
 
         # 替换菜品，新菜自动锁定为 owner 选择
         conn.execute(
             "UPDATE menu_items SET dish_id = ?, is_locked = 1, locked_by = 'owner', "
-            "locked_at = ? WHERE id = ?",
+            "locked_at = ?, source = 'owner' WHERE id = ?",
             (new_dish_id, datetime.now().isoformat(), menu_item_id)
         )
         conn.commit()
@@ -473,8 +526,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         vv_prefs = get_preference_scores(all_dish_ids)
 
         context = {
-            "history_3day": get_history_3day(),
-            "history_7day": get_history_7day(),
+            **get_rotation_context(date_str, loc, exclude_menu_id=menu_id),
             "inventory_ingredients": inv_avail,
             "priority_ingredients": inv_pri,
             "expiring_ingredients": inv_exp,
@@ -491,16 +543,18 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
 
         # 获取当前菜单所有菜品
         all_items = conn.execute(
-            "SELECT id, dish_id, meal_type, is_locked FROM menu_items WHERE menu_id = ?",
+            "SELECT id, dish_id, meal_type, is_locked, source FROM menu_items WHERE menu_id = ?",
             (menu_id,)
         ).fetchall()
 
         # 按餐次分组
         meals_existing = {"breakfast": [], "lunch": [], "dinner": []}
+        item_sources = {}
         for item in all_items:
             mt = item["meal_type"]
             if mt in meals_existing:
                 meals_existing[mt].append(item["dish_id"])
+                item_sources[item["dish_id"]] = item["source"]
 
         # 确定要处理的餐次
         target_meals = [meal_type] if meal_type else ["breakfast", "lunch", "dinner"]
@@ -528,7 +582,11 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             state = MealState()
             for did in existing_ids:
                 analysis = NutritionAnalyzer.analyze(dish_map[did])
-                state.add_dish(analysis, is_locked=True)
+                state.add_dish(
+                    analysis,
+                    is_locked=is_manual_source(item_sources.get(did)),
+                    source=item_sources.get(did, "ai"),
+                )
 
             # V11: 记录 slot analysis before
             slots_before = analyze_meal_slots(mt, state, diners_count)
@@ -546,18 +604,20 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         for mt in target_meals:
             state_after = MealState()
             items_after = conn.execute(
-                "SELECT dish_id FROM menu_items WHERE menu_id = ? AND meal_type = ?",
+                "SELECT dish_id, source, is_locked FROM menu_items WHERE menu_id = ? AND meal_type = ?",
                 (menu_id, mt)
             ).fetchall()
             for r in items_after:
                 did = r["dish_id"]
                 if did in dish_map:
                     analysis = NutritionAnalyzer.analyze(dish_map[did])
-                    state_after.add_dish(analysis, is_locked=True)
+                    state_after.add_dish(
+                        analysis, is_locked=bool(r["is_locked"]), source=r["source"]
+                    )
             slot_analysis_after[mt] = analyze_meal_slots(mt, state_after, diners_count)
 
         # Final Review
-        menu_data = get_menu_with_dishes(date_str)
+        menu_data = get_menu_with_dishes(date_str, loc)
         day_result = {}
         for mt in ["breakfast", "lunch", "dinner"]:
             state = MealState()
@@ -565,7 +625,9 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 did = item["dish_id"]
                 if did in dish_map:
                     analysis = NutritionAnalyzer.analyze(dish_map[did])
-                    state.add_dish(analysis, is_locked=item["is_locked"])
+                    state.add_dish(
+                        analysis, is_locked=item["is_locked"], source=item.get("source", "ai")
+                    )
             day_result[mt] = {"state": state}
 
         review = RuleEngine.final_review(day_result, diners_count)
@@ -636,7 +698,9 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 continue
             slot_info = missing[slot_name]
             # 获取该槽位的候选菜
-            all_candidates = gf.get_candidates(meal_type, exclude_ids=day_history)
+            all_candidates = gf.get_candidates(
+                meal_type, exclude_ids=day_history, context=context
+            )
             slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
 
             # V11: 过滤掉已删除的菜品（re-validate is_active）
@@ -651,7 +715,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                         "meal": meal_type,
                         "slot": slot_name,
                         "reason": "no_candidate",
-                        "message": f"暂未找到合适的{slot_name}菜品，请手动添加 / No suitable {slot_name} found.",
+                        "message": NO_CANDIDATE_MESSAGE,
                     })
                 continue
 
@@ -665,18 +729,14 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
             ]
 
             if available_candidates:
-                # 有 Available 候选 → 评分选最优
+                # 有 Available 候选 → 从未出现/最久未出现优先，软分仅作同日平局。
                 meal_ctx = dict(context)
                 meal_ctx["day_proteins"] = set(day_proteins)
                 meal_ctx["day_history"] = set(day_history)
 
-                scored = []
-                for c in available_candidates:
-                    s = gf.scorer.score_dish(c, state, meal_type, meal_ctx)
-                    scored.append((s, c))
-                scored.sort(key=lambda x: x[0], reverse=True)
-
-                chosen = scored[0][1]
+                chosen = choose_rotation_candidate(
+                    available_candidates, gf.scorer, state, meal_type, meal_ctx
+                )
 
                 # V11: 最终 is_active 验证（防止旧 cache）
                 if active_dish_ids and chosen["id"] not in active_dish_ids:
@@ -707,45 +767,17 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 })
 
                 # 更新 state
-                state.add_dish(chosen, is_locked=False)
+                state.add_dish(chosen, is_locked=False, source="ai")
             else:
-                # V8: 无 Available → 检查 Almost Available
-                almost_candidates = [
-                    c for c in slot_candidates
-                    if avail_batch.get(c["id"], {}).get("status") == "almost_available"
-                ]
                 dedup_key = (meal_type, slot_name)
                 if dedup_key not in seen_unmet:
                     seen_unmet.add(dedup_key)
-                    if almost_candidates:
-                        unmet_slots.append({
-                            "meal": meal_type,
-                            "slot": slot_name,
-                            "reason": "no_available_candidate",
-                            "almost_count": len(almost_candidates),
-                            "almost_dishes": [
-                                {"id": c["id"], "name_cn": c["name_cn"],
-                                 "name_en": c.get("name_en", ""),
-                                 "missing": [m["name_cn"] for m in avail_batch.get(c["id"], {}).get("missing_required", [])]}
-                                for c in almost_candidates[:5]
-                            ],
-                            "message": (
-                                f"当前库存没有可直接制作的{slot_name}菜品。"
-                                f"有{len(almost_candidates)}道菜只差1种食材。"
-                                f" / No {slot_name} is fully available. "
-                                f"{len(almost_candidates)} dishes are missing only one ingredient."
-                            ),
-                        })
-                    else:
-                        unmet_slots.append({
-                            "meal": meal_type,
-                            "slot": slot_name,
-                            "reason": "no_available_candidate",
-                            "message": (
-                                f"当前库存没有可直接制作的{slot_name}菜品，请手动添加。"
-                                f" / No {slot_name} is fully available. Please add manually."
-                            ),
-                        })
+                    unmet_slots.append({
+                        "meal": meal_type,
+                        "slot": slot_name,
+                        "reason": "no_available_candidate",
+                        "message": NO_CANDIDATE_MESSAGE,
+                    })
 
     return items_added
 
@@ -753,6 +785,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
 # V10: 槽位 → 角色 映射（用于 reconcile 时识别 AI 菜品角色）
 _RECONCILE_SLOT_ROLES = {
     "protein_main": ["protein_main"],
+    "meat_main": ["protein_main"],
     "vegetable_dish": ["vegetable_dish"],
     "staple": ["staple"],
     "slow_soup": ["slow_soup"],
@@ -826,7 +859,9 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                 is_owner = item["is_locked"] or item["source"] == "owner"
                 # V10 FIX: state 必须包含所有菜品（owner + AI），否则
                 # 当没有 owner 菜时 current=0，无法检测超额。
-                state.add_dish(analysis, is_locked=is_owner)
+                state.add_dish(
+                    analysis, is_locked=is_owner, source=item["source"] or ("owner" if is_owner else "ai")
+                )
                 if is_owner:
                     owner_items.append((item["id"], did, analysis))
                 else:
@@ -848,7 +883,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
             # 计算每个 slot 的 owner-only 数量（用于限制删除：只删 AI，不删 owner）
             owner_state = MealState()
             for _, _, analysis in owner_items:
-                owner_state.add_dish(analysis, is_locked=True)
+                owner_state.add_dish(analysis, is_locked=True, source="owner")
             owner_slots = analyze_meal_slots(mt, owner_state, diners_count)
 
             # 对每个 slot，如果总数（owner + AI）超过 target，删除多余的 AI items
@@ -887,15 +922,21 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                     # 判断这道 AI 菜是否贡献该 slot
                     contributes = False
                     if slot_name == "protein_main":
-                        contributes = "protein_main" in roles or cat in ("protein_main", "egg_tofu")
+                        contributes = "protein_main" in roles
+                    elif slot_name == "meat_main":
+                        contributes = (
+                            "protein_main" in roles
+                            and "tofu_dish" not in roles
+                            and bool(set(analysis.get("proteins", [])) & {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"})
+                        )
                     elif slot_name == "vegetable_dish":
-                        contributes = "vegetable_dish" in roles or cat in ("vegetable_mushroom", "cold_dish")
+                        contributes = "vegetable_dish" in roles
                     elif slot_name == "staple":
-                        contributes = "staple" in roles or cat == "staple_carb"
+                        contributes = "staple" in roles
                     elif slot_name == "slow_soup":
-                        contributes = "slow_soup" in roles or analysis.get("is_slow_soup")
+                        contributes = "slow_soup" in roles
                     elif slot_name == "quick_soup":
-                        contributes = "quick_soup" in roles or analysis.get("is_quick_soup")
+                        contributes = "quick_soup" in roles
                     elif slot_name == "egg":
                         contributes = "egg_dish" in roles
                     elif slot_name == "tofu":
@@ -1034,7 +1075,7 @@ def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include
         # V11: 使用 _get_effective_diners_count 支持 banquet 模式
         diners_count = _get_effective_diners_count(menu_row=menu)
 
-        menu_data = get_menu_with_dishes(menu["date"])
+        menu_data = get_menu_with_dishes(menu["date"], menu["location"])
 
         # 重建 state 做 Final Review (V3: 只生成 Warning，不阻断)
         pool = _load_pool()
@@ -1046,7 +1087,9 @@ def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include
                 did = item["dish_id"]
                 if did in dish_map:
                     analysis = NutritionAnalyzer.analyze(dish_map[did])
-                    state.add_dish(analysis, is_locked=item["is_locked"])
+                    state.add_dish(
+                        analysis, is_locked=item["is_locked"], source=item.get("source", "ai")
+                    )
             day_result[mt] = {"state": state}
 
         review = RuleEngine.final_review(day_result, diners_count)
@@ -1101,6 +1144,8 @@ def revert_to_draft(menu_id):
             return False, "菜单不存在"
         if menu["status"] not in ("confirmed", "pushed"):
             return False, f"当前状态 {menu['status']} 不支持回退"
+        if menu["date"] < date.today().isoformat():
+            return False, "历史最终菜单不可回退"
 
         conn.execute(
             "UPDATE menus SET status = 'draft', confirmed_at = NULL, "
@@ -1126,7 +1171,9 @@ def ensure_tomorrow_menu(location="shenzhen", seed=None):
     """确保明天菜单存在，不存在则生成"""
     tomorrow = get_tomorrow_date()
     conn = get_db()
-    menu = conn.execute("SELECT id FROM menus WHERE date = ?", (tomorrow,)).fetchone()
+    menu = conn.execute(
+        "SELECT id FROM menus WHERE date = ? AND location = ?", (tomorrow, location)
+    ).fetchone()
     conn.close()
 
     if not menu:

@@ -8,8 +8,10 @@ import json
 import sys
 import sqlite3
 from datetime import date, timedelta
+from pathlib import Path
 
-sys.path.insert(0, "/Users/vv/WorkBuddy/Claw")
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR))
 
 from db import get_db, init_db
 from inventory import (
@@ -25,7 +27,7 @@ from menu_service import (
     _load_pool, ai_fill_menu, reconcile_meal_for_diners,
     generate_and_store_menu, get_menu_with_dishes,
     add_dish_to_menu, _fill_missing_slots_v8, GapFiller,
-    get_dish_ingredients_map, get_history_3day, get_history_7day,
+    get_dish_ingredients_map,
     get_inventory_ingredients,
 )
 
@@ -529,7 +531,7 @@ def test_12_no_alert():
     print("\n=== Test 12: No browser alert() ===")
     # This is a frontend test — we check that app.py doesn't use alert() in aiFillMeal
     import re
-    with open("/Users/vv/WorkBuddy/Claw/app.py", "r") as f:
+    with (BASE_DIR / "app.py").open("r", encoding="utf-8") as f:
         content = f.read()
 
     # Find the aiFillMeal function

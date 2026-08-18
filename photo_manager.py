@@ -168,7 +168,8 @@ def get_all_dishes():
                    d.protein_types, d.vegetables, d.vegetable_count, d.carb_type,
                    d.meal_components, d.taste, d.cooking_methods, d.can_serve_warm,
                    d.custom_tags, d.needs_review, d.quick_soup, d.slow_soup,
-                   d.manual_only_for_breakfast, d.image,
+                   d.manual_only_for_breakfast, d.ingredients_pending, d.pending_review,
+                   d.drink, d.image,
                    c.label_cn AS category_label
             FROM dishes d
             LEFT JOIN categories c ON d.category_id = c.id
@@ -215,6 +216,9 @@ def get_all_dishes():
                 "quick_soup": int(r["quick_soup"] or 0),
                 "slow_soup": int(r["slow_soup"] or 0),
                 "manual_only_for_breakfast": int(r["manual_only_for_breakfast"] or 0),
+                "ingredients_pending": bool(r["ingredients_pending"]),
+                "pending_review": r["pending_review"],
+                "drink": r["drink"],
                 "has_photo": has_photo,
                 "photo_file": photo_file,
                 "slug": slugify(r["name_en"] or ""),
@@ -1112,6 +1116,7 @@ function renderDishCard(d, idx) {
   if (d.quick_soup) badges += '<span class="badge badge-review">快手汤</span>';
   if (d.slow_soup) badges += '<span class="badge" style="background:#e8f5e9;color:#2e7d32">慢火汤</span>';
   if (d.manual_only_for_breakfast) badges += '<span class="badge" style="background:#fff3e0;color:#e65100">早手选</span>';
+  if (d.ingredients_pending) badges += '<span class="badge badge-review">食材待完善</span>';
   if (d.needs_review) badges += '<span class="badge badge-review">待审核</span>';
 
   return '<div class="dish-card ' + (d.has_photo ? 'has-photo' : '') + '" data-idx="' + idx + '" data-slug="' + escAttr(d.slug) + '" data-name-cn="' + escAttr(d.name_cn) + '">' +
@@ -1973,14 +1978,14 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
                         meal_components, taste, cooking_methods, can_serve_warm,
                         custom_tags, needs_review, image, image_uploaded,
                         quick_soup, slow_soup, manual_only_for_breakfast,
-                        is_active, created_at, updated_at
+                        ingredients_pending, is_active, created_at, updated_at
                     ) VALUES (
                         ?, ?, ?, ?, ?, ?,
                         '[]', '[]', 0, NULL,
                         '[]', 'normal', '[]', 0,
                         '[]', 0, NULL, 0,
                         ?, ?, ?,
-                        1, datetime('now'), datetime('now')
+                        1, 1, datetime('now'), datetime('now')
                     )
                 """, (
                     new_id, name_cn, name_en, category_id,
