@@ -1039,7 +1039,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
     for offset, (label_cn, label_en) in enumerate(DAY_LABELS):
         day_date = today + timedelta(days=offset)
         date_str = day_date.isoformat()
-        menu = get_menu_with_dishes(date_str, location)
+        menu = get_menu_with_dishes(date_str, location, record_filter_events=False)
         if not menu.get("exists"):
             menu = _empty_readonly_menu(date_str, location)
         else:

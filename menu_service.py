@@ -244,9 +244,11 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         conn.close()
 
 
-def get_menu_with_dishes(date_str, location=None):
+def get_menu_with_dishes(date_str, location=None, record_filter_events=True):
     """
     获取某天菜单，带完整菜品信息。
+    record_filter_events=False 时严格只读：过滤历史脏数据但不写 events。
+    旧调用默认保持原有审计事件语义。
     返回: {date, exists, menu_id, status, location, meals: {breakfast: [...], ...}, review}
     """
     conn = get_db()
@@ -295,9 +297,10 @@ def get_menu_with_dishes(date_str, location=None):
 
             # 仅过滤真正的脏数据：dish_id 为空/null/None 且无 custom_name
             if (not dish_id or dish_id == "None" or dish_id == "") and not custom_name:
-                log_event("menu_item_filtered_null", "menu_items", str(item["menu_item_id"]), {
-                    "menu_id": menu["id"], "dish_id": str(dish_id)
-                })
+                if record_filter_events:
+                    log_event("menu_item_filtered_null", "menu_items", str(item["menu_item_id"]), {
+                        "menu_id": menu["id"], "dish_id": str(dish_id)
+                    })
                 continue
 
             d = dict(item)
