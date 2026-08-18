@@ -52,8 +52,6 @@ class EffectiveDinersCountTests(unittest.TestCase):
         row = {
             "diners": None,
             "diners_count": 4,
-            "meal_mode": "daily",
-            "banquet_total_diners": None,
         }
         row.update(overrides)
         return row
@@ -62,9 +60,9 @@ class EffectiveDinersCountTests(unittest.TestCase):
         row = self._menu_row(diners="[]", diners_count=4)
         self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
 
-    def test_nonempty_diners_list_uses_list_length(self):
+    def test_nonempty_diners_list_does_not_override_positive_diners_count(self):
         row = self._menu_row(diners='["a","b","c"]', diners_count=4)
-        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 3)
+        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
 
     def test_null_or_empty_diners_falls_back_to_positive_diners_count(self):
         for diners in (None, ""):
@@ -78,23 +76,62 @@ class EffectiveDinersCountTests(unittest.TestCase):
                 row = self._menu_row(diners=diners, diners_count=4)
                 self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
 
-    def test_positive_banquet_total_remains_highest_priority(self):
+    def test_legacy_banquet_columns_do_not_override_normal_diners(self):
         row = self._menu_row(
-            diners='["a","b","c"]',
+            diners="[]",
             diners_count=4,
             meal_mode="banquet",
             banquet_total_diners=8,
         )
-        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 8)
+        self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
 
     def test_all_invalid_values_keep_final_fallback(self):
         row = self._menu_row(
             diners="not-json",
             diners_count=0,
-            meal_mode="daily",
-            banquet_total_diners=None,
         )
         self.assertEqual(menu_service._get_effective_diners_count(menu_row=row), 4)
+
+
+class BanquetDishPreservationTests(unittest.TestCase):
+    def test_banquet_dish_can_still_be_added_manually(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = os.path.join(tmp, "banquet-dish.db")
+            with patch.object(db, "DB_PATH", db_path):
+                db.init_db()
+                conn = db.get_db()
+                try:
+                    conn.execute(
+                        "INSERT INTO dishes(id,name_cn,banquet,is_active) VALUES(?,?,1,1)",
+                        ("dish_banquet_manual", "保留家宴菜"),
+                    )
+                    menu_id = conn.execute(
+                        "INSERT INTO menus(date,location,status,diners_count,diners) "
+                        "VALUES('2099-01-01','shenzhen','draft',4,'[]')"
+                    ).lastrowid
+                    conn.commit()
+                finally:
+                    conn.close()
+
+                self.assertTrue(
+                    menu_service.add_dish_to_menu(menu_id, "dish_banquet_manual", "dinner")
+                )
+                conn = db.get_db()
+                try:
+                    item = conn.execute(
+                        "SELECT dish_id, source, is_locked FROM menu_items WHERE menu_id=?",
+                        (menu_id,),
+                    ).fetchone()
+                    dish = conn.execute(
+                        "SELECT banquet FROM dishes WHERE id='dish_banquet_manual'"
+                    ).fetchone()
+                finally:
+                    conn.close()
+
+                self.assertEqual(dict(item), {
+                    "dish_id": "dish_banquet_manual", "source": "owner", "is_locked": 1,
+                })
+                self.assertEqual(dish["banquet"], 1)
 
 
 class ReadonlyBootstrapTests(unittest.TestCase):

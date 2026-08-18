@@ -26,15 +26,12 @@ _catalog_cache = {"version": None, "pool": None}
 
 
 def _get_effective_diners_count(menu_id=None, menu_row=None):
-    """V11: 获取有效用餐人数，支持 banquet 模式。
-    banquet 模式下优先使用 banquet_total_diners；daily 模式下优先使用有效 diners 名单。
-    """
+    """获取有效用餐人数：只使用 diners_count，无效时回退 4。"""
     if menu_row is None and menu_id:
         conn = get_db()
         try:
             menu_row = conn.execute(
-                "SELECT diners, diners_count, meal_mode, banquet_total_diners "
-                "FROM menus WHERE id = ?",
+                "SELECT diners_count FROM menus WHERE id = ?",
                 (menu_id,)
             ).fetchone()
         finally:
@@ -42,22 +39,6 @@ def _get_effective_diners_count(menu_id=None, menu_row=None):
 
     if not menu_row:
         return 4
-
-    meal_mode = menu_row["meal_mode"] if "meal_mode" in menu_row.keys() else "daily"
-    if meal_mode == "banquet":
-        banquet_total = menu_row["banquet_total_diners"] if "banquet_total_diners" in menu_row.keys() else None
-        if isinstance(banquet_total, int) and not isinstance(banquet_total, bool) and banquet_total > 0:
-            return banquet_total
-
-    diners_json = menu_row["diners"] if "diners" in menu_row.keys() else None
-    if diners_json:
-        try:
-            diner_ids = json.loads(diners_json)
-        except (json.JSONDecodeError, TypeError):
-            pass
-        else:
-            if isinstance(diner_ids, list) and diner_ids:
-                return len(diner_ids)
 
     diners_count = menu_row["diners_count"] if "diners_count" in menu_row.keys() else None
     if isinstance(diners_count, int) and not isinstance(diners_count, bool) and diners_count > 0:
@@ -144,20 +125,17 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     # 库存上下文
     inv_avail, inv_pri, inv_exp = get_available_ingredient_ids(location)
 
-    # V10: 读取已有菜单的 diners_count（如果存在），确保晚餐按人数生成
-    # V11: 使用 _get_effective_diners_count 支持 banquet 模式
+    # 读取已有菜单的正常人数设置，确保晚餐按人数生成。
     diners_count = 4
-    meal_mode = "daily"
     conn_pre = get_db()
     try:
         existing = conn_pre.execute(
-            "SELECT diners, diners_count, meal_mode, banquet_total_diners FROM menus "
+            "SELECT diners, diners_count FROM menus "
             "WHERE date = ? AND location = ?",
             (date_str, location)
         ).fetchone()
         if existing:
             diners_count = _get_effective_diners_count(menu_row=existing)
-            meal_mode = existing["meal_mode"] if existing["meal_mode"] else "daily"
     finally:
         conn_pre.close()
 
@@ -184,7 +162,6 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         "dish_ingredients": dish_ings,
         "dish_availability": {dish_id: value["status"] for dish_id, value in dish_availability.items()},
         "vv_preferences": vv_prefs,  # V11: VV confirm-based preference
-        "is_banquet": meal_mode == "banquet",  # V11: banquet mode flag
     }
 
     # 生成三餐
@@ -370,10 +347,6 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=True):
             "meals": meals,
             "diners": diners,
             "diners_count": _get_effective_diners_count(menu_row=menu),
-            "meal_mode": menu["meal_mode"] if "meal_mode" in menu.keys() else "daily",
-            "banquet_total_diners": (
-                menu["banquet_total_diners"] if "banquet_total_diners" in menu.keys() else None
-            ),
             "availability": avail_batch,
             "shortages": shortage_map,
             "review_issues": menu["notes_zh"] or "",
@@ -523,13 +496,13 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
     - 不再跳过空餐次（existing_ids 为空时也从零开始补齐）
     - 返回 mutation results: {added, removed, unmet_slots, slot_analysis_before/after}
     - INSERT 前重新验证 is_active
-    - 使用 _get_effective_diners_count 支持 banquet
+    - 使用 _get_effective_diners_count 统一读取正常人数
     - 使用 VV preference 排序
     """
     conn = get_db()
     try:
         menu = conn.execute(
-            "SELECT date, location, diners, diners_count, meal_mode, banquet_total_diners "
+            "SELECT date, location, diners, diners_count "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
@@ -554,7 +527,6 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             "expiring_ingredients": inv_exp,
             "dish_ingredients": dish_ings,
             "vv_preferences": vv_prefs,
-            "is_banquet": (menu["meal_mode"] == "banquet") if menu["meal_mode"] else False,
         }
 
         gf = GapFiller(pool, seed=seed or 42, dish_ingredients=dish_ings)
@@ -824,7 +796,6 @@ _RECONCILE_SLOT_ROLES = {
 def reconcile_meal_for_diners(menu_id, location="shenzhen"):
     """
     V10: Diners 变化后重新调整菜单。
-    V11: 使用 _get_effective_diners_count 支持 banquet 模式。
     
     流程:
       1. 读取 diners_count（V11: 通过 _get_effective_diners_count）
@@ -841,7 +812,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
     conn = get_db()
     try:
         menu = conn.execute(
-            "SELECT date, location, diners, diners_count, meal_mode, banquet_total_diners "
+            "SELECT date, location, diners, diners_count "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
@@ -851,7 +822,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
         date_str = menu["date"]
         loc = menu["location"] or location
 
-        # V11: 使用 _get_effective_diners_count 支持 banquet 模式
+        # 使用统一的正常人数语义。
         diners_count = _get_effective_diners_count(menu_row=menu)
 
         pool = _load_pool()
@@ -1077,7 +1048,7 @@ def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include
     try:
         conn.execute("BEGIN IMMEDIATE")
         menu = conn.execute(
-            "SELECT date, location, status, diners, diners_count, meal_mode, banquet_total_diners "
+            "SELECT date, location, status, diners, diners_count "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
@@ -1094,7 +1065,7 @@ def confirm_menu(menu_id, triggered_by="vivian", expected_location=None, include
             conn.rollback()
             return result(False, f"当前状态 {menu['status']} 不支持确认")
 
-        # V11: 使用 _get_effective_diners_count 支持 banquet 模式
+        # 使用统一的正常人数语义。
         diners_count = _get_effective_diners_count(menu_row=menu)
 
         menu_data = get_menu_with_dishes(menu["date"], menu["location"])

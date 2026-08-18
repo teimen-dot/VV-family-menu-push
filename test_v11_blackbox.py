@@ -238,63 +238,12 @@ def test_c_grandma_diner():
 
 
 # ============================================================
-# Test D: Banquet Mode + Total Diners
+# Test D: Banquet dishes remain in the catalog for manual use
 # ============================================================
-def test_d_banquet_mode():
-    print("\n=== Test D: Banquet Mode + Total Diners ===")
-    test_date = get_test_date()
-    cleanup_menu(test_date)
-
-    menu_id, review = generate_and_store_menu(test_date, "shenzhen", seed=42)
-
-    # Set to banquet mode with 8 total diners
-    conn = get_db()
-    try:
-        conn.execute(
-            "UPDATE menus SET meal_mode = 'banquet', banquet_total_diners = 8 WHERE id = ?",
-            (menu_id,)
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    effective = _get_effective_diners_count(menu_id=menu_id)
-    test("D: Banquet effective diners = 8", effective == 8,
-         f"got {effective}")
-
-    # Verify meal_mode stored correctly
-    conn = get_db()
-    try:
-        row = conn.execute(
-            "SELECT meal_mode, banquet_total_diners FROM menus WHERE id = ?",
-            (menu_id,)
-        ).fetchone()
-        test("D: meal_mode = banquet", row["meal_mode"] == "banquet")
-        test("D: banquet_total_diners = 8", row["banquet_total_diners"] == 8)
-    finally:
-        conn.close()
-
-    # Test that banquet=true dishes get bonus in scoring
-    pool = _load_pool()
-    banquet_dishes = [d for d in pool["dishes"] if d.get("banquet")]
-    test("D: Banquet dishes exist in pool", len(banquet_dishes) > 0,
-         f"found {len(banquet_dishes)}")
-
-    if banquet_dishes:
-        scorer = ScoringEngine(rng=__import__('random').Random(42))
-        state = MealState()
-        ctx_banquet = {"is_banquet": True}
-        ctx_daily = {"is_banquet": False}
-
-        d = banquet_dishes[0]
-        analysis = NutritionAnalyzer.analyze(d)
-        score_banquet = scorer.score_dish(analysis, state, "dinner", ctx_banquet)
-        score_daily = scorer.score_dish(analysis, state, "dinner", ctx_daily)
-        test("D: Banquet dish scores higher in banquet mode",
-             score_banquet > score_daily,
-             f"banquet={score_banquet:.1f}, daily={score_daily:.1f}")
-
-    cleanup_menu(test_date)
+def test_d_banquet_dishes_preserved():
+    print("\n=== Test D: Banquet Dishes Preserved ===")
+    analysis = NutritionAnalyzer.analyze({"banquet": True})
+    test("D: Banquet tag remains available for manual selection", analysis["banquet"] is True)
 
 
 # ============================================================
@@ -814,7 +763,7 @@ if __name__ == "__main__":
     test_a_vv_preference()
     test_b_preference_vs_available()
     test_c_grandma_diner()
-    test_d_banquet_mode()
+    test_d_banquet_dishes_preserved()
     test_e_dish_deletion_sync()
     test_f_missing_protein_ai_fill()
     test_g_ai_fill_mutation()

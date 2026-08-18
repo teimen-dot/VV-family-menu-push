@@ -76,7 +76,6 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/revert",
     "/api/tomorrow/push",
     "/api/tomorrow/diners",
-    "/api/tomorrow/meal-mode",
     "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal",
     "/api/tomorrow/cycle-replace",
@@ -95,7 +94,7 @@ PANTRY_POST_PATHS = {
 MENU_DRAFT_WRITE_PATHS = {
     "/api/tomorrow/add", "/api/tomorrow/remove", "/api/tomorrow/replace",
     "/api/tomorrow/ai-fill", "/api/tomorrow/repair", "/api/tomorrow/diners",
-    "/api/tomorrow/meal-mode", "/api/tomorrow/meal-note",
+    "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal", "/api/tomorrow/cycle-replace",
 }
 
@@ -710,43 +709,6 @@ def update_menu_diners(menu_id, diners_list):
         )
         conn.commit()
         log_event("diners_updated", "menu", str(menu_id), {"diners": diners_list})
-        return True
-    finally:
-        conn.close()
-
-
-def get_menu_meal_mode(menu_id):
-    """V11: 获取菜单的 meal_mode 和 banquet_total_diners"""
-    conn = get_db()
-    try:
-        row = conn.execute(
-            "SELECT meal_mode, banquet_total_diners FROM menus WHERE id = ?",
-            (menu_id,)
-        ).fetchone()
-        if not row:
-            return {"meal_mode": "daily", "banquet_total_diners": None}
-        return {
-            "meal_mode": row["meal_mode"] or "daily",
-            "banquet_total_diners": row["banquet_total_diners"],
-        }
-    finally:
-        conn.close()
-
-
-def update_menu_meal_mode(menu_id, meal_mode, banquet_total_diners=None):
-    """V11: 更新菜单的 meal_mode 和 banquet_total_diners"""
-    conn = get_db()
-    try:
-        conn.execute(
-            "UPDATE menus SET meal_mode = ?, banquet_total_diners = ?, "
-            "updated_at = datetime('now') WHERE id = ?",
-            (meal_mode, banquet_total_diners if meal_mode == "banquet" else None, menu_id)
-        )
-        conn.commit()
-        log_event("meal_mode_updated", "menu", str(menu_id), {
-            "meal_mode": meal_mode,
-            "banquet_total_diners": banquet_total_diners,
-        })
         return True
     finally:
         conn.close()
@@ -1474,7 +1436,6 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .settings-block.compact{display:grid;grid-template-columns:1fr auto;align-items:center}.settings-block.compact .section-label{margin:0}
 .segmented{display:flex;padding:3px;border-radius:var(--radius-control);background:#eef1ee}.segmented button{min-height:46px;padding:0 13px;border:0;border-radius:8px;color:var(--muted);background:transparent;font-size:14px;font-weight:700;cursor:pointer}
 .segmented button.selected{color:var(--ink);background:white;box-shadow:0 1px 4px rgba(20,35,27,.1)}
-.banquet-count{grid-column:1/-1;padding-top:13px;border-top:1px solid var(--line)}.banquet-count[hidden]{display:none}
 .nutrition-card{background:#fbfcfa}.nutrition-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
 .nutrition-heading small{color:var(--muted);font-size:13px}.nutrition-heading h2{margin:4px 0 12px;font-size:19px;letter-spacing:-.02em}
 .nutrition-heading h2 .lang-en{margin-top:3px;font-size:12px}.nutrition-heading>span{flex:0 0 auto;padding:5px 7px;border-radius:7px;color:var(--warning);background:var(--warning-soft);font-size:12px;font-weight:800}
@@ -1498,7 +1459,6 @@ button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid rgba(
 .empty-state{min-height:96px;display:flex;align-items:center;gap:13px;padding:14px}.empty-icon{width:42px;height:42px;display:grid;place-items:center;border:1px dashed #aac0b1;border-radius:10px;color:var(--accent);background:var(--accent-soft);font-size:21px}.empty-state strong{font-size:13px}.empty-state p{max-width:190px;margin:4px 0 0;color:var(--muted);font-size:10px}.empty-state button{margin-left:auto}
 .mobile-action-bar{position:fixed;left:0;right:0;bottom:0;z-index:40;display:grid;grid-template-columns:.85fr 1.4fr;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:1px solid #d9dfda;background:rgba(255,255,255,.96);backdrop-filter:blur(14px)}
 .desktop-owner-actions{display:none;grid-template-columns:.85fr 1.4fr;gap:8px;padding:12px;border:1px solid #c7ded1;border-radius:14px;background:#eef6f1}
-.banquet-count{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding:9px 10px;border-radius:10px;background:#f3f6f3}.banquet-count[hidden]{display:none}.banquet-stepper{display:flex;align-items:center;gap:8px}.banquet-stepper button{width:32px;height:32px;border:1px solid #cdd6ce;border-radius:9px;background:#fff;font-size:20px}.banquet-stepper output{min-width:30px;text-align:center;font-weight:800}
 .secondary-button,.primary-button{width:100%;min-height:52px;padding:0 16px;border:1px solid #bfc9c2;font-size:14px}.secondary-button{color:var(--accent-dark);background:white}.primary-button{border-color:var(--accent-dark);color:white;background:var(--accent-dark)}
 .snack-bar{bottom:calc(84px + env(safe-area-inset-bottom));color:white;background:#17201c}.footer,.warning-box{display:none!important}
 .modal-overlay{background:rgba(12,20,15,.54);backdrop-filter:blur(5px)}.modal{border-radius:18px 18px 0 0;background:var(--surface)}
@@ -1734,10 +1694,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     menu_diners = get_menu_diners(menu["menu_id"])
     if not menu_diners:
         menu_diners = [d["id"] for d in all_diners if d["default_attends"]]
-    meal_mode_info = get_menu_meal_mode(menu["menu_id"])
-    meal_mode = meal_mode_info["meal_mode"]
-    banquet_total = meal_mode_info["banquet_total_diners"] or 8
-    effective_diners = banquet_total if meal_mode == "banquet" else len(menu_diners)
+    effective_diners = menu.get("diners_count") or len(menu_diners) or 4
 
     # Legacy combo rows are snapshots of whole meals, not individual dishes.
     # When rendering the live menu, only current dish records are actionable.
@@ -1932,11 +1889,6 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             f'<div class="meal-actions">{actions}</div>{delete_button}</header>{note_html}{warning}<div class="dish-grid">{cards}</div></section>'
         )
 
-    daily_class = "selected" if meal_mode == "daily" else ""
-    banquet_class = "selected" if meal_mode == "banquet" else ""
-    banquet_hidden = "" if meal_mode == "banquet" else "hidden"
-    meal_mode_daily_action = " onclick=\"setMealMode('daily')\"" if is_owner else " disabled"
-    meal_mode_banquet_action = " onclick=\"setMealMode('banquet')\"" if is_owner else " disabled"
     push_notice = ""
     if is_owner and menu["status"] != "draft":
         if menu.get("push_status") == "failed":
@@ -1976,9 +1928,6 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 {push_notice}
 <section class="settings-block diners-panel"><div class="section-label"><span>{bilingual('用餐成员','Diners')}</span><small>{bilingual(f'{len(menu_diners)} 人',f'{len(menu_diners)} people')}</small></div><div class="people-grid">{people_html}</div></section>
 <div class="desktop-layout"><aside class="planner-panel">
-<section class="settings-block compact"><div class="section-label"><span>{bilingual('用餐模式','Meal mode')}</span></div><div class="segmented">
-<button class="{daily_class}"{meal_mode_daily_action}>{bilingual('日常','Daily')}</button><button class="{banquet_class}"{meal_mode_banquet_action}>{bilingual('家宴','Banquet')}</button></div>
-<div class="banquet-count" {banquet_hidden}><span>{bilingual('家宴总人数','Total diners')}</span><div class="banquet-stepper">{f'<button type="button" onclick="adjustBanquet(-1)" aria-label="减少人数">−</button>' if is_owner else ''}<output id="banquetTotal">{banquet_total}</output>{f'<button type="button" onclick="adjustBanquet(1)" aria-label="增加人数">＋</button>' if is_owner else ''}</div></div></section>
 <section class="nutrition-card"><div class="nutrition-heading"><div><small>{bilingual('营养概览','Nutrition overview')}</small><h2>{bilingual(nutrition_title_cn,nutrition_title_en)}</h2></div>
 <span>{bilingual(f'{pending_count} 项待补',f'{pending_count} item{"s" if pending_count != 1 else ""} needed')}</span></div>{nutrition_rows}</section>{desktop_action_bar}</aside>
 <div class="menu-content">{"".join(meal_sections)}</div></div></main>
@@ -2009,14 +1958,12 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 <input class="dish-picker-search" id="dishSearchInput" placeholder="搜索菜品 / Search dishes" oninput="onDishSearchInput()">
 <div class="dish-picker-results" id="dishSearchResults"></div><div class="modal-actions"><button class="secondary-button" onclick="closeDishSearch()">{bilingual('取消','Cancel')}</button></div></div></div>
 <div class="snack-bar" id="snackBar"></div><script>
-let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotesByMenu={meal_notes_by_menu_json},noteMenuId=null,noteMealType=null,mealDinerMenuId=null,mealDinerSelection=[],dinerOptions={diner_options_json},searchMode={{menuId:null,meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
+let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},mealNotesByMenu={meal_notes_by_menu_json},noteMenuId=null,noteMealType=null,mealDinerMenuId=null,mealDinerSelection=[],dinerOptions={diner_options_json},searchMode={{menuId:null,meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
 function snack(msg){{let b=document.getElementById('snackBar');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),1800)}}
 function pairMarkup(zh,en){{return '<span class="bilingual-pair"><span class="lang-zh">'+zh+'</span><span class="lang-en">'+en+'</span></span>'}}
 async function requestJSON(path,options){{let response;try{{response=await fetch(path,options)}}catch(e){{throw new Error('网络连接失败 Network error')}}let data;try{{data=await response.json()}}catch(e){{throw new Error('服务器返回无效响应 Invalid server response')}}if(!response.ok||data.ok===false)throw new Error(data.error||data.message||('请求失败 HTTP '+response.status));return data}}
 function postJSON(path,payload){{return requestJSON(path,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}})}}
 async function toggleDiner(id){{let next=selectedDiners.includes(id)?selectedDiners.filter(v=>v!==id):selectedDiners.concat(id);if(!next.length){{snack('至少保留一名用餐成员 Keep at least one diner');return}}try{{await postJSON('/api/tomorrow/diners',{{menu_id:menuId,diners:next,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
-async function setMealMode(mode){{try{{await postJSON('/api/tomorrow/meal-mode',{{menu_id:menuId,meal_mode:mode,banquet_total_diners:mode==='banquet'?banquetTotal:null,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
-async function adjustBanquet(delta){{let next=Math.max(2,Math.min(30,banquetTotal+delta));if(next===banquetTotal)return;try{{await postJSON('/api/tomorrow/meal-mode',{{menu_id:menuId,meal_mode:'banquet',banquet_total_diners:next,location:currentLoc}});banquetTotal=next;document.getElementById('banquetTotal').textContent=next;location.reload()}}catch(e){{snack(e.message)}}}}
 function openDishSearch(targetMenuId,meal,replaceId,currentDishId,categoryId){{searchMode={{menuId:targetMenuId,meal,replaceId:replaceId||null,currentDishId:currentDishId||null,categoryId:categoryId||null}};document.getElementById('dishSearchModal').classList.add('show');document.getElementById('dishSearchTitle').innerHTML=replaceId?pairMarkup('换一道','Replace dish'):pairMarkup('添加菜品','Add dish');document.getElementById('dishSearchInput').value='';loadDishPicker()}}
 function closeDishSearch(){{document.getElementById('dishSearchModal').classList.remove('show')}}
 function onDishSearchInput(){{clearTimeout(searchTimer);let q=document.getElementById('dishSearchInput').value.trim();searchTimer=setTimeout(()=>q?doDishSearch(q):loadDishPicker(),250)}}
@@ -2068,19 +2015,12 @@ def render_tomorrow(role="owner", location="shenzhen"):
     if not menu_diners:
         menu_diners = [d["id"] for d in all_diners if d["default_attends"]]
 
-    # V11: 获取 Meal Mode
-    meal_mode_info = {"meal_mode": "daily", "banquet_total_diners": None}
-    if menu.get("menu_id"):
-        meal_mode_info = get_menu_meal_mode(menu["menu_id"])
-    meal_mode = meal_mode_info["meal_mode"]
-    banquet_total = meal_mode_info["banquet_total_diners"] or 8
-
     # One shared rule-engine result drives meal gaps and the overview.
     menu_warnings = []
     menu_validation = {"meal_slots": {}, "warnings": []}
     if menu.get("exists") and menu.get("menu_id"):
         try:
-            effective_diners = banquet_total if meal_mode == "banquet" else len(menu_diners)
+            effective_diners = menu.get("diners_count") or len(menu_diners) or 4
             menu_validation = validate_menu_meals(menu, effective_diners)
             menu_warnings = menu_validation["warnings"]
         except Exception:
@@ -2129,28 +2069,6 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 f'<span class="diner-count">{diner_total} 人<small>{diner_total} people</small></span></div>'
                 f'<div class="diners-row people-cards">{diners_chips}</div></section>'
             )
-
-            daily_active = "active" if meal_mode == "daily" else ""
-            banquet_active = "active" if meal_mode == "banquet" else ""
-            banquet_input_display = "block" if meal_mode == "banquet" else "none"
-            meal_mode_html = (
-                f'<div class="diners-section">'
-                f'<div class="diners-title">用餐模式 Meal Mode</div>'
-                f'<div class="diners-row">'
-                f'<span class="diner-chip {daily_active}" onclick="setMealMode(\'daily\')">日常 Daily</span>'
-                f'<span class="diner-chip {banquet_active}" onclick="setMealMode(\'banquet\')">家宴 Banquet</span>'
-                f'</div>'
-                f'<div id="banquet-input" style="display:{banquet_input_display};margin-top:8px;align-items:center;gap:10px">'
-                f'<span style="font-size:14px;color:#a89888">家宴总人数 Total Diners</span>'
-                f'<button class="btn-stepper" onclick="adjustBanquet(-1)">−</button>'
-                f'<input type="number" id="banquetTotal" value="{banquet_total}" min="2" max="30" '
-                f'style="width:60px;text-align:center;font-size:18px;border:1px solid #d4c8b8;border-radius:6px;padding:4px" '
-                f'onchange="setBanquetTotal(this.value)">'
-                f'<button class="btn-stepper" onclick="adjustBanquet(1)">+</button>'
-                f'</div>'
-                f'</div>'
-            )
-            sections.append(meal_mode_html)
 
         # Aggregate the exact same configured slots shown in each meal warning.
         nutrition_slot_groups = {
@@ -2357,8 +2275,6 @@ let menuId={menu.get("menu_id","null")};
 let currentLoc='{location}';
 let hasUnsavedChanges=false;
 let selectedDiners={json.dumps(menu_diners)};
-let currentMealMode='{meal_mode}';
-let banquetTotal={banquet_total};
 async function requestJSON(path,options={{}}){{
   let response=await fetch(path,{{credentials:'same-origin',...options}});
   let result=await response.json().catch(()=>({{}}));
@@ -2374,28 +2290,6 @@ async function toggleDiner(id){{
     await postJSON('/api/tomorrow/diners',{{menu_id:menuId,diners:next,location:currentLoc}});
     selectedDiners=next;snack('用餐成员已更新 Diners updated');location.reload();
   }}catch(error){{snack(error.message||'用餐成员更新失败');}}
-}}
-// V11: Meal Mode toggle
-async function setMealMode(mode){{
-  if(mode===currentMealMode)return;
-  try{{
-    await postJSON('/api/tomorrow/meal-mode',{{menu_id:menuId,meal_mode:mode,banquet_total_diners:mode==='banquet'?banquetTotal:null,location:currentLoc}});
-    currentMealMode=mode;snack(mode==='banquet'?'已切换到家宴模式 Banquet mode':'已切换到日常模式 Daily mode');location.reload();
-  }}catch(error){{snack(error.message||'用餐模式更新失败');}}
-}}
-function adjustBanquet(delta){{
-  let input=document.getElementById('banquetTotal');
-  let v=parseInt(input.value)||8;
-  v=Math.max(2,Math.min(30,v+delta));
-  input.value=v;
-  setBanquetTotal(v);
-}}
-async function setBanquetTotal(val){{
-  let v=parseInt(val)||8;
-  v=Math.max(2,Math.min(30,v));
-  banquetTotal=v;
-  try{{await postJSON('/api/tomorrow/meal-mode',{{menu_id:menuId,meal_mode:'banquet',banquet_total_diners:v,location:currentLoc}});snack('家宴总人数已更新: '+v+' Total diners updated');setTimeout(()=>location.reload(),500);}}
-  catch(error){{snack(error.message||'家宴人数更新失败');}}
 }}
 // V7: Smart dish replacement modal
 let searchMode={{meal:null,replaceId:null,currentDishId:null,categoryId:null}};
@@ -4140,38 +4034,6 @@ class AppHandler(BaseHTTPRequestHandler):
             ok = update_menu_diners(body["menu_id"], diners)
             if ok:
                 # V10: Diners 变化后自动 Reconcile AI 菜品
-                try:
-                    from menu_service import reconcile_meal_for_diners
-                    reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(
-                        body["menu_id"], location=body.get("location", "shenzhen")
-                    )
-                    self.send_json({"ok": True, "reconciled": True, "message": reconcile_msg})
-                except Exception as e:
-                    self.send_json({"ok": True, "reconcile_error": str(e)})
-            else:
-                self.send_json({"ok": False})
-
-        elif path == "/api/tomorrow/meal-mode":
-            # V11: 设置 Meal Mode (daily/banquet) + banquet_total_diners
-            meal_mode = body.get("meal_mode", "daily")
-            banquet_total = body.get("banquet_total_diners")
-            if meal_mode not in ("daily", "banquet"):
-                self.send_json({"ok": False, "error": "invalid meal_mode"}, 400)
-                return
-            if meal_mode == "banquet":
-                try:
-                    banquet_total = int(banquet_total)
-                except (TypeError, ValueError):
-                    self.send_json({"ok": False, "error": "banquet_total_diners required"}, 400)
-                    return
-                if not 2 <= banquet_total <= 30:
-                    self.send_json({"ok": False, "error": "家宴人数必须为 2–30"}, 400)
-                    return
-            else:
-                banquet_total = None
-            ok = update_menu_meal_mode(body["menu_id"], meal_mode, banquet_total)
-            if ok:
-                # V11: Meal Mode 变化后自动 Reconcile
                 try:
                     from menu_service import reconcile_meal_for_diners
                     reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(

@@ -41,7 +41,7 @@ class MarkupTests(unittest.TestCase):
     def test_kitchen_write_permissions(self):
         for path in (
             "/api/tomorrow/add", "/api/tomorrow/ai-fill", "/api/tomorrow/repair",
-            "/api/tomorrow/confirm", "/api/tomorrow/diners", "/api/tomorrow/meal-mode",
+            "/api/tomorrow/confirm", "/api/tomorrow/diners",
             "/api/menu/diners",
         ):
             self.assertFalse(app.post_path_allowed("worker", path), path)
@@ -49,11 +49,17 @@ class MarkupTests(unittest.TestCase):
     def test_do_post_uses_module_database_function(self):
         self.assertNotIn("get_db", app.AppHandler.do_POST.__code__.co_varnames)
 
+    def test_menu_banquet_mode_surface_is_removed(self):
+        self.assertFalse(hasattr(app, "get_menu_meal_mode"))
+        self.assertFalse(hasattr(app, "update_menu_meal_mode"))
+        self.assertNotIn("/api/tomorrow/meal-mode", app.OWNER_ONLY_POST_PATHS)
+        self.assertNotIn("/api/tomorrow/meal-mode", app.MENU_DRAFT_WRITE_PATHS)
+
     def test_empty_required_meals_share_validation_and_render_all_gaps(self):
         menu = {
             "exists": True, "menu_id": 1, "date": "2026-08-06", "status": "draft",
             "confirmed_at": None, "pushed_at": None, "push_status": "not_sent",
-            "location": "shenzhen", "shortages": {}, "review_issues": "",
+            "location": "shenzhen", "shortages": {}, "review_issues": "", "diners_count": 1,
             "meals": {"breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": []},
         }
         diners = [{"id": "vv", "name_cn": "VV", "name_en": "VV", "default_attends": 1}]
@@ -66,7 +72,6 @@ class MarkupTests(unittest.TestCase):
              patch.object(app, "get_menu_with_dishes", return_value=menu), \
              patch.object(app, "get_all_diners", return_value=diners), \
              patch.object(app, "get_menu_diners", return_value=["vv"]), \
-             patch.object(app, "get_menu_meal_mode", return_value={"meal_mode": "daily", "banquet_total_diners": None}), \
              patch.object(app, "validate_menu_meals", return_value={"meal_slots": slots, "warnings": []}), \
              patch.object(app, "get_menu_purchase_requests", return_value=[]):
             owner_html = app.render_tomorrow("owner", "shenzhen")
@@ -77,11 +82,13 @@ class MarkupTests(unittest.TestCase):
         self.assertNotIn("下午茶缺少", owner_html)
         self.assertIn('class="desktop-confirm"', owner_html)
         self.assertNotIn('class="desktop-confirm"', worker_html)
+        self.assertNotIn("用餐模式", owner_html)
+        self.assertNotIn("/api/tomorrow/meal-mode", owner_html)
 
     def test_production_preview_branch_uses_shared_gaps_and_desktop_actions(self):
         menu = {
             "exists": True, "menu_id": 1, "date": "2026-08-06", "status": "draft",
-            "push_status": "not_sent", "meals": {
+            "push_status": "not_sent", "diners_count": 1, "meals": {
                 "breakfast": [], "lunch": [{
                     "menu_item_id": 9, "dish_id": "dish_1", "name_cn": "测试菜",
                     "name_en": "Test Dish", "category_id": "vegetable", "image": None,
@@ -103,7 +110,6 @@ class MarkupTests(unittest.TestCase):
              patch.object(app, "get_menu_with_dishes", return_value=menu), \
              patch.object(app, "get_all_diners", return_value=diners), \
              patch.object(app, "get_menu_diners", return_value=["vv"]), \
-             patch.object(app, "get_menu_meal_mode", return_value={"meal_mode": "daily", "banquet_total_diners": None}), \
              patch.object(app, "validate_menu_meals", return_value=validation):
             owner_html = app.render_tomorrow("owner", "shenzhen")
             worker_html = app.render_tomorrow("worker", "shenzhen")
@@ -115,6 +121,8 @@ class MarkupTests(unittest.TestCase):
         self.assertNotIn('class="desktop-owner-actions"', worker_html)
         self.assertIn("Available now", owner_html)
         self.assertNotIn("智能补充", worker_html)
+        self.assertNotIn("用餐模式", owner_html)
+        self.assertNotIn("/api/tomorrow/meal-mode", owner_html)
         note_index = owner_html.index("添加备注")
         add_index = owner_html.index("添加菜品", note_index)
         fill_index = owner_html.index("智能补充", add_index)

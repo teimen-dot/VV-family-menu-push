@@ -785,7 +785,6 @@ class ScoringEngine:
     W_SAME_DAY_PROTEIN = -15    # 同一天蛋白质过度重复
     W_COOKING_REPEAT = -10      # 烹饪方式重复
     W_BOSS_FAVORITE = 20        # 老板常选
-    W_BANQUET_MATCH = 15        # 家宴场景匹配
     W_ONE_POT_DINNER = -200     # 一餐型料理在晚餐
     W_ONE_POT_BREAKFAST = -120  # 一餐型料理在早餐
     W_ONE_POT_LUNCH = -25       # 一餐型料理在午餐
@@ -805,7 +804,6 @@ class ScoringEngine:
           - priority_ingredients: set of ingredient_ids priority_use
           - expiring_ingredients: set of ingredient_ids expiring
           - boss_favorites: set of dish_ids boss frequently picks
-          - is_banquet: bool
         """
         ctx = context or {}
         day_proteins = ctx.get("day_proteins", set())
@@ -963,10 +961,6 @@ class ScoringEngine:
         if dish_id in vv_prefs:
             pref_score = vv_prefs[dish_id]
             score += min(pref_score, self.W_VV_PREFERENCE)
-
-        # === 家宴场景 ===
-        if ctx.get("is_banquet") and analysis["banquet"]:
-            score += self.W_BANQUET_MATCH
 
         # === 随机扰动 ===
         score += self.rng.uniform(0, 6)
