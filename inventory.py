@@ -13,6 +13,9 @@
 
 import os
 import json
+import sqlite3
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime, timedelta
 from db import get_db, log_event, get_config, set_config
 from push_service import PushPlusClient, PushError
@@ -100,6 +103,19 @@ PLACEHOLDER_CLASS = {
 }
 
 
+_LEGACY_SCHEMA_SAFE = ContextVar("legacy_schema_safe_availability", default=False)
+
+
+@contextmanager
+def legacy_schema_safe_availability():
+    """Allow only the caller's read path to tolerate the pre-V10 class table."""
+    token = _LEGACY_SCHEMA_SAFE.set(True)
+    try:
+        yield
+    finally:
+        _LEGACY_SCHEMA_SAFE.reset(token)
+
+
 def normalize_ingredient_id(raw_id):
     """V10: 将食材别名归一化为规范 ingredient_id。
     raw ingredient → normalize alias → canonical ingredient_id
@@ -115,11 +131,17 @@ def _ingredient_classes(conn, ingredient_ids):
     if not ids:
         return {}
     placeholders = ",".join("?" for _ in ids)
-    rows = conn.execute(
-        f"SELECT ingredient_id, class_id FROM ingredient_classifications "
-        f"WHERE ingredient_id IN ({placeholders})",
-        tuple(sorted(ids)),
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            f"SELECT ingredient_id, class_id FROM ingredient_classifications "
+            f"WHERE ingredient_id IN ({placeholders})",
+            tuple(sorted(ids)),
+        ).fetchall()
+    except sqlite3.OperationalError as exc:
+        if (_LEGACY_SCHEMA_SAFE.get()
+                and str(exc) == "no such table: ingredient_classifications"):
+            return None
+        raise
     result = {}
     for row in rows:
         result.setdefault(row["ingredient_id"], set()).add(row["class_id"])
@@ -540,9 +562,12 @@ def check_dish_availability(dish_id, location, inventory_version=None):
     if inventory_version is None:
         inventory_version = get_inventory_version(location)
 
-    # V5 Section 21: 缓存 key 包含 location + inventory_version + dish_id
+    legacy_schema_safe = _LEGACY_SCHEMA_SAFE.get()
+
+    # Legacy-safe reads are deliberately not cached: a bootstrap fallback must
+    # never weaken a later strict availability call in the same process.
     cache_key = f"{location}_{inventory_version}_{dish_id}"
-    if cache_key in _availability_cache:
+    if not legacy_schema_safe and cache_key in _availability_cache:
         return _availability_cache[cache_key]
 
     conn = get_db()
@@ -567,7 +592,8 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                 "inventory_version": inventory_version,
                 "data_complete": False,
             }
-            _availability_cache[cache_key] = result
+            if not legacy_schema_safe:
+                _availability_cache[cache_key] = result
             return result
 
         available_ings, _, _ = get_current_pantry_ids(location)
@@ -581,6 +607,9 @@ def check_dish_availability(dish_id, location, inventory_version=None):
             normalize_ingredient_id(row["ingredient_id"]) for row in ings
         } | {row["ingredient_id"] for row in ings}
         class_map = _ingredient_classes(conn, class_ids)
+        class_mapping_known = class_map is not None
+        if class_map is None:
+            class_map = {}
         available_classes = set()
         for pantry_id in available_ings | normalized_pantry:
             available_classes.update(class_map.get(pantry_id, set()))
@@ -588,6 +617,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         required = []
         available_required = []
         missing_required = []
+        unknown_required = []
         optional = []
         seen_required_ids = set()
 
@@ -609,15 +639,21 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                     | class_map.get(norm_id, set())
                 )
                 if placeholder_class:
-                    if placeholder_class in available_classes:
+                    if not class_mapping_known:
+                        unknown_required.append(ing_data)
+                    elif placeholder_class in available_classes:
                         available_required.append(ing_data)
                     else:
                         missing_required.append(ing_data)
                 elif (norm_id in PANTRY_EXEMPT_INGREDIENT_IDS
-                        or bool(required_classes & PANTRY_EXEMPT_INGREDIENT_CLASSES)
                         or norm_id in normalized_pantry
                         or ing["ingredient_id"] in available_ings):
                     available_required.append(ing_data)
+                elif (class_mapping_known
+                        and bool(required_classes & PANTRY_EXEMPT_INGREDIENT_CLASSES)):
+                    available_required.append(ing_data)
+                elif not class_mapping_known:
+                    unknown_required.append(ing_data)
                 else:
                     missing_required.append(ing_data)
             else:
@@ -627,7 +663,9 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         required_count = len(required)
         missing_count = len(missing_required)
 
-        if missing_count == 0:
+        if unknown_required:
+            status = "incomplete"
+        elif missing_count == 0:
             status = "available"
         elif required_count >= 2 and missing_count == 1:
             status = "almost_available"
@@ -641,9 +679,12 @@ def check_dish_availability(dish_id, location, inventory_version=None):
             "missing_required": missing_required,
             "optional": optional,
             "inventory_version": inventory_version,
-            "data_complete": True,
+            "data_complete": not unknown_required,
         }
-        _availability_cache[cache_key] = result
+        if not class_mapping_known:
+            result["unknown_required"] = unknown_required
+        if not legacy_schema_safe:
+            _availability_cache[cache_key] = result
         return result
     finally:
         conn.close()

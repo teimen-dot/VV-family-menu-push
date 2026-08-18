@@ -35,6 +35,7 @@ from inventory import (
     is_ingredient_in_pantry,
     _invalidate_availability_cache, _increment_inventory_version,
     get_inventory_version, normalize_ingredient_id,
+    legacy_schema_safe_availability,
 )
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
@@ -1029,6 +1030,13 @@ def _empty_readonly_menu(date_str, location):
     }
 
 
+def _bootstrap_image_url(value):
+    """Normalize only the read-only bootstrap image field to a browser URL."""
+    if not value or value.startswith(("/photos/", "http://", "https://")):
+        return value
+    return f"/photos/{value}"
+
+
 def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
     """Build the final UI's four-day read-only view without generating or mutating data."""
     if location not in LOCATIONS:
@@ -1036,28 +1044,36 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
     now = now or datetime.now(FAMILY_TIMEZONE)
     today = now.date()
     days = []
-    for offset, (label_cn, label_en) in enumerate(DAY_LABELS):
-        day_date = today + timedelta(days=offset)
-        date_str = day_date.isoformat()
-        menu = get_menu_with_dishes(date_str, location, record_filter_events=False)
-        if not menu.get("exists"):
-            menu = _empty_readonly_menu(date_str, location)
-        else:
-            # Phase 1 intentionally exposes only breakfast/lunch/dinner.
-            menu["meals"] = {
-                meal_type: menu.get("meals", {}).get(meal_type, [])
-                for meal_type in READONLY_MEAL_TYPES
-            }
-        weekday_cn, weekday_en = WEEKDAY_LABELS[day_date.weekday()]
-        days.append({
-            "offset": offset,
-            "label_cn": label_cn,
-            "label_en": label_en,
-            "weekday_cn": weekday_cn,
-            "weekday_en": weekday_en,
-            "date": date_str,
-            "menu": menu,
-        })
+    with legacy_schema_safe_availability():
+        for offset, (label_cn, label_en) in enumerate(DAY_LABELS):
+            day_date = today + timedelta(days=offset)
+            date_str = day_date.isoformat()
+            menu = get_menu_with_dishes(date_str, location, record_filter_events=False)
+            if not menu.get("exists"):
+                menu = _empty_readonly_menu(date_str, location)
+            else:
+                # Phase 1 intentionally exposes only breakfast/lunch/dinner and
+                # normalizes image URLs only in this bootstrap response layer.
+                menu = {
+                    **menu,
+                    "meals": {
+                        meal_type: [
+                            {**dish, "image": _bootstrap_image_url(dish.get("image"))}
+                            for dish in menu.get("meals", {}).get(meal_type, [])
+                        ]
+                        for meal_type in READONLY_MEAL_TYPES
+                    },
+                }
+            weekday_cn, weekday_en = WEEKDAY_LABELS[day_date.weekday()]
+            days.append({
+                "offset": offset,
+                "label_cn": label_cn,
+                "label_en": label_en,
+                "weekday_cn": weekday_cn,
+                "weekday_en": weekday_en,
+                "date": date_str,
+                "menu": menu,
+            })
 
     start_offset, start_meal = _readonly_starting_meal(now)
     start_index = READONLY_MEAL_TYPES.index(start_meal)

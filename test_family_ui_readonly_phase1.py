@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import app
 import db
+import inventory
 import menu_service
 
 
@@ -291,6 +292,123 @@ class ReadonlyUiAssetTests(unittest.TestCase):
         app.AppHandler.do_GET(handler)
         result["body"] = handler.wfile.getvalue()
         return result
+
+
+class LegacySchemaBootstrapTests(unittest.TestCase):
+    def _create_legacy_db(self, path):
+        with patch.object(db, "DB_PATH", path):
+            db.init_db()
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute(
+                "INSERT INTO dishes(id,name_cn,name_en,image,is_active) VALUES(?,?,?,?,1)",
+                ("dish_legacy", "真实旧库菜", "Legacy Dish", "legacy-dish.jpg"),
+            )
+            connection.executemany(
+                "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES(?,?,?)",
+                (
+                    ("beef", "牛肉", "Beef"),
+                    ("any_available_vegetable", "任意蔬菜", "Any Vegetable"),
+                ),
+            )
+            connection.executemany(
+                "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES(?,?,1)",
+                (
+                    ("dish_legacy", "beef"),
+                    ("dish_legacy", "any_available_vegetable"),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO current_pantry(location,ingredient_id,status,is_active) "
+                "VALUES('shenzhen','beef','available',1)"
+            )
+            connection.execute(
+                "INSERT INTO menus(id,date,location,status,diners_count,diners,meal_notes) "
+                "VALUES(187,'2026-08-18','shenzhen','draft',1,'[\"vv\"]','{\"lunch\":\"少油\"}')"
+            )
+            connection.execute(
+                "INSERT INTO menu_items(id,menu_id,dish_id,meal_type,sort_order) "
+                "VALUES(3146,187,'dish_legacy','lunch',1)"
+            )
+            connection.execute("DROP TABLE ingredient_classifications")
+            connection.commit()
+        finally:
+            connection.close()
+
+    def test_bootstrap_legacy_schema_returns_real_ids_and_conservative_unknown(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "legacy.db")
+            self._create_legacy_db(path)
+            inventory._availability_cache.clear()
+            with patch.object(db, "DB_PATH", path):
+                result = app.build_family_menu_bootstrap(
+                    "shenzhen", "owner", now=datetime(2026, 8, 18, 11, 0)
+                )
+
+            menu = result["days"][0]["menu"]
+            dish = menu["meals"]["lunch"][0]
+            availability = menu["availability"]["dish_legacy"]
+            self.assertEqual(menu["menu_id"], 187)
+            self.assertEqual(menu["diners"], ["vv"])
+            self.assertEqual(menu["meal_notes"], {"lunch": "少油"})
+            self.assertEqual(dish["menu_item_id"], 3146)
+            self.assertEqual(dish["dish_id"], "dish_legacy")
+            self.assertEqual(dish["name_cn"], "真实旧库菜")
+            self.assertEqual(dish["image"], "/photos/legacy-dish.jpg")
+            self.assertEqual(availability["status"], "incomplete")
+            self.assertFalse(availability["data_complete"])
+            self.assertEqual(
+                [item["ingredient_id"] for item in availability["available_required"]],
+                ["beef"],
+            )
+            self.assertEqual(
+                [item["ingredient_id"] for item in availability["unknown_required"]],
+                ["any_available_vegetable"],
+            )
+            self.assertEqual(availability["missing_required"], [])
+
+    def test_non_bootstrap_availability_remains_strict_on_legacy_schema(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "legacy.db")
+            self._create_legacy_db(path)
+            inventory._availability_cache.clear()
+            with patch.object(db, "DB_PATH", path), self.assertRaisesRegex(
+                sqlite3.OperationalError,
+                "no such table: ingredient_classifications",
+            ):
+                menu_service.get_menu_with_dishes("2026-08-18", "shenzhen")
+
+    def test_legacy_safe_mode_does_not_swallow_other_operational_errors(self):
+        class LockedConnection:
+            def execute(self, *_args, **_kwargs):
+                raise sqlite3.OperationalError("database is locked")
+
+        with inventory.legacy_schema_safe_availability(), self.assertRaisesRegex(
+            sqlite3.OperationalError,
+            "database is locked",
+        ):
+            inventory._ingredient_classes(LockedConnection(), {"beef"})
+
+    def test_bootstrap_image_urls_are_idempotent_and_output_only(self):
+        cases = (
+            (None, None),
+            ("", ""),
+            ("dish.jpg", "/photos/dish.jpg"),
+            ("/photos/dish.jpg", "/photos/dish.jpg"),
+            ("http://images.example/dish.jpg", "http://images.example/dish.jpg"),
+            ("https://images.example/dish.jpg", "https://images.example/dish.jpg"),
+        )
+        for source, expected in cases:
+            with self.subTest(source=source):
+                raw_menu = menu_for("2026-08-18", "shenzhen")
+                raw_menu["meals"]["breakfast"][0]["image"] = source
+                with patch.object(app, "get_menu_with_dishes", return_value=raw_menu):
+                    result = app.build_family_menu_bootstrap(
+                        "shenzhen", "owner", now=datetime(2026, 8, 18, 8, 0)
+                    )
+                image = result["days"][0]["menu"]["meals"]["breakfast"][0]["image"]
+                self.assertEqual(image, expected)
+                self.assertEqual(raw_menu["meals"]["breakfast"][0]["image"], source)
 
 
 if __name__ == "__main__":
