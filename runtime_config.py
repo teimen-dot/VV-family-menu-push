@@ -24,6 +24,14 @@ def server_host():
     return os.environ.get("HOST", "127.0.0.1").strip() or "127.0.0.1"
 
 
+def lan_http_preview_enabled():
+    """Allow HTTP cookies only for an explicitly enabled local preview UI."""
+    return (
+        os.environ.get("LAN_PREVIEW_HTTP", "false").strip().lower() == "true"
+        and os.environ.get("LOCAL_PREVIEW_UI", "false").strip().lower() == "true"
+    )
+
+
 def photo_dir(base_dir):
     return os.path.abspath(
         os.environ.get("PHOTO_DIR")
@@ -58,6 +66,10 @@ def validate_production_h5_url(value):
 
 
 def validate_app_startup():
+    lan_preview_requested = os.environ.get("LAN_PREVIEW_HTTP", "false").strip().lower() == "true"
+    local_preview_ui = os.environ.get("LOCAL_PREVIEW_UI", "false").strip().lower() == "true"
+    if lan_preview_requested and not local_preview_ui:
+        raise ValueError("LAN_PREVIEW_HTTP 仅允许与 LOCAL_PREVIEW_UI=true 一起使用")
     if app_env() == "production":
         validate_production_h5_url(os.environ.get("H5_BASE_URL", ""))
         session_secret = os.environ.get("SESSION_SECRET", "").strip()

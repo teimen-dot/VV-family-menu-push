@@ -47,7 +47,9 @@ from rule_engine import (
     get_rotation_context, is_auto_candidate, NO_CANDIDATE_MESSAGE,
 )
 from photo_security import PhotoValidationError, resolve_photo_path
-from runtime_config import photo_dir, server_host, validate_app_startup
+from runtime_config import (
+    lan_http_preview_enabled, photo_dir, server_host, validate_app_startup,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PORT = int(os.environ.get("PORT", "8090"))
@@ -362,6 +364,8 @@ def create_session(username, role):
 
 
 def session_cookie_name():
+    if lan_http_preview_enabled():
+        return PREVIEW_SESSION_COOKIE_NAME
     if os.environ.get("APP_ENV", "development").strip().lower() == "production":
         return PRODUCTION_SESSION_COOKIE_NAME
     return PREVIEW_SESSION_COOKIE_NAME

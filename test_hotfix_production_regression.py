@@ -71,7 +71,12 @@ class SessionTests(unittest.TestCase):
                 self.assertIn("HttpOnly; SameSite=Lax", header)
 
     def test_production_login_logout_and_refresh_cookies_keep_host_and_secure(self):
-        production_env = {**TEST_ENV, "APP_ENV": "production"}
+        production_env = {
+            **TEST_ENV,
+            "APP_ENV": "production",
+            "LOCAL_PREVIEW_UI": "true",
+            "LAN_PREVIEW_HTTP": "false",
+        }
         with patch.dict(os.environ, production_env, clear=False):
             login = HeaderRecorder()
             app.AppHandler.send_redirect(login, "/tomorrow", session_id="login-token")
@@ -91,10 +96,58 @@ class SessionTests(unittest.TestCase):
                 self.assertTrue(header.startswith("__Host-family_session="))
                 self.assertIn("; Secure; HttpOnly; SameSite=Lax", header)
 
+    def test_production_lan_http_preview_uses_nonsecure_preview_cookie(self):
+        preview_env = {
+            **TEST_ENV,
+            "APP_ENV": "production",
+            "LOCAL_PREVIEW_UI": "true",
+            "LAN_PREVIEW_HTTP": "true",
+        }
+        with patch.dict(os.environ, preview_env, clear=False):
+            login = HeaderRecorder()
+            app.AppHandler.send_redirect(login, "/tomorrow", session_id="login-token")
+
+            refresh = HeaderRecorder()
+            refresh._session_refresh = "refresh-token"
+            app.AppHandler.send_session_refresh_header(refresh)
+
+            token = app.create_session("vivian", "owner")
+            self.assertEqual(app.session_cookie_name(), "family_session")
+            self.assertIsNotNone(app.session_from_cookie(f"family_session={token}")[1])
+            self.assertIsNone(app.session_from_cookie(f"__Host-family_session={token}")[1])
+            for header in (login.cookie_header(), refresh.cookie_header()):
+                self.assertTrue(header.startswith("family_session="))
+                self.assertNotIn("; Secure", header)
+                self.assertIn("; HttpOnly; SameSite=Lax", header)
+
     def test_production_requires_fixed_session_secret(self):
         with patch.dict(os.environ, {"APP_ENV": "production", "H5_BASE_URL": "https://menu.ourmenu.site", "SESSION_SECRET": ""}, clear=False):
             with self.assertRaises(ValueError):
                 runtime_config.validate_app_startup()
+
+    def test_lan_http_preview_requires_local_preview_ui(self):
+        invalid_env = {
+            **TEST_ENV,
+            "APP_ENV": "production",
+            "H5_BASE_URL": "https://menu.ourmenu.site",
+            "LOCAL_PREVIEW_UI": "false",
+            "LAN_PREVIEW_HTTP": "true",
+        }
+        with patch.dict(os.environ, invalid_env, clear=False):
+            with self.assertRaisesRegex(ValueError, "LOCAL_PREVIEW_UI=true"):
+                runtime_config.validate_app_startup()
+
+    def test_lan_http_preview_startup_is_valid_with_explicit_pair(self):
+        preview_env = {
+            **TEST_ENV,
+            "APP_ENV": "production",
+            "H5_BASE_URL": "https://menu.ourmenu.site",
+            "LOCAL_PREVIEW_UI": "true",
+            "LAN_PREVIEW_HTTP": "true",
+        }
+        with patch.dict(os.environ, preview_env, clear=False):
+            runtime_config.validate_app_startup()
+            self.assertTrue(runtime_config.lan_http_preview_enabled())
 
 
 class MarkupTests(unittest.TestCase):
