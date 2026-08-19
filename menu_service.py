@@ -17,7 +17,7 @@ from rule_engine import (
     get_rotation_context, choose_rotation_candidate, is_manual_source,
     analyze_meal_slots, filter_candidates_for_slot,
     BREAKFAST_COMPANION_STAPLES, NO_CANDIDATE_MESSAGE,
-    primary_protein_source, primary_vegetable_subject,
+    counted_primary_protein_source, primary_vegetable_subject,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -657,7 +657,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                     day_proteins.update(dish_map[did].get("protein_types", []))
                     analysis = gf.analyzed[did]
                     vegetable = primary_vegetable_subject(analysis)
-                    protein = primary_protein_source(analysis)
+                    protein = counted_primary_protein_source(analysis, mt)
                     if vegetable:
                         day_primary_vegetables.add(vegetable)
                     if protein:
@@ -877,7 +877,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 day_history.add(chosen["id"])
                 day_proteins.update(chosen.get("proteins", []))
                 vegetable = primary_vegetable_subject(chosen)
-                protein = primary_protein_source(chosen)
+                protein = counted_primary_protein_source(chosen, meal_type)
                 if vegetable:
                     context.setdefault("day_primary_vegetables", set()).add(
                         vegetable

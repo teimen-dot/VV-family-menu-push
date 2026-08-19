@@ -196,12 +196,20 @@ def _hard_gap_diagnostics(review, final_menu, pool):
             count for reason, count in qualification_reasons.items()
             if reason.startswith("section14_")
         )
+        section15_filtered = sum(
+            count for reason, count in qualification_reasons.items()
+            if reason.startswith("section15_")
+        )
         if minimum is not None and pool_size < minimum:
             cause = "POOL_BELOW_MINIMUM"
         elif not available_ids:
             cause = "INVENTORY_FILTERED_EMPTY"
         elif not unlocked_available:
             cause = "FOUR_DAY_LOCK_FILTERED_EMPTY"
+        elif section14_filtered and section15_filtered:
+            cause = "SECTION14_15_HARD_FILTERED_EMPTY"
+        elif section15_filtered:
+            cause = "SECTION15_HARD_FILTERED_EMPTY"
         elif section14_filtered:
             cause = "SECTION14_HARD_FILTERED_EMPTY"
         else:
@@ -223,6 +231,7 @@ def _hard_gap_diagnostics(review, final_menu, pool):
                 sorted(qualification_reasons.items())
             ),
             "section14_filtered_candidate_count": section14_filtered,
+            "section15_filtered_candidate_count": section15_filtered,
             "top_missing_inventory_ingredients": [
                 {"name": name, "candidate_count": count}
                 for name, count in missing_ingredients.most_common(8)
@@ -342,6 +351,7 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
             "violation_ids": day_audit["violation_ids"],
             "hard_shortage_ids": day_audit["hard_shortage_ids"],
             "section14": checks["A11"]["details"],
+            "section15": checks["A12"]["details"],
         })
 
     return {
@@ -371,7 +381,11 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
         ),
         "section14_hard_warning_count": sum(
             1 for item in days for gap in item["hard_gap_diagnostics"]
-            if gap["cause"] == "SECTION14_HARD_FILTERED_EMPTY"
+            if gap["section14_filtered_candidate_count"] > 0
+        ),
+        "section15_hard_warning_count": sum(
+            1 for item in days for gap in item["hard_gap_diagnostics"]
+            if gap["section15_filtered_candidate_count"] > 0
         ),
         "rice_pool_todo": rice_pool,
         "rules": audit["rules"],

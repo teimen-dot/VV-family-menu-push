@@ -13,7 +13,10 @@ from rule_engine import (
     AUTO_POOL_MINIMUMS,
     BREAKFAST_COMPANION_STAPLES,
     MEAT_PROTEINS,
-    primary_protein_source,
+    LEAFY_VEGETABLE_CANONICAL_IDS,
+    counted_primary_protein_source,
+    is_leafy_vegetable,
+    primary_vegetable_canonical_id,
     primary_vegetable_subject,
 )
 
@@ -72,7 +75,12 @@ AUDIT_RULES = (
     {
         "id": "A11",
         "clause": "§14",
-        "rule": "全天同一主蔬菜不超过 1 道；同一主蛋白来源不超过 1 道，蛋和豆腐豁免。",
+        "rule": "全天同一主蔬菜不超过 1 道；仅午晚 protein_main 主蛋白来源全天不重复，早餐不占来源，蛋和豆腐豁免。",
+    },
+    {
+        "id": "A12",
+        "clause": "§15",
+        "rule": "每餐绿叶菜不超过 1 道；第二蔬菜位必须非绿叶，清单外默认非绿叶。",
     },
 )
 
@@ -505,7 +513,7 @@ def _audit_all_day_primary_subjects(menu):
                 "name_cn": item.get("name_cn"),
             }
             vegetable = primary_vegetable_subject(item)
-            protein = primary_protein_source(item)
+            protein = counted_primary_protein_source(item, meal)
             raw_vegetables = item.get("vegetables") or []
             has_placeholder = any(
                 value in {"any_available_vegetable", "任意可用蔬菜"}
@@ -537,6 +545,34 @@ def _audit_all_day_primary_subjects(menu):
             "duplicate_primary_proteins": duplicate_proteins,
             "missing_primary_vegetable_data": missing_primary_vegetable_data,
             "protein_exemptions": ["egg", "tofu"],
+            "breakfast_protein_sources_counted": False,
+        },
+    )
+
+
+def _audit_leafy_vegetables(menu):
+    per_meal = {}
+    failures = {}
+    for meal in _MEALS:
+        occurrences = []
+        for item in (menu.get("meals") or {}).get(meal, []):
+            if not is_leafy_vegetable(item):
+                continue
+            occurrences.append({
+                "dish_id": item.get("dish_id") or item.get("id"),
+                "name_cn": item.get("name_cn"),
+                "canonical_vegetable": primary_vegetable_canonical_id(item),
+            })
+        per_meal[meal] = occurrences
+        if len(occurrences) > 1:
+            failures[meal] = occurrences
+    return _check(
+        "A12", "FAIL" if failures else "PASS",
+        {
+            "leafy_canonical_ids": sorted(LEAFY_VEGETABLE_CANONICAL_IDS),
+            "leafy_occurrences_by_meal": per_meal,
+            "meals_over_limit": failures,
+            "unknown_default": "non_leafy",
         },
     )
 
@@ -557,6 +593,7 @@ def audit_final_menu(menu, evidence=None, previous_records=None):
         _audit_kitchen_scope(menu, evidence),
         _audit_pantry_exemption(menu),
         _audit_all_day_primary_subjects(menu),
+        _audit_leafy_vegetables(menu),
     ]
     violations = [item for item in checks if item["status"] == "FAIL"]
     shortages = [item for item in checks if item["status"] == "HARD_SHORTAGE"]

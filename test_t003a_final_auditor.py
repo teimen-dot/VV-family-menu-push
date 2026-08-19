@@ -66,7 +66,7 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
     def test_clause_catalog_is_numbered_and_source_tagged(self):
         self.assertEqual([item["id"] for item in AUDIT_RULES], [
             "A01", "A02", "A03", "A04", "A05",
-            "A06", "A07", "A08", "A09", "A10", "A11",
+            "A06", "A07", "A08", "A09", "A10", "A11", "A12",
         ])
         self.assertTrue(all(item["clause"].startswith("§") for item in AUDIT_RULES))
 
@@ -292,7 +292,7 @@ class Section14ReverseViolationSamples(unittest.TestCase):
         lunch_veg["vegetables"] = ["西兰花"]
         self._assert_a11_rejected(record)
 
-    def test_02_breakfast_fish_and_dinner_fish_are_rejected(self):
+    def test_02_breakfast_fish_and_dinner_fish_are_allowed(self):
         record = copy.deepcopy(self.base)
         breakfast = record["menu"]["meals"]["breakfast"][0]
         dinner = next(
@@ -300,8 +300,17 @@ class Section14ReverseViolationSamples(unittest.TestCase):
             if "protein_main" in item["meal_roles"]
         )
         breakfast["protein_types"] = ["fish"]
+        counted = [
+            item
+            for meal in ("lunch", "dinner")
+            for item in record["menu"]["meals"][meal]
+            if "protein_main" in item["meal_roles"]
+        ]
+        for item, source in zip(counted, ("chicken", "beef", "fish", "shrimp")):
+            item["protein_types"] = [source]
         dinner["protein_types"] = ["fish"]
-        self._assert_a11_rejected(record)
+        audit = audit_final_menu(record["menu"], record["evidence"])
+        self.assertNotIn("A11", audit["violation_ids"])
 
     def test_03_lunch_chicken_and_dinner_chicken_are_rejected(self):
         record = copy.deepcopy(self.base)
@@ -328,11 +337,48 @@ class Section14ReverseViolationSamples(unittest.TestCase):
             item["protein_types"] = ["chicken"]
         self._assert_a11_rejected(record)
 
-    def test_all_four_bad_samples_are_green_tests_that_reject_bad_menus(self):
+    def test_all_four_section14_expectations_are_green(self):
         method_names = [
             name for name in dir(self) if name.startswith("test_0")
         ]
         self.assertEqual(len(method_names), 4)
+
+
+class Section15ReverseViolationSamples(unittest.TestCase):
+    def setUp(self):
+        self.base = valid_record()
+
+    def test_same_meal_choy_sum_and_shanghai_bok_choy_is_rejected(self):
+        record = copy.deepcopy(self.base)
+        vegetables = [
+            item for item in record["menu"]["meals"]["lunch"]
+            if "vegetable_dish" in item["meal_roles"]
+        ]
+        self.assertEqual(len(vegetables), 2)
+        vegetables[0]["vegetables"] = ["菜心"]
+        vegetables[1]["vegetables"] = ["上海青"]
+        vegetables[0].pop("primary_vegetable_canonical", None)
+        vegetables[1].pop("primary_vegetable_canonical", None)
+
+        audit = audit_final_menu(record["menu"], record["evidence"])
+
+        self.assertEqual(audit["status"], "VIOLATION")
+        self.assertIn("A12", audit["violation_ids"])
+
+    def test_two_distinct_non_leafy_vegetables_are_allowed(self):
+        record = copy.deepcopy(self.base)
+        vegetables = [
+            item for item in record["menu"]["meals"]["lunch"]
+            if "vegetable_dish" in item["meal_roles"]
+        ]
+        vegetables[0]["vegetables"] = ["藕"]
+        vegetables[1]["vegetables"] = ["冬瓜"]
+        vegetables[0].pop("primary_vegetable_canonical", None)
+        vegetables[1].pop("primary_vegetable_canonical", None)
+
+        audit = audit_final_menu(record["menu"], record["evidence"])
+
+        self.assertNotIn("A12", audit["violation_ids"])
 
 
 @unittest.skipUnless(os.path.isfile(DEFAULT_REAL_DB), "real preview DB unavailable")
@@ -386,9 +432,14 @@ class RealDataSevenDayAuditTests(unittest.TestCase):
                     "FOUR_DAY_LOCK_FILTERED_EMPTY",
                     "SAME_DAY_OR_CAP_FILTERED_EMPTY",
                     "SECTION14_HARD_FILTERED_EMPTY",
+                    "SECTION15_HARD_FILTERED_EMPTY",
+                    "SECTION14_15_HARD_FILTERED_EMPTY",
                 })
                 self.assertIn("pool_size", gap)
                 self.assertIn("availability_status_counts", gap)
+            self.assertFalse(
+                day["section15"]["meals_over_limit"]
+            )
 
     def test_rice_pool_is_reported_as_an_independent_data_todo(self):
         todo = self.report["rice_pool_todo"]

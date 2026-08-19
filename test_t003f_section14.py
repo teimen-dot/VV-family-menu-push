@@ -4,7 +4,7 @@
 import unittest
 
 import rule_engine
-from rule_engine import GapFiller, MealState, choose_rotation_candidate
+from rule_engine import GapFiller, MealState
 from test_t002_blackbox import complete_pool, dish
 
 
@@ -67,6 +67,25 @@ class Section14GenerationTests(unittest.TestCase):
 
         self.assertEqual([item["id"] for item in candidates], ["beef"])
 
+    def test_breakfast_primary_protein_does_not_consume_lunch_dinner_source(self):
+        chicken = dish(
+            "chicken_porridge", ["staple"], ["breakfast"],
+            proteins=["chicken"], category="staple_carb", carb_type="porridge",
+        )
+        filler = GapFiller({"dishes": [chicken]}, seed=1)
+
+        candidates, _ = filler.get_slot_candidates(
+            "breakfast", "porridge", MealState(),
+            context={"day_primary_proteins": {"chicken"}},
+        )
+
+        self.assertEqual([item["id"] for item in candidates], ["chicken_porridge"])
+        self.assertIsNone(
+            rule_engine.counted_primary_protein_source(
+                filler.analyzed["chicken_porridge"], "breakfast"
+            )
+        )
+
     def test_placeholder_is_ignored_but_resolved_vegetable_is_counted(self):
         unresolved = {"vegetables": ["any_available_vegetable"]}
         resolved = {
@@ -121,33 +140,14 @@ class Section14GenerationTests(unittest.TestCase):
             if (value := rule_engine.primary_vegetable_subject(item))
         ]
         proteins = [
-            value for item in dishes
-            if (value := rule_engine.primary_protein_source(item))
+            value
+            for meal in ("lunch", "dinner")
+            for item in result[meal]["dishes"]
+            if (value := rule_engine.counted_primary_protein_source(item, meal))
         ]
 
         self.assertEqual(len(vegetables), len(set(vegetables)))
         self.assertEqual(len(proteins), len(set(proteins)))
-
-    def test_breakfast_ranking_preserves_non_exempt_source_when_neutral_option_exists(self):
-        chicken = dish(
-            "chicken_porridge", ["staple"], ["breakfast"],
-            proteins=["chicken"], category="staple_carb", carb_type="porridge",
-        )
-        neutral = dish(
-            "neutral_porridge", ["staple"], ["breakfast"],
-            category="staple_carb", carb_type="porridge",
-        )
-        filler = GapFiller({"dishes": [chicken, neutral]}, seed=1)
-
-        chosen, ranking = choose_rotation_candidate(
-            [filler.analyzed["chicken_porridge"], filler.analyzed["neutral_porridge"]],
-            filler.scorer, MealState(), "breakfast", {}, return_trace=True,
-        )
-
-        self.assertEqual(chosen["id"], "neutral_porridge")
-        self.assertIsNone(ranking[0]["section14_future_reservation"])
-        self.assertIn("feasibility penalty", ranking[1]["section14_future_reservation"])
-
 
 if __name__ == "__main__":
     unittest.main()
