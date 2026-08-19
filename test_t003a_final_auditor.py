@@ -286,6 +286,31 @@ class RealDataSevenDayAuditTests(unittest.TestCase):
             item["status"] == "VIOLATION" for item in self.report["days"]
         ))
 
+    def test_report_includes_daily_dish_names_and_hard_gap_diagnostics(self):
+        for day in self.report["days"]:
+            self.assertEqual(
+                set(day["meal_dish_names"]),
+                {"breakfast", "lunch", "dinner", "afternoon_snack"},
+            )
+            for meal in ("breakfast", "lunch", "dinner"):
+                self.assertTrue(day["meal_dish_names"][meal])
+            for gap in day["hard_gap_diagnostics"]:
+                self.assertIn(gap["cause"], {
+                    "POOL_BELOW_MINIMUM",
+                    "INVENTORY_FILTERED_EMPTY",
+                    "FOUR_DAY_LOCK_FILTERED_EMPTY",
+                    "SAME_DAY_OR_CAP_FILTERED_EMPTY",
+                })
+                self.assertIn("pool_size", gap)
+                self.assertIn("availability_status_counts", gap)
+
+    def test_rice_pool_is_reported_as_an_independent_data_todo(self):
+        todo = self.report["rice_pool_todo"]
+        self.assertEqual(todo["minimum"], 8)
+        self.assertEqual(todo["count"], 5)
+        self.assertLess(todo["count"], todo["minimum"])
+        self.assertTrue(todo["below_minimum"])
+
 
 if __name__ == "__main__":
     unittest.main()

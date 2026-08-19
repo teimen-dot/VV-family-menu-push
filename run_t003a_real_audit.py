@@ -2,6 +2,7 @@
 """Run the frozen-rule auditor against a seven-day real preview-data copy."""
 
 import argparse
+from collections import Counter
 import json
 import os
 import sqlite3
@@ -12,6 +13,12 @@ import db
 import inventory
 import menu_service
 from menu_rule_auditor import audit_menu_sequence
+from rule_engine import (
+    AUTO_POOL_MINIMUMS,
+    GapFiller,
+    filter_candidates_for_slot,
+    get_rotation_context,
+)
 
 
 DEFAULT_REAL_DB = (
@@ -120,6 +127,111 @@ def _meal_summary(day_audit):
     }
 
 
+def _dish_name(item):
+    return item.get("name_cn") or item.get("custom_name") or item.get("dish_id")
+
+
+def _meal_names(menu):
+    return {
+        meal: [_dish_name(item) for item in menu["meals"].get(meal, [])]
+        for meal in ("breakfast", "lunch", "dinner", "afternoon_snack")
+    }
+
+
+def _hard_gap_diagnostics(review, final_menu, pool):
+    """Classify an explicit HARD slot without changing generation behavior."""
+    if not review.get("hard_warnings"):
+        return []
+
+    filler = GapFiller(pool)
+    menu_id = final_menu.get("menu_id")
+    rotation = get_rotation_context(
+        final_menu["date"], final_menu["location"], exclude_menu_id=menu_id
+    )
+    hard_locked = set(rotation["hard_locked_dish_ids"])
+    diagnostics = []
+
+    for warning in review["hard_warnings"]:
+        prefix = warning.split(" ", 1)[0]
+        if "." not in prefix:
+            continue
+        meal, slot = prefix.split(".", 1)
+        candidates = filter_candidates_for_slot(filler._business_pool(meal), slot)
+        candidate_ids = [item["id"] for item in candidates]
+        availability = inventory.check_dishes_availability_batch(
+            candidate_ids, final_menu["location"]
+        )
+        available_ids = {
+            dish_id for dish_id, value in availability.items()
+            if value.get("status") == "available"
+        }
+        missing_ingredients = Counter()
+        status_counts = Counter()
+        for dish_id in candidate_ids:
+            value = availability.get(dish_id)
+            status = value.get("status", "unknown") if value else "unknown"
+            status_counts[status] += 1
+            if value:
+                missing_ingredients.update(
+                    ingredient.get("name_cn") or ingredient.get("ingredient_id")
+                    for ingredient in value.get("missing_required", [])
+                )
+
+        pool_size = len(candidates)
+        minimum = AUTO_POOL_MINIMUMS.get(slot)
+        unlocked_available = available_ids - hard_locked
+        if minimum is not None and pool_size < minimum:
+            cause = "POOL_BELOW_MINIMUM"
+        elif not available_ids:
+            cause = "INVENTORY_FILTERED_EMPTY"
+        elif not unlocked_available:
+            cause = "FOUR_DAY_LOCK_FILTERED_EMPTY"
+        else:
+            cause = "SAME_DAY_OR_CAP_FILTERED_EMPTY"
+
+        diagnostics.append({
+            "meal": meal,
+            "slot": slot,
+            "cause": cause,
+            "pool_size": pool_size,
+            "minimum": minimum,
+            "pool_below_minimum": (
+                minimum is not None and pool_size < minimum
+            ),
+            "availability_status_counts": dict(sorted(status_counts.items())),
+            "available_candidate_count": len(available_ids),
+            "available_after_four_day_lock_count": len(unlocked_available),
+            "top_missing_inventory_ingredients": [
+                {"name": name, "candidate_count": count}
+                for name, count in missing_ingredients.most_common(8)
+            ],
+            "warning": warning,
+        })
+    return diagnostics
+
+
+def _rice_pool_summary(pool):
+    filler = GapFiller(pool)
+    dishes = {}
+    for meal in ("lunch", "dinner"):
+        for item in filter_candidates_for_slot(
+            filler._business_pool(meal), "staple"
+        ):
+            # Frozen data-review terminology treats rice and mixed/coarse-grain
+            # rice dishes as one rice pool; bread/dim-sum staples stay separate.
+            if item.get("carb_type") in {"rice", "coarse_grain"}:
+                dishes[item["id"]] = item
+    return {
+        "count": len(dishes),
+        "minimum": AUTO_POOL_MINIMUMS["staple"],
+        "below_minimum": len(dishes) < AUTO_POOL_MINIMUMS["staple"],
+        "dishes": [
+            {"dish_id": item["id"], "name_cn": item["name_cn"]}
+            for item in sorted(dishes.values(), key=lambda value: value["id"])
+        ],
+    }
+
+
 def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
     """Copy the preview DB, generate draft menus, audit final stored outputs."""
     if not os.path.isfile(source_db):
@@ -138,10 +250,13 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
 
         original_db_path = db.DB_PATH
         records = []
+        rice_pool = None
         try:
             db.DB_PATH = copied_db
             inventory._availability_cache.clear()
             menu_service.invalidate_catalog_cache()
+            pool = menu_service._load_pool()
+            rice_pool = _rice_pool_summary(pool)
 
             for location_index, location in enumerate(LOCATIONS):
                 for day_index, diners_count in enumerate(DINERS_CYCLE):
@@ -160,7 +275,13 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
                         "rotation_context_location": location,
                         "inventory_context_location": location,
                     }
-                    records.append({"menu": final_menu, "evidence": evidence})
+                    records.append({
+                        "menu": final_menu,
+                        "evidence": evidence,
+                        "hard_gap_diagnostics": _hard_gap_diagnostics(
+                            evidence, final_menu, pool
+                        ),
+                    })
 
             audit = audit_menu_sequence(records)
             copy_after = _menu_189_snapshot(copied_db)
@@ -174,9 +295,14 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
 
     source_after = _menu_189_snapshot(source_db)
     source_stat_after = os.stat(source_db)
+    records_by_key = {
+        (record["menu"]["date"], record["menu"]["location"]): record
+        for record in records
+    }
     days = []
     for day_audit in audit["days"]:
         checks = {item["id"]: item for item in day_audit["checks"]}
+        record = records_by_key[(day_audit["date"], day_audit["location"])]
         days.append({
             "date": day_audit["date"],
             "location": day_audit["location"],
@@ -185,10 +311,12 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
             "rule_compliant": day_audit["rule_compliant"],
             "menu_complete": day_audit["menu_complete"],
             "meals": _meal_summary(day_audit),
+            "meal_dish_names": _meal_names(record["menu"]),
             "degradation_warnings": day_audit["degradation_warnings"],
             "degradation_events": day_audit["degradation_events"],
             "rotation_repeats": checks["A07"]["details"]["repeats"],
             "hard_warnings": day_audit["hard_warnings"],
+            "hard_gap_diagnostics": record["hard_gap_diagnostics"],
             "violation_ids": day_audit["violation_ids"],
             "hard_shortage_ids": day_audit["hard_shortage_ids"],
         })
@@ -215,6 +343,7 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
         "audit_status_counts": audit["status_counts"],
         "all_rule_compliant": audit["rule_compliant"],
         "all_complete": audit["passed"],
+        "rice_pool_todo": rice_pool,
         "rules": audit["rules"],
         "days": days,
     }
