@@ -1042,6 +1042,7 @@ class GapFiller:
             self.analyzed[d["id"]] = NutritionAnalyzer.analyze(d)
         self.scorer = ScoringEngine(rng=self.rng)
         self.degradation_warnings = []
+        self.degradation_events = []
         self.hard_warnings = []
         self.hard_slot_warnings = {}
         self.slot_pool_sizes = {}
@@ -1142,6 +1143,19 @@ class GapFiller:
             self.hard_warnings.append(message)
         return [], None
 
+    def record_degradation_event(self, meal_type, slot_name, dish_id, warning):
+        """Record an actual low-pool selection for final-output auditing."""
+        event = {
+            "meal": meal_type,
+            "slot": slot_name,
+            "dish_id": dish_id,
+            "pool_size": self.slot_pool_sizes.get((meal_type, slot_name)),
+            "minimum": AUTO_POOL_MINIMUMS.get(slot_name),
+            "warning": warning,
+        }
+        if event not in self.degradation_events:
+            self.degradation_events.append(event)
+
     def generate_meal(self, meal_type, locked_dish_ids=None, context=None, diners_count=4):
         """
         生成一餐菜单。
@@ -1190,6 +1204,10 @@ class GapFiller:
                     break
                 state.add_dish(chosen, source="ai")
                 exclude.add(chosen["id"])
+                if degraded:
+                    self.record_degradation_event(
+                        meal_type, slot_name, chosen["id"], degraded
+                    )
                 log.append(
                     f"  [ADD:{slot_name}] {chosen['name_cn']}"
                     + (" [DEGRADED]" if degraded else "")
@@ -1349,6 +1367,7 @@ class GapFiller:
 
         result = {}
         self.degradation_warnings = []
+        self.degradation_events = []
         self.hard_warnings = []
         self.hard_slot_warnings = {}
         self.slot_pool_sizes = {}
@@ -1380,6 +1399,11 @@ class GapFiller:
 
         review = RuleEngine.final_review(result, diners_count)
         review["degradation_warnings"] = list(self.degradation_warnings)
+        review["degradation_events"] = list(self.degradation_events)
+        review["slot_pool_sizes"] = {
+            f"{meal}.{slot}": size
+            for (meal, slot), size in self.slot_pool_sizes.items()
+        }
         review["hard_warnings"] = list(self.hard_warnings)
         review["warnings"].extend(self.degradation_warnings)
         review["warnings"].extend(self.hard_warnings)

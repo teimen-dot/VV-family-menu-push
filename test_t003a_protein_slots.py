@@ -100,6 +100,14 @@ class ProteinSlotDegradationTests(unittest.TestCase):
             any("该分类菜品不足，建议补录" in item
                 for item in filler.degradation_warnings)
         )
+        self.assertEqual(
+            {event["slot"] for event in filler.degradation_events},
+            {"meat_main", "protein_main"},
+        )
+        self.assertTrue(all(
+            event["pool_size"] < event["minimum"]
+            for event in filler.degradation_events
+        ))
 
     def test_true_shortage_is_explicit_and_tofu_never_fills_meat_slot(self):
         tofu = dish(

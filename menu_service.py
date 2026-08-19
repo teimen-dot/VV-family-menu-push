@@ -266,6 +266,7 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
             "SELECT mi.id as menu_item_id, mi.dish_id, mi.custom_name, mi.meal_type, mi.is_locked, "
             "mi.locked_by, mi.sort_order, mi.source, "
             "d.name_cn, d.name_en, d.category_id, d.carb_type, d.protein_types, "
+            "d.breakfast_staple_type, "
             "d.vegetables, d.vegetable_count, d.image, d.meal_tags, d.cooking_methods, "
             "d.taste, d.banquet, d.custom_tags, "
             "d.quick_soup, d.slow_soup, d.manual_only_for_breakfast, "
@@ -719,6 +720,11 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
 
         review = RuleEngine.final_review(day_result, diners_count)
         review["degradation_warnings"] = list(gf.degradation_warnings)
+        review["degradation_events"] = list(gf.degradation_events)
+        review["slot_pool_sizes"] = {
+            f"{meal}.{slot}": size
+            for (meal, slot), size in gf.slot_pool_sizes.items()
+        }
         review["hard_warnings"] = list(gf.hard_warnings)
         review["warnings"].extend(gf.degradation_warnings)
         review["warnings"].extend(gf.hard_warnings)
@@ -868,6 +874,10 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
 
                 # 更新 state
                 state.add_dish(chosen, is_locked=False, source="ai")
+                if degraded:
+                    gf.record_degradation_event(
+                        meal_type, slot_name, chosen["id"], degraded
+                    )
             else:
                 dedup_key = (meal_type, slot_name)
                 if dedup_key not in seen_unmet:
