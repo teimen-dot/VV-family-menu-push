@@ -267,8 +267,12 @@ button { font-family: inherit; }
 .tile-sea   { background: linear-gradient(140deg, #d6e6ee, #a3c6d8); }
 .tile-fruit { background: linear-gradient(140deg, #f6dcd9, #eeb0a8); }
 .tile-cold  { background: linear-gradient(140deg, #d9eae6, #a8cec4); }
+.tile-neutral { background: linear-gradient(140deg, #ecefeb, #d7ddd8); }
 .tile-lg { width: 62px; height: 62px; border-radius: 16px; font-size: 19px; }
 .tile-sm { width: 34px; height: 34px; border-radius: 9px; font-size: 12px; }
+.dish-row .info small, .mo-info small, .d-body small {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* ============ Dish Rows ============ */
 .dish-row {
@@ -2257,56 +2261,8 @@ button { font-family: inherit; }
 
 <script>
 /* ================= Dish Database ================= */
-const DISH_DB = [
-  { zh: '黑椒牛柳',   en: 'Black Pepper Beef',        cat: 'meat',   emoji: '🥩', avail: 'ok'   },
-  { zh: '可乐鸡翅',   en: 'Cola Chicken Wings',       cat: 'meat',   emoji: '🍗', avail: 'ok'   },
-  { zh: '红烧五花肉', en: 'Braised Pork Belly',       cat: 'meat',   emoji: '🥘', avail: 'low', banquet: true  },
-  { zh: '咖喱牛腩',   en: 'Curry Beef Brisket',       cat: 'meat',   emoji: '🍛', avail: 'low', banquet: true  },
-  { zh: '清蒸排骨',   en: 'Steamed Pork Ribs',        cat: 'meat',   emoji: '🍖', avail: 'miss', banquet: true, ingredients: ['排骨','姜'] },
-  { zh: '西兰花炒鸡胸肉', en: 'Chicken with Broccoli', cat: 'meat',  emoji: '🥦', avail: 'ok'   },
-  { zh: '蒜蓉炒时蔬', en: 'Seasonal Greens w/ Garlic', cat: 'veg',   emoji: '🥦', avail: 'ok'   },
-  { zh: '清炒时蔬',   en: 'Stir-fried Greens',        cat: 'veg',    emoji: '🥬', avail: 'ok'   },
-  { zh: '白灼菜心',   en: 'Blanched Choy Sum',        cat: 'veg',    emoji: '🥬', avail: 'ok'   },
-  { zh: '蒜蓉西兰花', en: 'Garlic Broccoli',          cat: 'veg',    emoji: '🥦', avail: 'ok'   },
-  { zh: '干煸四季豆', en: 'Dry-fried Green Beans',    cat: 'veg',    emoji: '🫛', avail: 'miss' },
-  { zh: '地三鲜',     en: 'Di San Xian',              cat: 'veg',    emoji: '🍆', avail: 'low'  },
-  { zh: '蒜蓉生菜',   en: 'Garlic Lettuce',           cat: 'veg',    emoji: '🥬', avail: 'ok'   },
-  { zh: '番茄炒蛋',   en: 'Stir-fried Tomato w/ Egg', cat: 'egg',    emoji: '🍅', avail: 'ok'   },
-  { zh: '虾仁滑蛋',   en: 'Shrimp with Silky Egg',    cat: 'egg',    emoji: '🍤', avail: 'low'  },
-  { zh: '麻婆豆腐',   en: 'Mapo Tofu',                cat: 'egg',    emoji: '🌶️', avail: 'ok'  },
-  { zh: '日式拌豆腐', en: 'Japanese Tofu',            cat: 'egg',    emoji: '🍲', avail: 'ok'   },
-  { zh: '水煮蛋',     en: 'Boiled Egg',               cat: 'egg',    emoji: '🥚', avail: 'ok'   },
-  { zh: '茶叶蛋',     en: 'Tea Egg',                  cat: 'egg',    emoji: '🥚', avail: 'ok'   },
-  { zh: '苦瓜炒蛋',   en: 'Bitter Melon & Egg',       cat: 'egg',    emoji: '🥒', avail: 'ok'   },
-  { zh: '酸奶杯',     en: 'Yogurt Cup',               cat: 'egg',    emoji: '🥛', avail: 'ok'   },
-  { zh: '肉饼汤',     en: 'Pork Patty Soup',          cat: 'soup',   emoji: '🥩', avail: 'miss' },
-  { zh: '冬瓜排骨汤', en: 'Winter Melon Rib Soup',    cat: 'soup',   emoji: '🍲', avail: 'ok'   },
-  { zh: '番茄蛋花汤', en: 'Tomato Egg Drop Soup',     cat: 'soup',   emoji: '🍅', avail: 'ok'   },
-  { zh: '紫菜蛋花汤', en: 'Seaweed Egg Soup',         cat: 'soup',   emoji: '🍲', avail: 'ok'   },
-  { zh: '红枣枸杞茶', en: 'Jujube Goji Tea',          cat: 'soup',   emoji: '🍵', avail: 'ok'   },
-  { zh: '白米饭',     en: 'Steamed Rice',             cat: 'staple', emoji: '🍚', avail: 'ok', ingredients: ['大米']   },
-  { zh: '莲子米饭',   en: 'Lotus Seed Rice',          cat: 'staple', emoji: '🍚', avail: 'ok', ingredients: ['大米','莲子'] },
-  { zh: '糙米饭',     en: 'Brown Rice',               cat: 'staple', emoji: '🍚', avail: 'ok'   },
-  { zh: '杂粮饭',     en: 'Multigrain Rice',          cat: 'staple', emoji: '🍚', avail: 'ok'   },
-  { zh: '蛋炒饭',     en: 'Egg Fried Rice',           cat: 'staple', emoji: '🍚', avail: 'ok'   },
-  { zh: '葱油拌面',   en: 'Scallion Oil Noodles',     cat: 'staple', emoji: '🍜', avail: 'low'  },
-  { zh: '小米粥',     en: 'Millet Porridge',          cat: 'staple', emoji: '🥣', avail: 'ok'   },
-  { zh: '煎饺',       en: 'Pan-fried Dumplings',      cat: 'staple', emoji: '🥟', avail: 'ok'   },
-  { zh: '牛奶燕麦',   en: 'Milk Oats',                cat: 'staple', emoji: '🥛', avail: 'ok'   },
-  { zh: '豆浆',       en: 'Soy Milk',                 cat: 'staple', emoji: '🥛', avail: 'ok'   },
-  { zh: '油条',       en: 'Fried Dough Stick',        cat: 'staple', emoji: '🥖', avail: 'ok'   },
-  { zh: '每日坚果',   en: 'Mixed Nuts',               cat: 'staple', emoji: '🥜', avail: 'ok'   },
-  { zh: '清蒸鲈鱼',   en: 'Steamed Sea Bass',         cat: 'sea',    emoji: '🐟', avail: 'miss' },
-  { zh: '黄瓜虾饼',   en: 'Cucumber Shrimp Patties',  cat: 'sea',    emoji: '🍤', avail: 'ok'   },
-  { zh: '香煎三文鱼', en: 'Pan-seared Salmon',        cat: 'sea',    emoji: '🐟', avail: 'low'  },
-  { zh: '刺身拼盘',   en: 'Sashimi Platter',          cat: 'sea',    emoji: '🍣', avail: 'miss' },
-  { zh: '四味豆腐沙拉', en: 'Tofu Salad',             cat: 'cold',   emoji: '🥗', avail: 'low'  },
-  { zh: '凉拌黄瓜',   en: 'Cucumber Salad',           cat: 'cold',   emoji: '🥒', avail: 'ok'   },
-  { zh: '车厘子',     en: 'Cherries',                 cat: 'fruit',  emoji: '🍒', avail: 'ok'   },
-  { zh: '苹果',       en: 'Apple',                    cat: 'fruit',  emoji: '🍎', avail: 'ok'   },
-  { zh: '香蕉',       en: 'Banana',                   cat: 'fruit',  emoji: '🍌', avail: 'ok'   },
-  { zh: '蓝莓',       en: 'Blueberries',              cat: 'fruit',  emoji: '🫐', avail: 'ok'   },
-];
+/* Populated only from /api/family-menu/bootstrap. */
+const DISH_DB = [];
 
 const DISH_CATEGORY_ID = {
   meat:'protein_main', sea:'protein_main', egg:'egg_tofu', veg:'vegetable_mushroom',
@@ -2330,13 +2286,59 @@ async function reloadLiveData(message) {
 }
 const TILE_OF = {
   meat: 'tile-meat', veg: 'tile-veg', soup: 'tile-soup', staple: 'tile-staple',
-  egg: 'tile-egg', sea: 'tile-sea', fruit: 'tile-fruit', cold: 'tile-cold'
+  egg: 'tile-egg', sea: 'tile-sea', fruit: 'tile-fruit', cold: 'tile-cold',
+  onepot: 'tile-soup', neutral: 'tile-neutral'
 };
 const AVAIL_OF = {
   ok:   ['库存可做', 'AVAIL',   'db-ok'],
   low:  ['差少量',   'ALMOST',  'db-low'],
   miss: ['缺食材',   'MISSING', 'db-miss']
 };
+
+const CATEGORY_EMOJI = {
+  meat:'🥩', sea:'🐟', veg:'🥬', soup:'🍲', staple:'🍚', egg:'🥚',
+  cold:'🥗', onepot:'🍲', fruit:'🍎', neutral:'🍽️'
+};
+
+function categoryOf(dish) {
+  const raw = String(dish.categoryId || dish.category_id || dish.carb_type || '').toLowerCase();
+  if (/sea|fish|shrimp|prawn/.test(raw)) return 'sea';
+  if (/meat|protein|pork|beef|chicken/.test(raw)) return 'meat';
+  if (/veg|mushroom/.test(raw)) return 'veg';
+  if (/soup/.test(raw)) return 'soup';
+  if (/egg|tofu|bean/.test(raw)) return 'egg';
+  if (/cold|salad/.test(raw)) return 'cold';
+  if (/one.?pot|combo/.test(raw)) return 'onepot';
+  if (/fruit/.test(raw)) return 'fruit';
+  if (/staple|carb|rice|porridge|grain|noodle/.test(raw)) return 'staple';
+  return 'neutral';
+}
+
+function makeDishTile(dish, className = 'tile tile-sm') {
+  const cat = dish.cat || categoryOf(dish);
+  const tile = document.createElement('span');
+  tile.className = className + ' ' + (TILE_OF[cat] || TILE_OF.neutral);
+  tile.dataset.dishTile = 'shared';
+  const fallback = () => {
+    const icon = document.createElement('span');
+    icon.textContent = dish.emoji || CATEGORY_EMOJI[cat] || CATEGORY_EMOJI.neutral;
+    tile.replaceChildren(icon);
+  };
+  const source = dish.photo || dish.image || '';
+  if (!source) {
+    fallback();
+    return tile;
+  }
+  const image = document.createElement('img');
+  image.src = source;
+  image.alt = dish.zh || dish.name_cn || dish.custom_name || '';
+  image.loading = 'lazy';
+  image.decoding = 'async';
+  image.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block';
+  image.addEventListener('error', fallback, {once:true});
+  tile.replaceChildren(image);
+  return tile;
+}
 
 /* ================= 中文菜名 → 英文自动翻译 =================
    原型：内置高频词典做即时翻译（输入时实时填充）；
@@ -2407,38 +2409,63 @@ const moInput = document.getElementById('moSearch');
 let swapRow = null;
 
 function moItem(d) {
-  const a = AVAIL_OF[d.avail];
-  return '<button class="mo-item" data-zh="' + d.zh + '">' +
-    '<span class="tile tile-sm ' + TILE_OF[d.cat] + '"><span>' + d.emoji + '</span></span>' +
-    '<span class="mo-info"><strong>' + d.zh + '</strong><small>' + d.en + '</small></span>' +
-    '<span class="d-badge ' + a[2] + '">' + a[0] + '<small>' + a[1] + '</small></span>' +
-    '</button>';
+  const a = AVAIL_OF[d.avail] || AVAIL_OF.miss;
+  const button = document.createElement('button');
+  button.className = 'mo-item';
+  button.dataset.dishId = d.id;
+  button.appendChild(makeDishTile(d, 'tile tile-sm'));
+  const info = document.createElement('span');
+  info.className = 'mo-info';
+  const strong = document.createElement('strong');
+  strong.textContent = d.zh;
+  const small = document.createElement('small');
+  small.textContent = d.en || '';
+  info.append(strong, small);
+  const badge = document.createElement('span');
+  badge.className = 'd-badge ' + a[2];
+  badge.append(document.createTextNode(a[0]));
+  const badgeSmall = document.createElement('small');
+  badgeSmall.textContent = a[1];
+  badge.appendChild(badgeSmall);
+  button.append(info, badge);
+  return button;
 }
 
 function renderMoList(q) {
-  const curZh  = swapRow ? swapRow.dataset.zh  : '';
+  const curId  = swapRow ? swapRow.dataset.dishId : '';
   const curCat = swapRow ? swapRow.dataset.cat : '';
   const query  = q.trim().toLowerCase();
   const hit = d => !query || d.zh.includes(q.trim()) || d.en.toLowerCase().includes(query);
 
   const same = DISH_DB.filter(d =>
-    d.cat === curCat && d.avail === 'ok' && d.zh !== curZh && hit(d));
+    d.cat === curCat && d.avail === 'ok' && d.id !== curId && hit(d));
   const more = DISH_DB.filter(d =>
-    d.zh !== curZh && hit(d) && !(d.cat === curCat && d.avail === 'ok'));
+    d.id !== curId && hit(d) && !(d.cat === curCat && d.avail === 'ok'));
 
-  let html = '';
+  const fragment = document.createDocumentFragment();
+  const addSection = (label, english, rows, plain = false) => {
+    const section = document.createElement('div');
+    section.className = 'mo-sec' + (plain ? ' plain' : '');
+    section.append(document.createTextNode(label + ' '));
+    const small = document.createElement('small');
+    small.textContent = english;
+    section.appendChild(small);
+    fragment.appendChild(section);
+    rows.forEach(dish => fragment.appendChild(moItem(dish)));
+  };
   if (same.length) {
-    html += '<div class="mo-sec">✅ 库存可做 · 同类菜 <small>AVAILABLE · SAME CATEGORY</small></div>';
-    html += same.map(moItem).join('');
+    addSection('✅ 库存可做 · 同类菜', 'AVAILABLE · SAME CATEGORY', same);
   }
   if (more.length) {
-    html += '<div class="mo-sec plain">更多菜品 <small>MORE DISHES</small></div>';
-    html += more.map(moItem).join('');
+    addSection('更多菜品', 'MORE DISHES', more, true);
   }
-  if (!html) {
-    html = '<div class="mo-empty">没有匹配的菜品<small>NO MATCHING DISH</small></div>';
+  if (!same.length && !more.length) {
+    const empty = document.createElement('div');
+    empty.className = 'mo-empty';
+    empty.innerHTML = '没有匹配的菜品<small>NO MATCHING DISH</small>';
+    fragment.appendChild(empty);
   }
-  moList.innerHTML = html;
+  moList.replaceChildren(fragment);
 }
 
 function openSwap(row) {
@@ -2456,7 +2483,7 @@ document.addEventListener('click', async e => {
 
   const item = e.target.closest('.mo-item');
   if (item && swapRow && !addTarget) {
-    const d = DISH_DB.find(x => x.zh === item.dataset.zh);
+    const d = DISH_DB.find(x => x.id === item.dataset.dishId);
     if (!d) return;
     try {
       await writeJSON('/api/tomorrow/replace', {
@@ -2547,7 +2574,8 @@ const FAV_BTN  = '<button class="op-btn fav" title="收藏 Favorite">' + SVG_FAV
 function syncFavBtn(row) {
   const btn = row.querySelector('.op-btn.fav');
   if (!btn) return;
-  const d = DISH_DB.find(x => x.zh === row.dataset.zh);
+  const d = DISH_DB.find(x => x.id === row.dataset.dishId) ||
+    DISH_DB.find(x => x.zh === row.dataset.zh);
   btn.classList.toggle('on', !!(d && d.fav));
 }
 
@@ -2607,8 +2635,8 @@ function applyDish(row, d) {
   row.dataset.zh = d.zh;
   row.dataset.cat = d.cat;
   const tile = row.querySelector('.tile');
-  tile.className = 'tile ' + (tile.classList.contains('tile-lg') ? 'tile-lg ' : 'tile-sm ') + TILE_OF[d.cat];
-  tile.innerHTML = '<span>' + d.emoji + '</span>';
+  const sizeClass = tile.classList.contains('tile-lg') ? 'tile tile-lg' : 'tile tile-sm';
+  tile.replaceWith(makeDishTile(d, sizeClass));
   row.querySelector('.info h4').textContent    = d.zh;
   row.querySelector('.info small').textContent = d.en;
   tagRowMissing(row);
@@ -2891,7 +2919,8 @@ function dishMissing(d) {
 }
 function tagRowMissing(row) {
   row.querySelectorAll('.miss-tag').forEach(t => t.remove());
-  const d = DISH_DB.find(x => x.zh === row.dataset.zh);
+  const d = DISH_DB.find(x => x.id === row.dataset.dishId) ||
+    DISH_DB.find(x => x.zh === row.dataset.zh);
   if (!d) return;
   const lack = dishMissing(d);
   if (lack) {   /* 有食材数据：按"缺什么"精确提示 */
@@ -2921,7 +2950,8 @@ document.addEventListener('click', async e => {
   const fav = e.target.closest('.op-btn.fav');
   if (fav) {
     const row = fav.closest('.dish-row');
-    const d = DISH_DB.find(x => x.zh === row.dataset.zh);
+    const d = DISH_DB.find(x => x.id === row.dataset.dishId) ||
+      DISH_DB.find(x => x.zh === row.dataset.zh);
     if (!d) return;
     try {
       await writeJSON('/api/dishes/favorite', {dish_id:d.id});
@@ -3028,7 +3058,7 @@ document.addEventListener('click', async e => {
   /* 弹框添加模式：点选菜品即追加到该餐 */
   const moPick = e.target.closest('.mo-item');
   if (moPick && addTarget) {
-    const d = DISH_DB.find(x => x.zh === moPick.dataset.zh);
+    const d = DISH_DB.find(x => x.id === moPick.dataset.dishId);
     if (!d) return;
     try {
       await writeJSON('/api/tomorrow/add', {
@@ -3188,20 +3218,46 @@ const DISH_CATMAP = {
 const dGrid   = document.querySelector('#page-dishes .dish-grid');
 const dSearch = document.querySelector('#page-dishes .search-in');
 
-function dishCardHTML(d) {
+function dishCardNode(d) {
   const a = AVAIL_OF[d.avail] || AVAIL_OF.miss;
-  const img = d.photo
-    ? '<div class="d-img"><img src="' + d.photo + '" alt="' + d.zh +
-      '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" ' +
-      'onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>' + d.emoji + '</span>'
-    : '<div class="d-img ' + TILE_OF[d.cat] + '"><span>' + d.emoji + '</span>';
-  return '<article class="d-card" data-zh="' + d.zh + '">' + img +
-    (d.banquet ? '<span class="d-fav">家宴</span>' : '') +
-    '<span class="d-badge ' + a[2] + '">' + a[0] +
-    '<small>' + a[1] + '</small></span></div>' +
-    '<div class="d-body"><h4>' + d.zh + '</h4><small>' + d.en + '</small></div>' +
-    '<div class="d-card-actions"><button class="d-card-fav' + (d.fav ? ' on' : '') + '" type="button">♥ 收藏</button>' +
-    '<button class="d-card-pick" type="button">＋ 餐单</button></div></article>';
+  const article = document.createElement('article');
+  article.className = 'd-card';
+  article.dataset.zh = d.zh;
+  article.dataset.dishId = d.id;
+  const media = makeDishTile(d, 'd-img');
+  if (d.banquet) {
+    const banquet = document.createElement('span');
+    banquet.className = 'd-fav';
+    banquet.textContent = '家宴';
+    media.appendChild(banquet);
+  }
+  const badge = document.createElement('span');
+  badge.className = 'd-badge ' + a[2];
+  badge.append(document.createTextNode(a[0]));
+  const badgeSmall = document.createElement('small');
+  badgeSmall.textContent = a[1];
+  badge.appendChild(badgeSmall);
+  media.appendChild(badge);
+  const body = document.createElement('div');
+  body.className = 'd-body';
+  const title = document.createElement('h4');
+  title.textContent = d.zh;
+  const english = document.createElement('small');
+  english.textContent = d.en || '';
+  body.append(title, english);
+  const actions = document.createElement('div');
+  actions.className = 'd-card-actions';
+  const favorite = document.createElement('button');
+  favorite.className = 'd-card-fav' + (d.fav ? ' on' : '');
+  favorite.type = 'button';
+  favorite.textContent = '♥ 收藏';
+  const pick = document.createElement('button');
+  pick.className = 'd-card-pick';
+  pick.type = 'button';
+  pick.textContent = '＋ 餐单';
+  actions.append(favorite, pick);
+  article.append(media, body, actions);
+  return article;
 }
 
 function renderDishGrid() {
@@ -3218,10 +3274,17 @@ function renderDishGrid() {
     (avKey === 'all' || d.avail === avKey) &&
     (!favOnly || d.fav) &&
     (!q || d.zh.includes(qRaw) || d.en.toLowerCase().includes(q)));
-  dGrid.innerHTML = list.map(dishCardHTML).join('') ||
-    '<div class="mo-empty" style="grid-column:1/-1;">' +
-    (favOnly ? '还没有收藏的菜<small>去餐单页给菜品点心吧</small>'
-             : '没有匹配的菜品<small>NO MATCHING DISH</small>') + '</div>';
+  if (list.length) {
+    dGrid.replaceChildren(...list.map(dishCardNode));
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'mo-empty';
+    empty.style.gridColumn = '1/-1';
+    empty.innerHTML = favOnly
+      ? '还没有收藏的菜<small>去餐单页给菜品点心吧</small>'
+      : '没有匹配的菜品<small>NO MATCHING DISH</small>';
+    dGrid.replaceChildren(empty);
+  }
 }
 /* 收藏筛选：独立开关，可与分类/库存叠加 */
 document.querySelectorAll('#catRow .cat, #availRow .chip').forEach(b =>
@@ -3447,26 +3510,9 @@ pickModal.addEventListener('click',
     dinner: { zh: '晚餐', en: 'Dinner', icon: '🍽️' }
   };
   const DAY_SECTIONS = ['day-today', 'day-tomorrow', 'day-after', 'day-plus3'];
-  const CATEGORY_EMOJI = {
-    meat: '🥩', sea: '🐟', veg: '🥬', soup: '🍲', staple: '🍚',
-    egg: '🥚', cold: '🥗', onepot: '🍲', fruit: '🍎'
-  };
   let requestVersion = 0;
   let currentLocation = 'shenzhen';
   const rowTemplate = document.querySelector('#day-tomorrow .dish-row')?.cloneNode(true);
-
-  function categoryOf(dish) {
-    const raw = String(dish.category_id || dish.carb_type || '').toLowerCase();
-    if (/sea|fish|shrimp|prawn/.test(raw)) return 'sea';
-    if (/meat|protein|pork|beef|chicken/.test(raw)) return 'meat';
-    if (/veg|mushroom/.test(raw)) return 'veg';
-    if (/soup/.test(raw)) return 'soup';
-    if (/egg|tofu|bean/.test(raw)) return 'egg';
-    if (/cold|salad/.test(raw)) return 'cold';
-    if (/one.?pot|combo/.test(raw)) return 'onepot';
-    if (/fruit/.test(raw)) return 'fruit';
-    return 'staple';
-  }
 
   function missingNames(entry) {
     const rows = entry && Array.isArray(entry.missing_required) ? entry.missing_required : [];
@@ -3510,24 +3556,11 @@ pickModal.addEventListener('click',
       tile = document.createElement('span');
       row.prepend(tile);
     }
-    tile.className = 'tile ' + (large ? 'tile-lg ' : 'tile-sm ') + 'tile-' + cat;
-    tile.replaceChildren();
-    if (dish.image) {
-      const image = document.createElement('img');
-      image.src = dish.image;
-      image.alt = dish.name_cn || dish.custom_name || '';
-      image.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block';
-      image.addEventListener('error', () => {
-        const fallback = document.createElement('span');
-        fallback.textContent = CATEGORY_EMOJI[cat] || '🍽️';
-        tile.replaceChildren(fallback);
-      }, { once: true });
-      tile.appendChild(image);
-    } else {
-      const fallback = document.createElement('span');
-      fallback.textContent = CATEGORY_EMOJI[cat] || '🍽️';
-      tile.appendChild(fallback);
-    }
+    const renderedTile = makeDishTile(
+      {...dish, cat, photo:dish.image},
+      'tile ' + (large ? 'tile-lg' : 'tile-sm')
+    );
+    tile.replaceWith(renderedTile);
 
     let info = row.querySelector('.info');
     if (!info) {
@@ -3780,19 +3813,6 @@ pickModal.addEventListener('click',
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
 
-  function categoryOf(dish) {
-    const raw = String(dish.category_id || dish.carb_type || '').toLowerCase();
-    if (/sea|fish|shrimp|prawn/.test(raw)) return 'sea';
-    if (/meat|protein|pork|beef|chicken/.test(raw)) return 'meat';
-    if (/veg|mushroom/.test(raw)) return 'veg';
-    if (/soup/.test(raw)) return 'soup';
-    if (/egg|tofu|bean/.test(raw)) return 'egg';
-    if (/cold|salad/.test(raw)) return 'cold';
-    if (/one.?pot|combo/.test(raw)) return 'onepot';
-    if (/fruit/.test(raw)) return 'fruit';
-    return 'staple';
-  }
-
   function availabilityOf(dish) {
     const status = dish.availability?.status;
     if (status === 'available') return 'ok';
@@ -3962,7 +3982,8 @@ pickModal.addEventListener('click',
   dGrid.addEventListener('click', async event => {
     const card = event.target.closest('.d-card');
     if (!card) return;
-    const dish = DISH_DB.find(item => item.zh === card.dataset.zh);
+    const dish = DISH_DB.find(item => item.id === card.dataset.dishId) ||
+      DISH_DB.find(item => item.zh === card.dataset.zh);
     if (!dish) return;
     if (event.target.closest('.d-card-fav')) {
       try {

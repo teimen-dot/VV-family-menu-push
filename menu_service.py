@@ -119,6 +119,21 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     locked: {"breakfast": ["dish_0001"], "dinner": ["dish_0010"]}
     返回: menu_id
     """
+    conn_guard = get_db()
+    try:
+        protected = conn_guard.execute(
+            "SELECT id,status FROM menus WHERE date=? AND location=?",
+            (date_str, location),
+        ).fetchone()
+    finally:
+        conn_guard.close()
+    if protected and protected["status"] in ("confirmed", "pushed"):
+        warning = "已确认餐单保持不变 / Confirmed menu was not regenerated"
+        return protected["id"], {
+            "passed": True, "hard_errors": [], "warnings": [warning],
+            "issues": [warning], "protected": True,
+        }
+
     pool = _load_pool()
     locked = locked or {}
     dish_ings = get_dish_ingredients_map()
@@ -562,12 +577,14 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
     conn = get_db()
     try:
         menu = conn.execute(
-            "SELECT date, location, diners, diners_count "
+            "SELECT date, location, status, diners, diners_count "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
         if not menu:
             return False, "菜单不存在", None
+        if menu["status"] != "draft":
+            return False, "已确认菜单不可补充，请先回退到草稿", None
 
         date_str = menu["date"]
         loc = menu["location"] or location
@@ -579,6 +596,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         diners_count = _get_effective_diners_count(menu_row=menu)
         all_dish_ids = [d["id"] for d in pool["dishes"]]
         vv_prefs = get_preference_scores(all_dish_ids)
+        dish_availability = check_dishes_availability_batch(all_dish_ids, loc)
 
         context = {
             **get_rotation_context(date_str, loc, exclude_menu_id=menu_id),
@@ -587,6 +605,10 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             "expiring_ingredients": inv_exp,
             "dish_ingredients": dish_ings,
             "vv_preferences": vv_prefs,
+            "dish_availability": {
+                dish_id: value["status"]
+                for dish_id, value in dish_availability.items()
+            },
         }
 
         gf = GapFiller(pool, seed=seed or 42, dish_ingredients=dish_ings)
@@ -604,11 +626,16 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
         # 按餐次分组
         meals_existing = {"breakfast": [], "lunch": [], "dinner": []}
         item_sources = {}
+        auto_eggs_by_meal = {"breakfast": 0, "lunch": 0, "dinner": 0}
         for item in all_items:
             mt = item["meal_type"]
             if mt in meals_existing:
                 meals_existing[mt].append(item["dish_id"])
                 item_sources[item["dish_id"]] = item["source"]
+                if (not is_manual_source(item["source"])
+                        and item["dish_id"] in dish_map
+                        and "egg_dish" in dish_map[item["dish_id"]].get("meal_roles", [])):
+                    auto_eggs_by_meal[mt] += 1
 
         # 确定要处理的餐次
         target_meals = [meal_type] if meal_type else ["breakfast", "lunch", "dinner"]
@@ -645,11 +672,17 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             # V11: 记录 slot analysis before
             slots_before = analyze_meal_slots(mt, state, diners_count)
 
+            context["day_auto_egg_count"] = sum(
+                count for meal_name, count in auto_eggs_by_meal.items()
+                if meal_name != mt
+            )
+
             added = _fill_missing_slots_v8(
                 conn, menu_id, mt, state, gf, dish_map, context,
                 day_history, day_proteins, diners_count, loc,
                 unmet_slots, seen_unmet, active_dish_ids, added_dishes
             )
+            auto_eggs_by_meal[mt] = state.auto_egg_dish_count
 
         conn.commit()
 
@@ -685,6 +718,9 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             day_result[mt] = {"state": state}
 
         review = RuleEngine.final_review(day_result, diners_count)
+        review["degradation_warnings"] = list(gf.degradation_warnings)
+        review["warnings"].extend(gf.degradation_warnings)
+        review["issues"] = list(review["warnings"])
         review["unmet_slots"] = unmet_slots
         review["added"] = [d["dish_id"] for d in added_dishes]
         review["added_details"] = added_dishes
@@ -726,8 +762,8 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
         added_dishes = []
 
     BREAKFAST_SLOT_ORDER = [
-        "porridge", "companion_staple", "egg", "tofu",
-        "vegetable", "protein_main", "coarse_grain"
+        "porridge", "companion_staple", "tofu", "egg",
+        "vegetable", "coarse_grain"
     ]
 
     for round_i in range(max_rounds):
@@ -752,10 +788,11 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 continue
             slot_info = missing[slot_name]
             # 获取该槽位的候选菜
-            all_candidates = gf.get_candidates(
-                meal_type, exclude_ids=day_history, context=context
+            slot_candidates, degraded = gf.get_slot_candidates(
+                meal_type, slot_name, state, context,
+                exclude_ids=day_history,
+                day_auto_egg_count=context.get("day_auto_egg_count", 0),
             )
-            slot_candidates = filter_candidates_for_slot(all_candidates, slot_name)
 
             # V11: 过滤掉已删除的菜品（re-validate is_active）
             if active_dish_ids:
@@ -768,7 +805,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                     unmet_slots.append({
                         "meal": meal_type,
                         "slot": slot_name,
-                        "reason": "no_candidate",
+                        "reason": "no_available_candidate",
                         "message": NO_CANDIDATE_MESSAGE,
                     })
                 continue
@@ -849,7 +886,7 @@ _RECONCILE_SLOT_ROLES = {
     "porridge": [],
     "companion_staple": [],
     "coarse_grain": [],
-    "vegetable": [],
+    "vegetable": ["vegetable_dish"],
 }
 
 

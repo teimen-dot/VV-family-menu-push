@@ -109,6 +109,17 @@ INGREDIENT_TYPO_MAP = {
     "西蓝花": "西兰花",
 }
 
+INGREDIENT_ENGLISH_NAMES = {
+    "上海青": "Shanghai Bok Choy",
+}
+
+
+def resolve_ingredient_english_name(name_cn, existing_name_en=""):
+    """Resolve display/create English without mutating legacy blank rows."""
+    return (existing_name_en or "").strip() or INGREDIENT_ENGLISH_NAMES.get(
+        _normalize_ingredient_name(name_cn), ""
+    )
+
 
 def resolve_ingredient_name(raw_name, ingredient_rows):
     """Return (matching row, normalized name, corrected_from) without risky merges."""
@@ -1325,16 +1336,28 @@ def build_family_ui_readonly_tabs(location, as_of=None):
             for item in items:
                 item["image"] = _existing_photo_url(item.get("image"))
 
-    active_ids = {item["ingredient_id"] for item in pantry.get("items", [])}
+    def ingredient_display_row(item):
+        return {
+            **item,
+            "name_en": resolve_ingredient_english_name(
+                item.get("name_cn") or item.get("ingredient_id"),
+                item.get("name_en") or "",
+            ),
+        }
+
+    pantry_items = [ingredient_display_row(item) for item in pantry.get("items", [])]
+    common_items = [ingredient_display_row(item) for item in common]
+    recent_items = [ingredient_display_row(item) for item in recent]
+    active_ids = {item["ingredient_id"] for item in pantry_items}
     return {
         "pantry": {
             "location": location,
-            "items": pantry.get("items", []),
+            "items": pantry_items,
             "common": [
                 {**item, "in_pantry": item["ingredient_id"] in active_ids}
-                for item in common
+                for item in common_items
             ],
-            "recent": recent,
+            "recent": recent_items,
         },
         "dishes": dish_rows,
         "categories": get_categories(),
@@ -3878,6 +3901,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 if existing:
                     ingredient_id = existing["ingredient_id"]
                     display_name = existing["name_cn"]
+                    display_name_en = resolve_ingredient_english_name(
+                        display_name, existing["name_en"]
+                    )
                 else:
                     ingredient_id = normalized_name.casefold().replace(" ", "_")
                     occupied = conn.execute(
@@ -3885,11 +3911,12 @@ class AppHandler(BaseHTTPRequestHandler):
                     ).fetchone()
                     if occupied:
                         ingredient_id = "custom_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+                    display_name_en = resolve_ingredient_english_name(normalized_name)
                     conn.execute(
                         "INSERT INTO ingredients "
                         "(ingredient_id, name_cn, name_en, aliases, category, ingredient_group, is_common) "
-                        "VALUES (?, ?, '', '[]', '', 'other', 0)",
-                        (ingredient_id, normalized_name),
+                        "VALUES (?, ?, ?, '[]', '', 'other', 0)",
+                        (ingredient_id, normalized_name, display_name_en),
                     )
                     display_name = normalized_name
                     created = True
@@ -3909,6 +3936,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json({
                         "ok": True, "already_in_pantry": True,
                         "ingredient_id": ingredient_id, "name_cn": display_name,
+                        "name_en": display_name_en,
                         "corrected_from": corrected_from, "quantity_level": quantity_level,
                     })
                     return
@@ -3936,6 +3964,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json({
                     "ok": True, "already_in_pantry": False, "created": created,
                     "ingredient_id": ingredient_id, "name_cn": display_name,
+                    "name_en": display_name_en,
                     "corrected_from": corrected_from, "quantity_level": quantity_level,
                     "pantry_count": pantry_count,
                 })

@@ -63,10 +63,36 @@ WEAK_CARB_TYPES = {"other", "dim_sum"}
 # 早餐搭配主食四选一
 BREAKFAST_COMPANION_STAPLES = {"mantou", "jiaozi", "bao", "sourdough", "huajuan"}
 
-MEAT_PROTEINS = {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"}
+MEAT_PROTEINS = {"fish", "shrimp", "other_seafood", "beef", "pork", "猪肉", "chicken"}
 MANUAL_SOURCES = {"manual", "owner"}
 TANG_JIAO_NAME = "汤饺"
 NO_CANDIDATE_MESSAGE = "暂无符合条件菜品，请手动选择或补录"
+
+# REQUIREMENTS_V2 §4.6: a four-day window needs at least daily demand × 4.
+# These thresholds are used only to decide whether the four-day lock may degrade.
+AUTO_POOL_MINIMUMS = {
+    "porridge": 4,
+    "companion_staple": 4,
+    "egg": 4,
+    "tofu": 4,
+    "vegetable": 24,
+    "vegetable_dish": 24,
+    "coarse_grain": 4,
+    "protein_main": 20,
+    "meat_main": 20,
+    "staple": 8,
+    "quick_soup": 4,
+    "slow_soup": 4,
+}
+
+MEAL_SLOT_ORDER = {
+    "breakfast": [
+        "porridge", "companion_staple", "tofu", "egg",
+        "vegetable", "coarse_grain",
+    ],
+    "lunch": ["meat_main", "protein_main", "vegetable_dish", "staple", "quick_soup"],
+    "dinner": ["meat_main", "protein_main", "vegetable_dish", "staple", "slow_soup"],
+}
 
 # 原 6 项 pending_review 是冻结保护对象；旧库尚无独立 pending_review 列时
 # 仍按稳定 dish id 排除自动池，迁移脚本不得改其业务字段或 required。
@@ -235,6 +261,7 @@ class MealState:
         self.has_slow_soup = False
         # V9: 基于 meal_roles 的精确槽位计数（不依赖 ingredients）
         self.egg_dish_count = 0
+        self.auto_egg_dish_count = 0
         self.tofu_dish_count = 0
         self.meat_main_count = 0
         # 只有手动加入的 onepot 才覆盖整餐；自动早餐汤饺不得触发。
@@ -281,6 +308,8 @@ class MealState:
         # V9: egg_dish / tofu_dish 精确槽位（基于 meal_roles，不依赖 ingredients）
         if "egg_dish" in roles:
             self.egg_dish_count += 1
+            if not is_manual_source(source):
+                self.auto_egg_dish_count += 1
         if "tofu_dish" in roles:
             self.tofu_dish_count += 1
         if "tofu_dish" not in roles and set(analysis["proteins"]) & MEAT_PROTEINS:
@@ -380,15 +409,15 @@ class RuleEngine:
             warnings.append("早餐缺搭配主食 / No companion staple (mantou/jiaozi/bao/sourdough/huajuan)")
         if state.coarse_grain_slot < 1:
             warnings.append("早餐缺粗粮 / No coarse grain")
-        if len(state.proteins) < 1:
-            warnings.append("早餐缺蛋白质 / No protein")
-        if state.vegetable_count < 2:
-            warnings.append(f"早餐蔬菜不足: {state.vegetable_count}种 / Insufficient vegetables ({state.vegetable_count}, need >=2)")
+        if state.vegetable_dish_count < 2:
+            warnings.append(f"早餐蔬菜不足: {state.vegetable_dish_count}/2 / Insufficient vegetable dishes ({state.vegetable_dish_count}/2)")
         # V3 新增
         if state.egg_slot < 1:
             warnings.append("早餐还没有鸡蛋 / No egg for breakfast")
         if state.tofu_slot < 1:
             warnings.append("早餐还没有豆腐 / No tofu for breakfast")
+        if state.auto_egg_dish_count > 1:
+            warnings.append(f"早餐自动蛋类过多: {state.auto_egg_dish_count}/1 / Too many automatic egg dishes")
 
         # 早餐不应有米饭/炒饭
         if "rice" in state.carb_types:
@@ -398,7 +427,7 @@ class RuleEngine:
         return True, [], warnings
 
     @staticmethod
-    def check_lunch_rules(state):
+    def check_lunch_rules(state, diners_count=4):
         """
         V3 午餐规则（全部为 Warning，不阻断 Confirm）：
           protein >= 1
@@ -411,10 +440,11 @@ class RuleEngine:
 
         if state.has_manual_one_pot_meal:
             return True, [], []
-        if state.protein_count < 1:
-            warnings.append("午餐缺蛋白质 / No protein for lunch")
-        if state.vegetable_dish_count < 1:
-            warnings.append("午餐缺蔬菜 / No vegetables for lunch")
+        target = RuleEngine._meal_target("lunch", diners_count)
+        if state.protein_count < target["protein_main"]:
+            warnings.append(f"午餐蛋白质不足: {state.protein_count}/{target['protein_main']} / Insufficient protein")
+        if state.vegetable_dish_count < target["vegetable_dish"]:
+            warnings.append(f"午餐蔬菜不足: {state.vegetable_dish_count}/{target['vegetable_dish']} / Insufficient vegetables")
         if state.carb_count < 1:
             warnings.append("午餐缺主食 / No carb for lunch")
         if state.meat_main_count < 1:
@@ -424,8 +454,8 @@ class RuleEngine:
             warnings.append("午餐还没有快手汤 / No quick soup for lunch")
 
         # 午餐不应过于丰富
-        if state.dish_count > 5:
-            warnings.append(f"午餐菜品过多: {state.dish_count}道 / Too many dishes ({state.dish_count})")
+        if state.dish_count > target["total"]:
+            warnings.append(f"午餐菜品过多: {state.dish_count}/{target['total']} / Too many dishes")
 
         return True, [], warnings
 
@@ -440,7 +470,7 @@ class RuleEngine:
         返回: (passed, issues, warnings)
         """
         warnings = []
-        target = RuleEngine._dinner_target(diners_count)
+        target = RuleEngine._meal_target("dinner", diners_count)
 
         if state.has_manual_one_pot_meal:
             return True, [], []
@@ -462,6 +492,8 @@ class RuleEngine:
         # V3 新增
         if state.slow_soup_slot < 1:
             warnings.append("晚餐还没有煲汤 / No slow-cooked soup for dinner")
+        if state.dish_count > target["total"]:
+            warnings.append(f"晚餐菜品过多: {state.dish_count}/{target['total']} / Too many dishes")
 
         # 烹饪方式应多样
         if len(state.cooking_methods) < 2 and state.dish_count >= 3:
@@ -480,7 +512,7 @@ class RuleEngine:
         if meal_type == "breakfast":
             return RuleEngine.check_breakfast_rules(state)
         elif meal_type == "lunch":
-            return RuleEngine.check_lunch_rules(state)
+            return RuleEngine.check_lunch_rules(state, diners_count)
         elif meal_type == "dinner":
             return RuleEngine.check_dinner_rules(state, diners_count)
         return True, [], []
@@ -527,6 +559,14 @@ class RuleEngine:
             if cnt >= 3:
                 warnings.append(f"蛋白质 '{prot}' 一天出现 {cnt} 次 / Protein '{prot}' appears {cnt} times today")
 
+        auto_egg_total = sum(
+            day_result.get(meal, {}).get("state").auto_egg_dish_count
+            for meal in ("breakfast", "lunch", "dinner")
+            if day_result.get(meal, {}).get("state")
+        )
+        if auto_egg_total > 2:
+            warnings.append(f"自动蛋类全天过多: {auto_egg_total}/2 / Too many automatic egg dishes today")
+
         return {
             "passed": True,  # V3: 始终 True
             "hard_errors": [],  # V3: 始终为空
@@ -552,24 +592,24 @@ class RuleEngine:
                 state.porridge_slot >= 1
                 and state.companion_staple_slot >= 1
                 and state.coarse_grain_slot >= 1
-                and len(state.proteins) >= 1
-                and state.vegetable_count >= 2
+                and state.vegetable_dish_count >= 2
                 and state.egg_slot >= 1
                 and state.tofu_slot >= 1
             )
         elif meal_type == "lunch":
             if state.has_manual_one_pot_meal:
                 return True
+            target = RuleEngine._meal_target("lunch", diners_count)
             return (
-                state.protein_count >= 1
+                state.protein_count >= target["protein_main"]
                 and state.meat_main_count >= 1
-                and state.vegetable_dish_count >= 1
+                and state.vegetable_dish_count >= target["vegetable_dish"]
                 and state.carb_count >= 1
                 and state.quick_soup_slot >= 1
             )
         elif meal_type == "dinner":
             # V9: 按人数精确定量
-            target = RuleEngine._dinner_target(diners_count)
+            target = RuleEngine._meal_target("dinner", diners_count)
             if state.has_manual_one_pot_meal:
                 return True
             return (
@@ -589,13 +629,27 @@ class RuleEngine:
         4人: 2蛋白+2蔬菜+1主食+1煲汤
         1人或5+人: 使用 fallback（同4人）
         """
+        target = RuleEngine._meal_target("dinner", diners_count)
+        return {key: value for key, value in target.items() if key != "total"}
+
+    @staticmethod
+    def _meal_target(meal_type, diners_count):
+        """Frozen lunch/dinner matrix; 4+ diners stays at six dishes."""
         if diners_count <= 2:
-            return {"protein_main": 1, "meat_main": 1, "vegetable_dish": 1, "staple": 1, "slow_soup": 1}
+            protein, vegetable = 1, 1
         elif diners_count == 3:
-            return {"protein_main": 2, "meat_main": 1, "vegetable_dish": 1, "staple": 1, "slow_soup": 1}
+            protein, vegetable = 2, 1
         else:
-            # 4人及以上
-            return {"protein_main": 2, "meat_main": 1, "vegetable_dish": 2, "staple": 1, "slow_soup": 1}
+            protein, vegetable = 2, 2
+        soup_key = "quick_soup" if meal_type == "lunch" else "slow_soup"
+        return {
+            "protein_main": protein,
+            "meat_main": 1,
+            "vegetable_dish": vegetable,
+            "staple": 1,
+            soup_key: 1,
+            "total": protein + vegetable + 2,
+        }
 
 
 # ============================================================
@@ -610,7 +664,8 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
     """
     if meal_type == "dinner":
         # V9: 按 2/3/4 人精确定量
-        target = RuleEngine._dinner_target(diners_count)
+        target = RuleEngine._meal_target("dinner", diners_count)
+        target = {key: value for key, value in target.items() if key != "total"}
         current = {
             "protein_main": state.protein_count,
             "meat_main": state.meat_main_count,
@@ -619,7 +674,8 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
             "slow_soup": state.slow_soup_slot,
         }
     elif meal_type == "lunch":
-        target = {"protein_main": 1, "meat_main": 1, "vegetable_dish": 1, "staple": 1, "quick_soup": 1}
+        target = RuleEngine._meal_target("lunch", diners_count)
+        target = {key: value for key, value in target.items() if key != "total"}
         current = {
             "protein_main": state.protein_count,
             "meat_main": state.meat_main_count,
@@ -630,14 +686,13 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
     elif meal_type == "breakfast":
         target = {
             "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
-            "protein_main": 1, "vegetable": 2, "egg": 1, "tofu": 1
+            "vegetable": 2, "egg": 1, "tofu": 1
         }
         current = {
             "porridge": state.porridge_slot,
             "companion_staple": state.companion_staple_slot,
             "coarse_grain": state.coarse_grain_slot,
-            "protein_main": state.protein_count,
-            "vegetable": state.vegetable_count,
+            "vegetable": state.vegetable_dish_count,
             # V9: egg/tofu 基于 meal_roles 而非 ingredients
             "egg": state.egg_dish_count,
             "tofu": state.tofu_dish_count,
@@ -986,6 +1041,7 @@ class GapFiller:
         for d in self.dishes:
             self.analyzed[d["id"]] = NutritionAnalyzer.analyze(d)
         self.scorer = ScoringEngine(rng=self.rng)
+        self.degradation_warnings = []
         # dish_id → set of ingredient_ids
         self.dish_ingredients = dish_ingredients or {}
 
@@ -1000,6 +1056,66 @@ class GapFiller:
             and (not availability or availability.get(a["id"]) == "available")
         ]
 
+    def _business_pool(self, meal_type, context=None):
+        """Return the eligible automatic pool before rotation and availability."""
+        rows = []
+        for analysis in self.analyzed.values():
+            if meal_type not in analysis["meal_tags"]:
+                continue
+            if not is_auto_candidate(analysis, meal_type):
+                continue
+            if (meal_type == "breakfast" and analysis["is_soup"]
+                    and analysis["name_cn"] != TANG_JIAO_NAME):
+                continue
+            rows.append(analysis)
+        return rows
+
+    @staticmethod
+    def _candidate_within_caps(candidate, state, day_auto_egg_count):
+        roles = candidate.get("meal_roles", [])
+        if candidate["id"] in {dish["id"] for dish in state.dishes}:
+            return False
+        if "egg_dish" in roles:
+            if state.egg_dish_count >= 1 or day_auto_egg_count >= 2:
+                return False
+        if "tofu_dish" in roles and state.tofu_dish_count >= 1:
+            return False
+        return True
+
+    def get_slot_candidates(self, meal_type, slot_name, state, context=None,
+                            exclude_ids=None, day_auto_egg_count=0):
+        """Apply business pool, inventory, four-day lock, and explicit degradation."""
+        ctx = context or {}
+        availability = ctx.get("dish_availability", {})
+        business_slot = filter_candidates_for_slot(
+            self._business_pool(meal_type, ctx), slot_name
+        )
+        business_slot = [
+            candidate for candidate in business_slot
+            if self._candidate_within_caps(
+                candidate, state, day_auto_egg_count + state.auto_egg_dish_count
+            )
+        ]
+        available_slot = [
+            candidate for candidate in business_slot
+            if not availability or availability.get(candidate["id"]) == "available"
+        ]
+        blocked = set(exclude_ids or set()) | set(ctx.get("hard_locked_dish_ids", set()))
+        unlocked = [candidate for candidate in available_slot if candidate["id"] not in blocked]
+        if unlocked:
+            return unlocked, None
+
+        minimum = AUTO_POOL_MINIMUMS.get(slot_name)
+        if minimum is not None and len(business_slot) < minimum and available_slot:
+            message = (
+                f"{meal_type}.{slot_name} 分类菜品不足 "
+                f"({len(business_slot)}/{minimum})，允许窗口内重复；建议补录"
+            )
+            if message not in self.degradation_warnings:
+                self.degradation_warnings.append(message)
+            return available_slot, message
+        return [], None
+
     def generate_meal(self, meal_type, locked_dish_ids=None, context=None, diners_count=4):
         """
         生成一餐菜单。
@@ -1008,88 +1124,47 @@ class GapFiller:
         """
         locked_ids = locked_dish_ids or []
         ctx = context or {}
-
         state = MealState()
         log = []
 
-        # 先加入 LOCKED 菜品（只计算一次）
         for did in locked_ids:
             if did in self.analyzed:
-                la = self.analyzed[did]
-                state.add_dish(la, is_locked=True, source="owner")
-                log.append(f"  [LOCKED] {la['name_cn']} | protein={la['proteins']} veg={la['vegetables']} carb={la['carb_type']}")
+                analysis = self.analyzed[did]
+                state.add_dish(analysis, is_locked=True, source="owner")
+                log.append(f"  [LOCKED] {analysis['name_cn']}")
 
-        exclude = set(locked_ids)
-        # 跨餐排除：不重复选当天其他餐已选的菜
-        day_history = ctx.get("day_history", set())
-        exclude |= day_history
+        # A manually selected onepot owns the whole meal. The automatic breakfast
+        # 汤饺 exception never sets this state flag.
+        if state.has_manual_one_pot_meal:
+            return state.dishes, state, [*log, "  [STOP] manual onepot covers meal"]
 
-        # ---- 缺口补充循环 ----
-        max_iterations = 12
-        for iteration in range(max_iterations):
-            # 检查硬规则是否满足
-            if RuleEngine.is_satisfied(meal_type, state, diners_count):
-                log.append(f"  [STOP] 硬规则已满足, {state.dish_count} dishes")
-                break
+        day_history = set(ctx.get("day_history", set()))
+        exclude = set(locked_ids) | day_history
+        day_auto_egg_count = int(ctx.get("day_auto_egg_count", 0) or 0)
 
-            if state.dish_count >= 8:  # 安全上限
-                log.append(f"  [STOP] 最大菜品数达到 ({state.dish_count})")
-                break
-
-            candidates = self.get_candidates(meal_type, exclude_ids=exclude, context=ctx)
-            if not candidates:
-                log.append(f"  [WARN] No more candidates")
-                break
-
-            # === 缺口过滤 ===
-            candidates = self._filter_by_gaps(meal_type, state, candidates, log, diners_count)
-
-            # 主食已满时排除带主食的菜品
-            if meal_type == "dinner" and state.carb_count >= 1:
-                filtered = [c for c in candidates if not c["carb_type"]]
-                if filtered:
-                    candidates = filtered
-                    log.append(f"  [FILTER] carb full: {len(candidates)} non-carb candidates")
-
-            # 蛋白质已满时排除带新蛋白质的菜品
-            # V10.1 FIX: 用 protein_count（实际蛋白质菜品数）而非 len(state.proteins)（含汤/沙拉的蛋白质类型）
-            if meal_type == "dinner":
-                dinner_target = RuleEngine._dinner_target(diners_count)
-                protein_full = state.protein_count >= dinner_target["protein_main"]
-            else:
-                protein_full = len(state.proteins) >= 2
-            if protein_full and not (meal_type in ("lunch", "dinner") and state.meat_main_count < 1):
-                filtered = [c for c in candidates if not (set(c["proteins"]) - state.proteins)]
-                if filtered:
-                    candidates = filtered
-
-            # 蔬菜已满时排除蔬菜菜 (V10.1 FIX: 之前没有这个过滤，导致晚餐蔬菜无限增长)
-            if meal_type == "dinner":
-                dinner_target = RuleEngine._dinner_target(diners_count)
-                if state.vegetable_dish_count >= dinner_target["vegetable_dish"]:
-                    filtered = [c for c in candidates
-                                if "vegetable_dish" not in c.get("meal_roles", [])]
-                    if filtered:
-                        candidates = filtered
-                        log.append(f"  [FILTER] vegetable_dish full: {len(candidates)} candidates")
-
-            # 汤已有时排除汤类
-            if state.has_soup:
-                filtered = [c for c in candidates if not c["is_soup"]]
-                if filtered:
-                    candidates = filtered
-
-            chosen = choose_rotation_candidate(candidates, self.scorer, state, meal_type, ctx)
-            if not chosen:
-                break
-
-            state.add_dish(chosen, source="ai")
-            exclude.add(chosen["id"])
-            log.append(
-                f"  [ADD] {chosen['name_cn']} | "
-                f"protein={chosen['proteins']} veg={chosen['vegetables']} "
-                f"carb={chosen['carb_type']}"
-            )
+        for slot_name in MEAL_SLOT_ORDER[meal_type]:
+            while analyze_meal_slots(meal_type, state, diners_count).get(
+                slot_name, {}
+            ).get("missing_min", 0) > 0:
+                candidates, degraded = self.get_slot_candidates(
+                    meal_type, slot_name, state, ctx,
+                    exclude_ids=exclude,
+                    day_auto_egg_count=day_auto_egg_count,
+                )
+                if not candidates:
+                    log.append(f"  [WARN] no candidate for {slot_name}")
+                    break
+                chosen = choose_rotation_candidate(
+                    candidates, self.scorer, state, meal_type, ctx
+                )
+                if not chosen:
+                    break
+                state.add_dish(chosen, source="ai")
+                exclude.add(chosen["id"])
+                log.append(
+                    f"  [ADD:{slot_name}] {chosen['name_cn']}"
+                    + (" [DEGRADED]" if degraded else "")
+                )
 
         log.append(
             f"  [FINAL] dishes={state.dish_count} | "
@@ -1244,6 +1319,8 @@ class GapFiller:
         day_proteins = set()
 
         result = {}
+        self.degradation_warnings = []
+        day_auto_egg_count = 0
         for meal_type in ["breakfast", "lunch", "dinner"]:
             locked_ids = locked.get(meal_type, [])
             for lid in locked_ids:
@@ -1252,6 +1329,7 @@ class GapFiller:
             meal_ctx = dict(ctx)
             meal_ctx["day_proteins"] = set(day_proteins)
             meal_ctx["day_history"] = set(day_history)  # 跨餐排除
+            meal_ctx["day_auto_egg_count"] = day_auto_egg_count
 
             dishes, state, log = self.generate_meal(
                 meal_type,
@@ -1263,11 +1341,15 @@ class GapFiller:
             for d in dishes:
                 day_history.add(d["id"])
                 day_proteins.update(d["proteins"])
+            day_auto_egg_count += state.auto_egg_dish_count
 
             result[meal_type] = {"dishes": dishes, "state": state}
             all_logs[meal_type] = log
 
         review = RuleEngine.final_review(result, diners_count)
+        review["degradation_warnings"] = list(self.degradation_warnings)
+        review["warnings"].extend(self.degradation_warnings)
+        review["issues"] = list(review["warnings"])
         all_logs["review"] = review
         return result, all_logs
 
@@ -1279,7 +1361,6 @@ class GapFiller:
 def get_rotation_context(target_date, location, exclude_menu_id=None):
     """Return historical LRU data and the global four-day hard lock for one kitchen."""
     target = date.fromisoformat(target_date)
-    today = date.today()
     conn = get_db()
     try:
         historical_rows = conn.execute(
@@ -1287,13 +1368,17 @@ def get_rotation_context(target_date, location, exclude_menu_id=None):
             "FROM menu_items mi JOIN menus m ON mi.menu_id=m.id "
             "WHERE m.location=? AND m.date<? AND m.status IN ('confirmed','pushed') "
             "GROUP BY mi.dish_id",
-            (location, today.isoformat()),
+            (location, target.isoformat()),
         ).fetchall()
         historical_last_used = {
             row["dish_id"]: row["last_used"] for row in historical_rows if row["dish_id"]
         }
 
-        params = [location, today.isoformat(), (today + timedelta(days=3)).isoformat()]
+        params = [
+            location,
+            (target - timedelta(days=3)).isoformat(),
+            (target + timedelta(days=3)).isoformat(),
+        ]
         exclude_sql = ""
         if exclude_menu_id is not None:
             exclude_sql = " AND m.id<>?"
@@ -1301,8 +1386,11 @@ def get_rotation_context(target_date, location, exclude_menu_id=None):
         reservation_rows = conn.execute(
             "SELECT m.id AS menu_id, m.date, mi.dish_id "
             "FROM menu_items mi JOIN menus m ON mi.menu_id=m.id "
+            "LEFT JOIN menu_meal_settings mms "
+            "ON mms.menu_id=mi.menu_id AND mms.meal_type=mi.meal_type "
             "WHERE m.location=? AND m.date BETWEEN ? AND ? "
-            "AND COALESCE(m.status,'draft')<>'cancelled'" + exclude_sql,
+            "AND COALESCE(m.status,'draft')<>'cancelled' "
+            "AND COALESCE(mms.is_skipped,0)=0" + exclude_sql,
             tuple(params),
         ).fetchall()
     finally:

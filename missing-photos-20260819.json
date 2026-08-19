@@ -1,0 +1,31 @@
+{
+  "generated_at": "2026-08-19T15:30:00+08:00",
+  "production_source": "https://menu.ourmenu.site/photos/",
+  "summary": {
+    "expected": 17,
+    "production_http_200": 17,
+    "preview_present_before": 7,
+    "downloaded": 10,
+    "preview_missing_after": 0,
+    "fake_images_created": 0
+  },
+  "items": [
+    {"dish_id":"dish_0215","file":"stirfried_pork_with_chili_peppers.jpg","name_cn":"辣椒炒肉","name_en":"Stir-Fried Pork with Chili Peppers","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0216","file":"grilled_lamb_skewers.jpg","name_cn":"羊肉串","name_en":"Grilled Lamb Skewers","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0217","file":"dumpling_soup.jpg","name_cn":"汤饺","name_en":"Dumpling Soup","category":"staple_carb","fallback_emoji":"🍚","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0218","file":"stirfried_choy_sum_with_garlic.jpg","name_cn":"蒜蓉菜心","name_en":"Stir-Fried Choy Sum with Garlic","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0219","file":"stirfried_choy_sum.jpg","name_cn":"清炒菜心","name_en":"Stir-Fried Choy Sum","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0220","file":"stirfried_green_vegetables_with_garlic.jpg","name_cn":"蒜蓉青菜","name_en":"Stir-Fried Green Vegetables with Garlic","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0221","file":"stirfried_garlic_scapes_with_chinese_cured_pork.jpg","name_cn":"蒜苔腊肉","name_en":"Stir-fried Garlic Scapes with Chinese Cured Pork","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0222","file":"cucumber_shrimp_patties.jpg","name_cn":"黄瓜虾饼","name_en":"Cucumber Shrimp Patties","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0223","file":"shrimp_patties.jpg","name_cn":"虾饼","name_en":"Shrimp Patties","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0225","file":"stirfried_shanghai_bok_choy_with_garlic.jpg","name_cn":"蒜蓉上海青","name_en":"Stir-fried Shanghai Bok Choy with Garlic","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0226","file":"stirfried_lettuce_with_garlic.jpg","name_cn":"清炒生菜","name_en":"Stir-fried Lettuce with Garlic","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0227","file":"stirfried_shanghai_bok_choy.jpg","name_cn":"清炒上海青","name_en":"Stir-fried Shanghai Bok Choy","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0228","file":"panfried_chicken_wings.jpg","name_cn":"煎鸡翅","name_en":"Pan-fried Chicken Wings","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0229","file":"dumplings.jpg","name_cn":"水饺","name_en":"Dumplings","category":"staple_carb","fallback_emoji":"🍚","production_http":200,"preview_before":"present","action":"kept","preview_after":"present"},
+    {"dish_id":"dish_0230","file":"stirfried_red_amaranth_with_garlic.jpg","name_cn":"清炒红苋菜","name_en":"Stir-fried Red Amaranth","category":"vegetable_mushroom","fallback_emoji":"🥬","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0231","file":"braised_pork_belly_in_soy_sauce.jpg","name_cn":"红烧肉","name_en":"Braised Pork Belly in Soy Sauce","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"},
+    {"dish_id":"dish_0232","file":"shredded_pork_with_preserved_mustard_greens.jpg","name_cn":"榨菜肉丝","name_en":"Shredded Pork with Preserved Mustard Greens","category":"protein_main","fallback_emoji":"🥩","production_http":200,"preview_before":"missing","action":"downloaded","preview_after":"present"}
+  ]
+}

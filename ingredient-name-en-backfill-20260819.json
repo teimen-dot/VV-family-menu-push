@@ -1,0 +1,302 @@
+{
+  "database": "/Users/heymen/workbuddy/claw-family-ui-phase2-assets-20260819/test-family_menu.db",
+  "blank_count": 42,
+  "proposed_count": 1,
+  "applied": false,
+  "items": [
+    {
+      "ingredient_id": "batch3验收食材",
+      "name_cn": "Batch3验收食材",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_00d1b954b13b4ce9",
+      "name_cn": "水饺",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_53c7c46db46ec2d2",
+      "name_cn": "小番茄",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_5bc4e1a3f15b9e18",
+      "name_cn": "梅头肉",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_5db1cae38249e7be",
+      "name_cn": "做菜豆腐",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_610829af8e926458",
+      "name_cn": "红笕菜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_6a4a8a92f3faba9f",
+      "name_cn": "五花肉小半截",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_6d47fdff172e80dd",
+      "name_cn": "柴鱼片",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_6d93a4fb838143c5",
+      "name_cn": "鸡",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_847d8383034f1c1f",
+      "name_cn": "榨菜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_896aa866cdd53505",
+      "name_cn": "窝笋",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_8b6434928fb2ed54",
+      "name_cn": "早餐推荐",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_8f330b618aef323c",
+      "name_cn": "生蚝",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_9cbc7d0e02963bc2",
+      "name_cn": "饭团",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_bb6da11cdcdf24ad",
+      "name_cn": "西红柿",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_c22c7914c3c3c1e3",
+      "name_cn": "青提",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_c76f6a79f6dbcf63",
+      "name_cn": "草莓",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_d5b8589a0297289a",
+      "name_cn": "菜心",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_dfccd1daf051c622",
+      "name_cn": "海胆",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_e1337e15ca73d20d",
+      "name_cn": "黄瓜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_e8205f1a2e89c1d9",
+      "name_cn": "哈密瓜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_ec34eee503678180",
+      "name_cn": "卢笋",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_f7e1e9df0b87cc83",
+      "name_cn": "鱼泉榨菜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_fc12e809f6355354",
+      "name_cn": "辣椒",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "custom_fc5ac4591647c18a",
+      "name_cn": "木鱼花",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "三文鱼",
+      "name_cn": "三文鱼",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "上海青",
+      "name_cn": "上海青",
+      "current_name_en": "",
+      "proposed_name_en": "Shanghai Bok Choy",
+      "status": "proposed"
+    },
+    {
+      "ingredient_id": "小辣椒",
+      "name_cn": "小辣椒",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "日本水菜",
+      "name_cn": "日本水菜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "梅头猪肉",
+      "name_cn": "梅头猪肉",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "樱桃萝卜",
+      "name_cn": "樱桃萝卜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "测试食材",
+      "name_cn": "测试食材",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "猪肉",
+      "name_cn": "猪肉",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "生菜",
+      "name_cn": "生菜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "罗勒",
+      "name_cn": "罗勒",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "肉包",
+      "name_cn": "肉包",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "虾仁",
+      "name_cn": "虾仁",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "饺子",
+      "name_cn": "饺子",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "鱼子酱",
+      "name_cn": "鱼子酱",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "鸡毛菜",
+      "name_cn": "鸡毛菜",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "鸡翅",
+      "name_cn": "鸡翅",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    },
+    {
+      "ingredient_id": "龙虾",
+      "name_cn": "龙虾",
+      "current_name_en": "",
+      "proposed_name_en": null,
+      "status": "manual_review"
+    }
+  ]
+}
