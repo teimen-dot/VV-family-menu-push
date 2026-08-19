@@ -17,6 +17,7 @@ from rule_engine import (
     get_rotation_context, choose_rotation_candidate, is_manual_source,
     analyze_meal_slots, filter_candidates_for_slot,
     BREAKFAST_COMPANION_STAPLES, NO_CANDIDATE_MESSAGE,
+    primary_protein_source, primary_vegetable_subject,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -643,6 +644,8 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
 
         day_history = set()
         day_proteins = set()
+        day_primary_vegetables = set()
+        day_primary_proteins = set()
         added_dishes = []  # V11: track mutations
         unmet_slots = []
         seen_unmet = set()
@@ -652,6 +655,16 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 if did in dish_map:
                     day_history.add(did)
                     day_proteins.update(dish_map[did].get("protein_types", []))
+                    analysis = gf.analyzed[did]
+                    vegetable = primary_vegetable_subject(analysis)
+                    protein = primary_protein_source(analysis)
+                    if vegetable:
+                        day_primary_vegetables.add(vegetable)
+                    if protein:
+                        day_primary_proteins.add(protein)
+
+        context["day_primary_vegetables"] = day_primary_vegetables
+        context["day_primary_proteins"] = day_primary_proteins
 
         for mt in target_meals:
             if mt not in meals_existing:
@@ -862,7 +875,17 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 )
                 items_added += 1
                 day_history.add(chosen["id"])
-                day_proteins.update(chosen.get("protein_types", []))
+                day_proteins.update(chosen.get("proteins", []))
+                vegetable = primary_vegetable_subject(chosen)
+                protein = primary_protein_source(chosen)
+                if vegetable:
+                    context.setdefault("day_primary_vegetables", set()).add(
+                        vegetable
+                    )
+                if protein:
+                    context.setdefault("day_primary_proteins", set()).add(
+                        protein
+                    )
 
                 # V11: 记录 mutation
                 added_dishes.append({

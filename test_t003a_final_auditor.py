@@ -66,7 +66,7 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
     def test_clause_catalog_is_numbered_and_source_tagged(self):
         self.assertEqual([item["id"] for item in AUDIT_RULES], [
             "A01", "A02", "A03", "A04", "A05",
-            "A06", "A07", "A08", "A09", "A10",
+            "A06", "A07", "A08", "A09", "A10", "A11",
         ])
         self.assertTrue(all(item["clause"].startswith("§") for item in AUDIT_RULES))
 
@@ -268,6 +268,73 @@ class ReverseViolationSamples(unittest.TestCase):
         self.assertEqual(len(method_names), 6)
 
 
+class Section14ReverseViolationSamples(unittest.TestCase):
+    def setUp(self):
+        self.base = valid_record()
+
+    def _assert_a11_rejected(self, record):
+        audit = audit_final_menu(record["menu"], record["evidence"])
+        self.assertEqual(audit["status"], "VIOLATION")
+        self.assertIn("A11", audit["violation_ids"])
+
+    def test_01_broccoli_twice_across_the_day_is_rejected(self):
+        record = copy.deepcopy(self.base)
+        breakfast_veg = next(
+            item for item in record["menu"]["meals"]["breakfast"]
+            if "vegetable_dish" in item["meal_roles"]
+        )
+        lunch_veg = next(
+            item for item in record["menu"]["meals"]["lunch"]
+            if "vegetable_dish" in item["meal_roles"]
+        )
+        breakfast_veg["vegetables"] = ["any_available_vegetable"]
+        breakfast_veg["resolved_vegetable"] = "西兰花"
+        lunch_veg["vegetables"] = ["西兰花"]
+        self._assert_a11_rejected(record)
+
+    def test_02_breakfast_fish_and_dinner_fish_are_rejected(self):
+        record = copy.deepcopy(self.base)
+        breakfast = record["menu"]["meals"]["breakfast"][0]
+        dinner = next(
+            item for item in record["menu"]["meals"]["dinner"]
+            if "protein_main" in item["meal_roles"]
+        )
+        breakfast["protein_types"] = ["fish"]
+        dinner["protein_types"] = ["fish"]
+        self._assert_a11_rejected(record)
+
+    def test_03_lunch_chicken_and_dinner_chicken_are_rejected(self):
+        record = copy.deepcopy(self.base)
+        lunch = next(
+            item for item in record["menu"]["meals"]["lunch"]
+            if "protein_main" in item["meal_roles"]
+        )
+        dinner = next(
+            item for item in record["menu"]["meals"]["dinner"]
+            if "protein_main" in item["meal_roles"]
+        )
+        lunch["protein_types"] = ["chicken"]
+        dinner["protein_types"] = ["chicken"]
+        self._assert_a11_rejected(record)
+
+    def test_04_two_chicken_dishes_in_dinner_are_rejected(self):
+        record = copy.deepcopy(self.base)
+        dinner_proteins = [
+            item for item in record["menu"]["meals"]["dinner"]
+            if "protein_main" in item["meal_roles"]
+        ]
+        self.assertEqual(len(dinner_proteins), 2)
+        for item in dinner_proteins:
+            item["protein_types"] = ["chicken"]
+        self._assert_a11_rejected(record)
+
+    def test_all_four_bad_samples_are_green_tests_that_reject_bad_menus(self):
+        method_names = [
+            name for name in dir(self) if name.startswith("test_0")
+        ]
+        self.assertEqual(len(method_names), 4)
+
+
 @unittest.skipUnless(os.path.isfile(DEFAULT_REAL_DB), "real preview DB unavailable")
 class RealDataSevenDayAuditTests(unittest.TestCase):
     @classmethod
@@ -318,6 +385,7 @@ class RealDataSevenDayAuditTests(unittest.TestCase):
                     "INVENTORY_FILTERED_EMPTY",
                     "FOUR_DAY_LOCK_FILTERED_EMPTY",
                     "SAME_DAY_OR_CAP_FILTERED_EMPTY",
+                    "SECTION14_HARD_FILTERED_EMPTY",
                 })
                 self.assertIn("pool_size", gap)
                 self.assertIn("availability_status_counts", gap)

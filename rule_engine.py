@@ -48,6 +48,24 @@ VEGETABLE_SYNONYMS = {
     "苋菜": "红苋菜",
 }
 
+# §14: an unresolved inventory placeholder is not itself a vegetable subject.
+# If a caller resolves it, the concrete value is carried in resolved_vegetable(s).
+VEGETABLE_PLACEHOLDERS = {"any_available_vegetable", "任意可用蔬菜"}
+
+PROTEIN_SOURCE_NORMALIZE = {
+    "鸡": "chicken", "鸡肉": "chicken", "chicken": "chicken",
+    "牛": "beef", "牛肉": "beef", "beef": "beef",
+    "猪": "pork", "猪肉": "pork", "pork": "pork",
+    "鱼": "fish", "鱼肉": "fish", "fish": "fish",
+    "虾": "shrimp", "虾仁": "shrimp", "shrimp": "shrimp",
+    "鸭": "duck", "鸭肉": "duck", "duck": "duck",
+    "羊": "lamb", "羊肉": "lamb", "lamb": "lamb",
+    "海鲜": "other_seafood", "other_seafood": "other_seafood",
+    "蛋": "egg", "鸡蛋": "egg", "egg": "egg",
+    "豆腐": "tofu", "tofu": "tofu",
+}
+PROTEIN_SOURCE_EXEMPT = {"egg", "tofu"}
+
 # 烹饪方法归一化
 COOKING_METHOD_NORMALIZE = {
     "stir_fried": "stir_fry",
@@ -149,6 +167,8 @@ class NutritionAnalyzer:
             v = v.strip()
             if not v:
                 continue
+            if v in VEGETABLE_PLACEHOLDERS:
+                continue
             if v in NOT_VEGETABLES:
                 continue
             if v in GARNISH:
@@ -168,7 +188,18 @@ class NutritionAnalyzer:
         """分析一道菜的营养贡献"""
         cat = dish.get("category_id", "")
         proteins = NutritionAnalyzer.filter_proteins(dish.get("protein_types", []))
-        vegetables = NutritionAnalyzer.filter_real_vegetables(dish.get("vegetables", []))
+        raw_vegetables = dish.get("vegetables", []) or []
+        vegetables = NutritionAnalyzer.filter_real_vegetables(raw_vegetables)
+        has_unresolved_vegetable_placeholder = any(
+            value in VEGETABLE_PLACEHOLDERS for value in raw_vegetables
+        )
+        resolved_vegetables = dish.get("resolved_vegetables", [])
+        if isinstance(resolved_vegetables, str):
+            try:
+                resolved_vegetables = json.loads(resolved_vegetables)
+            except (json.JSONDecodeError, TypeError):
+                resolved_vegetables = [resolved_vegetables]
+        resolved_vegetable = dish.get("resolved_vegetable")
         carb_type = dish.get("carb_type")
         breakfast_staple_type = dish.get("breakfast_staple_type")
         name_cn = dish.get("name_cn", "")
@@ -206,6 +237,11 @@ class NutritionAnalyzer:
         return {
             "proteins": proteins,
             "vegetables": vegetables,
+            "resolved_vegetable": resolved_vegetable,
+            "resolved_vegetables": resolved_vegetables,
+            "has_unresolved_vegetable_placeholder": (
+                has_unresolved_vegetable_placeholder
+            ),
             "carb_type": carb_type,
             "breakfast_staple_type": breakfast_staple_type,
             "is_soup": is_soup,
@@ -230,6 +266,41 @@ class NutritionAnalyzer:
             "manual_only_breakfast": manual_only_breakfast,
             "meal_roles": meal_roles,
         }
+
+
+def primary_vegetable_subject(item):
+    """Return the frozen §14 primary vegetable subject, if concrete.
+
+    A resolved placeholder takes precedence. Otherwise the first normalized
+    vegetable field value is the main vegetable, matching the source ordering.
+    """
+    resolved = item.get("resolved_vegetables") or []
+    if isinstance(resolved, str):
+        try:
+            resolved = json.loads(resolved)
+        except (json.JSONDecodeError, TypeError):
+            resolved = [resolved]
+    single = item.get("resolved_vegetable")
+    candidates = ([single] if single else []) + list(resolved)
+    candidates += list(item.get("vegetables") or [])
+    normalized = NutritionAnalyzer.filter_real_vegetables(candidates)
+    return normalized[0] if normalized else None
+
+
+def primary_protein_source(item):
+    """Return the normalized §14 main protein source; egg/tofu are exempt."""
+    values = item.get("protein_types") or item.get("proteins") or []
+    if isinstance(values, str):
+        try:
+            values = json.loads(values)
+        except (json.JSONDecodeError, TypeError):
+            values = [values]
+    for raw in values:
+        if not raw or raw == "none":
+            continue
+        source = PROTEIN_SOURCE_NORMALIZE.get(str(raw).strip(), str(raw).strip())
+        return None if source in PROTEIN_SOURCE_EXEMPT else source
+    return None
 
 # ============================================================
 # 营养状态（修复 LOCKED 双重计数）
@@ -808,7 +879,8 @@ def filter_candidates_for_slot(candidates, slot_name):
     return filtered
 
 
-def choose_rotation_candidate(candidates, scorer, state, meal_type, context=None):
+def choose_rotation_candidate(candidates, scorer, state, meal_type, context=None,
+                              return_trace=False):
     """Choose LRU-first; soft score is only a tie-break within the same last-used day."""
     ctx = context or {}
     last_used = ctx.get("historical_last_used", {})
@@ -824,7 +896,30 @@ def choose_rotation_candidate(candidates, scorer, state, meal_type, context=None
             candidate,
         ))
     ranked.sort(key=lambda item: item[:-1])
-    return ranked[0][-1] if ranked else None
+    chosen = ranked[0][-1] if ranked else None
+    if not return_trace:
+        return chosen
+    trace = []
+    for position, row in enumerate(ranked, start=1):
+        used_group, last_used_day, negative_score, dish_id, candidate = row
+        trace.append({
+            "rank": position,
+            "dish_id": dish_id,
+            "name_cn": candidate.get("name_cn"),
+            "primary_protein": primary_protein_source(candidate),
+            "primary_vegetable": primary_vegetable_subject(candidate),
+            "last_used": last_used_day or None,
+            "rotation_group": "previously_used" if used_group else "never_used",
+            "soft_score": round(-negative_score, 6),
+            "section14_future_reservation": (
+                "breakfast primary source receives feasibility penalty so "
+                "lunch/dinner hard meat slots retain distinct sources"
+                if meal_type == "breakfast" and primary_protein_source(candidate)
+                else None
+            ),
+            "ordering": "LRU first; score descending only within same last-used day",
+        })
+    return chosen, trace
 
 class ScoringEngine:
     """
@@ -844,6 +939,7 @@ class ScoringEngine:
     W_ONE_POT_BREAKFAST = -120  # 一餐型料理在早餐
     W_ONE_POT_LUNCH = -25       # 一餐型料理在午餐
     W_BREAKFAST_RICE = -40      # 早餐米饭惩罚
+    W_BREAKFAST_PRIMARY_SOURCE_RESERVE = -200  # §14: reserve meat sources for lunch/dinner
     # V11: VV Preference (added via context.vv_preferences dict)
     W_VV_PREFERENCE = 40         # max bonus from VV confirm-based preference
 
@@ -933,6 +1029,11 @@ class ScoringEngine:
         # 早餐米饭惩罚
         if meal_type == "breakfast" and analysis["carb_type"] == "rice":
             score += self.W_BREAKFAST_RICE
+        # §14 is a global hard rule. A breakfast dish with a non-exempt primary
+        # source is legal, but is ranked below an otherwise legal source-neutral
+        # option to preserve distinct meat sources for lunch and dinner.
+        if meal_type == "breakfast" and primary_protein_source(analysis):
+            score += self.W_BREAKFAST_PRIMARY_SOURCE_RESERVE
         # 早餐粗粮加分
         if meal_type == "breakfast" and analysis["carb_type"] == "coarse_grain":
             if not state.has_coarse_grain:
@@ -1046,6 +1147,8 @@ class GapFiller:
         self.hard_warnings = []
         self.hard_slot_warnings = {}
         self.slot_pool_sizes = {}
+        self.candidate_selection_traces = []
+        self._last_candidate_filter_trace = None
         # dish_id → set of ingredient_ids
         self.dish_ingredients = dish_ingredients or {}
 
@@ -1075,16 +1178,42 @@ class GapFiller:
         return rows
 
     @staticmethod
-    def _candidate_within_caps(candidate, state, day_auto_egg_count):
+    def _candidate_cap_reasons(candidate, state, day_auto_egg_count, context=None):
+        ctx = context or {}
+        reasons = []
         roles = candidate.get("meal_roles", [])
         if candidate["id"] in {dish["id"] for dish in state.dishes}:
-            return False
+            reasons.append("same_meal_duplicate_dish_id")
         if "egg_dish" in roles:
             if state.egg_dish_count >= 1 or day_auto_egg_count >= 2:
-                return False
+                reasons.append("egg_cap")
         if "tofu_dish" in roles and state.tofu_dish_count >= 1:
-            return False
-        return True
+            reasons.append("tofu_cap")
+        vegetable = primary_vegetable_subject(candidate)
+        if ("vegetable_dish" in roles and not vegetable
+                and not candidate.get("has_unresolved_vegetable_placeholder")):
+            reasons.append("section14_missing_primary_vegetable_data")
+        used_vegetables = set(ctx.get("day_primary_vegetables", set()))
+        used_vegetables.update(filter(None, (
+            primary_vegetable_subject(dish) for dish in state.dishes
+        )))
+        if vegetable and vegetable in used_vegetables:
+            reasons.append(f"section14_primary_vegetable:{vegetable}")
+        protein = primary_protein_source(candidate)
+        used_proteins = set(ctx.get("day_primary_proteins", set()))
+        used_proteins.update(filter(None, (
+            primary_protein_source(dish) for dish in state.dishes
+        )))
+        if protein and protein in used_proteins:
+            reasons.append(f"section14_primary_protein:{protein}")
+        return reasons
+
+    @classmethod
+    def _candidate_within_caps(cls, candidate, state, day_auto_egg_count,
+                               context=None):
+        return not cls._candidate_cap_reasons(
+            candidate, state, day_auto_egg_count, context
+        )
 
     def get_slot_candidates(self, meal_type, slot_name, state, context=None,
                             exclude_ids=None, day_auto_egg_count=0):
@@ -1105,22 +1234,59 @@ class GapFiller:
         legal_slot = [
             candidate for candidate in classification_pool
             if self._candidate_within_caps(
-                candidate, state, day_auto_egg_count + state.auto_egg_dish_count
+                candidate, state,
+                day_auto_egg_count + state.auto_egg_dish_count,
+                ctx,
             )
         ]
         available_slot = [
             candidate for candidate in legal_slot
             if not availability or availability.get(candidate["id"]) == "available"
         ]
-        blocked = set(exclude_ids or set()) | set(ctx.get("hard_locked_dish_ids", set()))
+        explicit_exclude = set(exclude_ids or set())
+        hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
+        blocked = explicit_exclude | hard_locked
         unlocked = [candidate for candidate in available_slot if candidate["id"] not in blocked]
+        trace_rows = []
+        for candidate in classification_pool:
+            reasons = self._candidate_cap_reasons(
+                candidate, state,
+                day_auto_egg_count + state.auto_egg_dish_count,
+                ctx,
+            )
+            status = availability.get(candidate["id"])
+            if not reasons and availability and status != "available":
+                reasons.append(f"inventory:{status or 'unknown'}")
+            if not reasons and candidate["id"] in hard_locked:
+                reasons.append("four_day_dish_lock")
+            elif not reasons and candidate["id"] in explicit_exclude:
+                reasons.append("same_day_or_explicit_dish_lock")
+            trace_rows.append({
+                "dish_id": candidate["id"],
+                "name_cn": candidate.get("name_cn"),
+                "primary_protein": primary_protein_source(candidate),
+                "primary_vegetable": primary_vegetable_subject(candidate),
+                "qualification": "LEGAL" if not reasons else "EXCLUDED",
+                "reasons": reasons,
+            })
+        self._last_candidate_filter_trace = {
+            "meal": meal_type,
+            "slot": slot_name,
+            "classification_pool_size": pool_size,
+            "minimum": AUTO_POOL_MINIMUMS.get(slot_name),
+            "candidates": trace_rows,
+        }
         if unlocked:
             return unlocked, None
 
         minimum = AUTO_POOL_MINIMUMS.get(slot_name)
         degraded = minimum is not None and pool_size < minimum
         degradation_message = None
-        if degraded:
+        section14_blocked_all = bool(classification_pool) and all(
+            any(reason.startswith("section14_") for reason in row["reasons"])
+            for row in trace_rows
+        )
+        if degraded and not section14_blocked_all:
             message = (
                 f"{meal_type}.{slot_name} 该分类菜品不足，建议补录 "
                 f"({pool_size}/{minimum})；允许4天窗口内同菜重复"
@@ -1130,7 +1296,15 @@ class GapFiller:
             degradation_message = message
             if available_slot:
                 # Only the four-day/day-history exclusion is relaxed. Same-meal
-                # dish IDs and egg/tofu caps were already enforced above.
+                # dish IDs, egg/tofu caps and §14 were already enforced above.
+                degraded_ids = {candidate["id"] for candidate in available_slot}
+                for row in trace_rows:
+                    if (row["dish_id"] in degraded_ids
+                            and row["reasons"] in (
+                                ["four_day_dish_lock"],
+                                ["same_day_or_explicit_dish_lock"],
+                            )):
+                        row["qualification"] = "DEGRADED_LEGAL"
                 return available_slot, degradation_message
 
         if slot_name in {"protein_main", "meat_main"}:
@@ -1195,13 +1369,29 @@ class GapFiller:
                     warning = self.hard_slot_warnings.get(
                         (meal_type, slot_name), f"no candidate for {slot_name}"
                     )
+                    qualification = dict(
+                        self._last_candidate_filter_trace or {}
+                    )
+                    qualification["selected_dish_id"] = None
+                    qualification["degraded_four_day_lock"] = False
+                    qualification["legal_candidate_ranking"] = []
+                    qualification["outcome"] = "HARD_SHORTAGE"
+                    qualification["warning"] = warning
+                    self.candidate_selection_traces.append(qualification)
                     log.append(f"  [HARD WARN] {warning}")
                     break
-                chosen = choose_rotation_candidate(
-                    candidates, self.scorer, state, meal_type, ctx
+                chosen, ranking = choose_rotation_candidate(
+                    candidates, self.scorer, state, meal_type, ctx,
+                    return_trace=True,
                 )
                 if not chosen:
                     break
+                qualification = dict(self._last_candidate_filter_trace or {})
+                qualification["selected_dish_id"] = chosen["id"]
+                qualification["degraded_four_day_lock"] = bool(degraded)
+                qualification["legal_candidate_ranking"] = ranking
+                qualification["outcome"] = "SELECTED"
+                self.candidate_selection_traces.append(qualification)
                 state.add_dish(chosen, source="ai")
                 exclude.add(chosen["id"])
                 if degraded:
@@ -1364,6 +1554,8 @@ class GapFiller:
         all_logs = {}
         day_history = set()
         day_proteins = set()
+        day_primary_vegetables = set()
+        day_primary_proteins = set()
 
         result = {}
         self.degradation_warnings = []
@@ -1371,6 +1563,8 @@ class GapFiller:
         self.hard_warnings = []
         self.hard_slot_warnings = {}
         self.slot_pool_sizes = {}
+        self.candidate_selection_traces = []
+        self._last_candidate_filter_trace = None
         day_auto_egg_count = 0
         for meal_type in ["breakfast", "lunch", "dinner"]:
             locked_ids = locked.get(meal_type, [])
@@ -1381,6 +1575,8 @@ class GapFiller:
             meal_ctx["day_proteins"] = set(day_proteins)
             meal_ctx["day_history"] = set(day_history)  # 跨餐排除
             meal_ctx["day_auto_egg_count"] = day_auto_egg_count
+            meal_ctx["day_primary_vegetables"] = set(day_primary_vegetables)
+            meal_ctx["day_primary_proteins"] = set(day_primary_proteins)
 
             dishes, state, log = self.generate_meal(
                 meal_type,
@@ -1392,6 +1588,12 @@ class GapFiller:
             for d in dishes:
                 day_history.add(d["id"])
                 day_proteins.update(d["proteins"])
+                vegetable = primary_vegetable_subject(d)
+                protein = primary_protein_source(d)
+                if vegetable:
+                    day_primary_vegetables.add(vegetable)
+                if protein:
+                    day_primary_proteins.add(protein)
             day_auto_egg_count += state.auto_egg_dish_count
 
             result[meal_type] = {"dishes": dishes, "state": state}
@@ -1405,6 +1607,9 @@ class GapFiller:
             for (meal, slot), size in self.slot_pool_sizes.items()
         }
         review["hard_warnings"] = list(self.hard_warnings)
+        review["candidate_selection_traces"] = list(
+            self.candidate_selection_traces
+        )
         review["warnings"].extend(self.degradation_warnings)
         review["warnings"].extend(self.hard_warnings)
         review["issues"] = list(review["warnings"])

@@ -13,6 +13,8 @@ from rule_engine import (
     AUTO_POOL_MINIMUMS,
     BREAKFAST_COMPANION_STAPLES,
     MEAT_PROTEINS,
+    primary_protein_source,
+    primary_vegetable_subject,
 )
 
 
@@ -66,6 +68,11 @@ AUDIT_RULES = (
         "id": "A10",
         "clause": "§4 REQUIREMENTS_V2 / UI SoT DEFAULT_PANTRY",
         "rule": "家庭常备 20 项加小米按 canonical id 视为可用，不得进入缺食材结果；非豁免缺口保持精确。",
+    },
+    {
+        "id": "A11",
+        "clause": "§14",
+        "rule": "全天同一主蔬菜不超过 1 道；同一主蛋白来源不超过 1 道，蛋和豆腐豁免。",
     },
 )
 
@@ -486,6 +493,54 @@ def _audit_pantry_exemption(menu):
     )
 
 
+def _audit_all_day_primary_subjects(menu):
+    vegetables = {}
+    proteins = {}
+    missing_primary_vegetable_data = []
+    for meal in _MEALS:
+        for item in (menu.get("meals") or {}).get(meal, []):
+            occurrence = {
+                "meal": meal,
+                "dish_id": item.get("dish_id") or item.get("id"),
+                "name_cn": item.get("name_cn"),
+            }
+            vegetable = primary_vegetable_subject(item)
+            protein = primary_protein_source(item)
+            raw_vegetables = item.get("vegetables") or []
+            has_placeholder = any(
+                value in {"any_available_vegetable", "任意可用蔬菜"}
+                for value in raw_vegetables
+            )
+            if ("vegetable_dish" in _roles(item) and not vegetable
+                    and not has_placeholder):
+                missing_primary_vegetable_data.append(occurrence)
+            if vegetable:
+                vegetables.setdefault(vegetable, []).append(occurrence)
+            if protein:
+                proteins.setdefault(protein, []).append(occurrence)
+    duplicate_vegetables = {
+        key: value for key, value in vegetables.items() if len(value) > 1
+    }
+    duplicate_proteins = {
+        key: value for key, value in proteins.items() if len(value) > 1
+    }
+    failed = bool(
+        duplicate_vegetables or duplicate_proteins
+        or missing_primary_vegetable_data
+    )
+    return _check(
+        "A11", "FAIL" if failed else "PASS",
+        {
+            "primary_vegetable_occurrences": vegetables,
+            "primary_protein_occurrences": proteins,
+            "duplicate_primary_vegetables": duplicate_vegetables,
+            "duplicate_primary_proteins": duplicate_proteins,
+            "missing_primary_vegetable_data": missing_primary_vegetable_data,
+            "protein_exemptions": ["egg", "tofu"],
+        },
+    )
+
+
 def audit_final_menu(menu, evidence=None, previous_records=None):
     """Audit one final menu. No generation helper state is accepted or trusted."""
     evidence = evidence or {}
@@ -501,6 +556,7 @@ def audit_final_menu(menu, evidence=None, previous_records=None):
         _audit_degradation(evidence),
         _audit_kitchen_scope(menu, evidence),
         _audit_pantry_exemption(menu),
+        _audit_all_day_primary_subjects(menu),
     ]
     violations = [item for item in checks if item["status"] == "FAIL"]
     shortages = [item for item in checks if item["status"] == "HARD_SHORTAGE"]

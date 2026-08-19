@@ -180,12 +180,30 @@ def _hard_gap_diagnostics(review, final_menu, pool):
         pool_size = len(candidates)
         minimum = AUTO_POOL_MINIMUMS.get(slot)
         unlocked_available = available_ids - hard_locked
+        trace = next((
+            item for item in reversed(
+                review.get("candidate_selection_traces", [])
+            )
+            if item.get("meal") == meal and item.get("slot") == slot
+            and item.get("outcome") == "HARD_SHORTAGE"
+        ), None)
+        qualification_reasons = Counter(
+            reason
+            for candidate in (trace or {}).get("candidates", [])
+            for reason in candidate.get("reasons", [])
+        )
+        section14_filtered = sum(
+            count for reason, count in qualification_reasons.items()
+            if reason.startswith("section14_")
+        )
         if minimum is not None and pool_size < minimum:
             cause = "POOL_BELOW_MINIMUM"
         elif not available_ids:
             cause = "INVENTORY_FILTERED_EMPTY"
         elif not unlocked_available:
             cause = "FOUR_DAY_LOCK_FILTERED_EMPTY"
+        elif section14_filtered:
+            cause = "SECTION14_HARD_FILTERED_EMPTY"
         else:
             cause = "SAME_DAY_OR_CAP_FILTERED_EMPTY"
 
@@ -201,6 +219,10 @@ def _hard_gap_diagnostics(review, final_menu, pool):
             "availability_status_counts": dict(sorted(status_counts.items())),
             "available_candidate_count": len(available_ids),
             "available_after_four_day_lock_count": len(unlocked_available),
+            "qualification_reason_counts": dict(
+                sorted(qualification_reasons.items())
+            ),
+            "section14_filtered_candidate_count": section14_filtered,
             "top_missing_inventory_ingredients": [
                 {"name": name, "candidate_count": count}
                 for name, count in missing_ingredients.most_common(8)
@@ -319,6 +341,7 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
             "hard_gap_diagnostics": record["hard_gap_diagnostics"],
             "violation_ids": day_audit["violation_ids"],
             "hard_shortage_ids": day_audit["hard_shortage_ids"],
+            "section14": checks["A11"]["details"],
         })
 
     return {
@@ -343,6 +366,13 @@ def run_real_data_audit(source_db=DEFAULT_REAL_DB, start_date="2026-08-21"):
         "audit_status_counts": audit["status_counts"],
         "all_rule_compliant": audit["rule_compliant"],
         "all_complete": audit["passed"],
+        "hard_warning_count": sum(
+            len(item["hard_warnings"]) for item in days
+        ),
+        "section14_hard_warning_count": sum(
+            1 for item in days for gap in item["hard_gap_diagnostics"]
+            if gap["cause"] == "SECTION14_HARD_FILTERED_EMPTY"
+        ),
         "rice_pool_todo": rice_pool,
         "rules": audit["rules"],
         "days": days,
