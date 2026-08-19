@@ -256,7 +256,9 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertNotIn("dish_oyster", review["added"])
         protein_unmet = [u for u in review["unmet_slots"] if u["slot"] == "protein_main"]
         self.assertEqual(protein_unmet[0]["reason"], "no_available_candidate")
-        self.assertTrue(protein_unmet[0]["message"])
+        self.assertTrue(protein_unmet[0]["hard_warning"])
+        self.assertIn("必需槽位缺失", protein_unmet[0]["hard_warning_message"])
+        self.assertIn(protein_unmet[0]["hard_warning_message"], review["hard_warnings"])
 
     def test_quantity_defaults_and_low_round_trip(self):
         conn = db.get_db()

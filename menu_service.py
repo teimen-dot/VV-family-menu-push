@@ -719,7 +719,9 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
 
         review = RuleEngine.final_review(day_result, diners_count)
         review["degradation_warnings"] = list(gf.degradation_warnings)
+        review["hard_warnings"] = list(gf.hard_warnings)
         review["warnings"].extend(gf.degradation_warnings)
+        review["warnings"].extend(gf.hard_warnings)
         review["issues"] = list(review["warnings"])
         review["unmet_slots"] = unmet_slots
         review["added"] = [d["dish_id"] for d in added_dishes]
@@ -802,11 +804,18 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 dedup_key = (meal_type, slot_name)
                 if dedup_key not in seen_unmet:
                     seen_unmet.add(dedup_key)
+                    hard_message = gf.hard_slot_warnings.get(
+                        dedup_key, NO_CANDIDATE_MESSAGE
+                    )
                     unmet_slots.append({
                         "meal": meal_type,
                         "slot": slot_name,
                         "reason": "no_available_candidate",
                         "message": NO_CANDIDATE_MESSAGE,
+                        "hard_warning": dedup_key in gf.hard_slot_warnings,
+                        "hard_warning_message": (
+                            hard_message if dedup_key in gf.hard_slot_warnings else None
+                        ),
                     })
                 continue
 
@@ -863,11 +872,18 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 dedup_key = (meal_type, slot_name)
                 if dedup_key not in seen_unmet:
                     seen_unmet.add(dedup_key)
+                    hard_message = gf.hard_slot_warnings.get(
+                        dedup_key, NO_CANDIDATE_MESSAGE
+                    )
                     unmet_slots.append({
                         "meal": meal_type,
                         "slot": slot_name,
                         "reason": "no_available_candidate",
                         "message": NO_CANDIDATE_MESSAGE,
+                        "hard_warning": dedup_key in gf.hard_slot_warnings,
+                        "hard_warning_message": (
+                            hard_message if dedup_key in gf.hard_slot_warnings else None
+                        ),
                     })
 
     return items_added

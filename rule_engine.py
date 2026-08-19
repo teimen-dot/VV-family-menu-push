@@ -1042,6 +1042,9 @@ class GapFiller:
             self.analyzed[d["id"]] = NutritionAnalyzer.analyze(d)
         self.scorer = ScoringEngine(rng=self.rng)
         self.degradation_warnings = []
+        self.hard_warnings = []
+        self.hard_slot_warnings = {}
+        self.slot_pool_sizes = {}
         # dish_id → set of ingredient_ids
         self.dish_ingredients = dish_ingredients or {}
 
@@ -1084,20 +1087,28 @@ class GapFiller:
 
     def get_slot_candidates(self, meal_type, slot_name, state, context=None,
                             exclude_ids=None, day_auto_egg_count=0):
-        """Apply business pool, inventory, four-day lock, and explicit degradation."""
+        """Apply the frozen pool-size, inventory, lock, and degradation rules.
+
+        REQUIREMENTS_V2 §4.6 defines pool size at the automatic classification
+        pool entrance. Dynamic meal/day caps, inventory and the four-day lock are
+        legal-candidate filters; they must never make a healthy pool look small.
+        """
         ctx = context or {}
         availability = ctx.get("dish_availability", {})
-        business_slot = filter_candidates_for_slot(
+        classification_pool = filter_candidates_for_slot(
             self._business_pool(meal_type, ctx), slot_name
         )
-        business_slot = [
-            candidate for candidate in business_slot
+        pool_size = len(classification_pool)
+        self.slot_pool_sizes[(meal_type, slot_name)] = pool_size
+
+        legal_slot = [
+            candidate for candidate in classification_pool
             if self._candidate_within_caps(
                 candidate, state, day_auto_egg_count + state.auto_egg_dish_count
             )
         ]
         available_slot = [
-            candidate for candidate in business_slot
+            candidate for candidate in legal_slot
             if not availability or availability.get(candidate["id"]) == "available"
         ]
         blocked = set(exclude_ids or set()) | set(ctx.get("hard_locked_dish_ids", set()))
@@ -1106,14 +1117,29 @@ class GapFiller:
             return unlocked, None
 
         minimum = AUTO_POOL_MINIMUMS.get(slot_name)
-        if minimum is not None and len(business_slot) < minimum and available_slot:
+        degraded = minimum is not None and pool_size < minimum
+        degradation_message = None
+        if degraded:
             message = (
-                f"{meal_type}.{slot_name} 分类菜品不足 "
-                f"({len(business_slot)}/{minimum})，允许窗口内重复；建议补录"
+                f"{meal_type}.{slot_name} 该分类菜品不足，建议补录 "
+                f"({pool_size}/{minimum})；允许4天窗口内同菜重复"
             )
             if message not in self.degradation_warnings:
                 self.degradation_warnings.append(message)
-            return available_slot, message
+            degradation_message = message
+            if available_slot:
+                # Only the four-day/day-history exclusion is relaxed. Same-meal
+                # dish IDs and egg/tofu caps were already enforced above.
+                return available_slot, degradation_message
+
+        if slot_name in {"protein_main", "meat_main"}:
+            detail = "蛋白质/肉类必需槽位缺失"
+        else:
+            detail = "必需槽位缺失"
+        message = f"{meal_type}.{slot_name} 无任何合法候选，{detail}"
+        self.hard_slot_warnings[(meal_type, slot_name)] = message
+        if message not in self.hard_warnings:
+            self.hard_warnings.append(message)
         return [], None
 
     def generate_meal(self, meal_type, locked_dish_ids=None, context=None, diners_count=4):
@@ -1152,7 +1178,10 @@ class GapFiller:
                     day_auto_egg_count=day_auto_egg_count,
                 )
                 if not candidates:
-                    log.append(f"  [WARN] no candidate for {slot_name}")
+                    warning = self.hard_slot_warnings.get(
+                        (meal_type, slot_name), f"no candidate for {slot_name}"
+                    )
+                    log.append(f"  [HARD WARN] {warning}")
                     break
                 chosen = choose_rotation_candidate(
                     candidates, self.scorer, state, meal_type, ctx
@@ -1320,6 +1349,9 @@ class GapFiller:
 
         result = {}
         self.degradation_warnings = []
+        self.hard_warnings = []
+        self.hard_slot_warnings = {}
+        self.slot_pool_sizes = {}
         day_auto_egg_count = 0
         for meal_type in ["breakfast", "lunch", "dinner"]:
             locked_ids = locked.get(meal_type, [])
@@ -1348,7 +1380,9 @@ class GapFiller:
 
         review = RuleEngine.final_review(result, diners_count)
         review["degradation_warnings"] = list(self.degradation_warnings)
+        review["hard_warnings"] = list(self.hard_warnings)
         review["warnings"].extend(self.degradation_warnings)
+        review["warnings"].extend(self.hard_warnings)
         review["issues"] = list(review["warnings"])
         all_logs["review"] = review
         return result, all_logs
