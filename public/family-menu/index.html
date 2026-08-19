@@ -3039,11 +3039,25 @@ document.addEventListener('click', async e => {
       });
     } else if (act.dataset.act === 'ai') {
       try {
-        await writeJSON('/api/tomorrow/ai-fill', {
+        /* 智能补充反馈（SoT 语义）：按补齐数量 / 缺槽 / 结构完整 给出明确提示 */
+        const result = await writeJSON('/api/tomorrow/ai-fill', {
           menu_id:Number(card.dataset.menuId), location:window.currentFamilyLocation(),
           meal_type:card.dataset.mealType
         });
-        await reloadLiveData('AI 智能补充已保存');
+        const review = result.review || {};
+        const added = Array.isArray(review.added) ? review.added.length : 0;
+        const unmet = Array.isArray(review.unmet_slots) ? review.unmet_slots : [];
+        let message;
+        if (added > 0) {
+          message = '已按缺失分类补齐 ' + added + ' 道' +
+            (unmet.length ? '（仍有 ' + unmet.length + ' 个槽位无可补菜）' : '');
+        } else if (unmet.length) {
+          const slots = unmet.map(u => u.slot || '菜品').slice(0, 3).join('、');
+          message = '菜池里没有可补的菜（缺槽：' + slots + '）';
+        } else {
+          message = '本餐结构完整，无需补充';
+        }
+        await reloadLiveData(message);
       } catch (error) { toast(error.message); }
     } else if (act.dataset.act === 'add') {
       addTarget = { detail, card };
@@ -3102,14 +3116,26 @@ function toast(msg) {
    已确认（is-confirmed）与已取消（隐藏）的餐卡跳过；
    未确认餐卡内每道菜按同分类从有食材的菜池重抽，不引入"不自动推荐"/饮品。 */
 document.getElementById('regenBtn').addEventListener('click', async () => {
-  const card = [...document.querySelectorAll('#page-menu .meal-card')]
-    .find(item => item.dataset.menuId && !item.classList.contains('is-confirmed'));
-  if (!card) { toast('没有可重新生成的草稿餐单'); return; }
+  /* SoT 语义：重新生成【全部】未确认且未取消的餐，已确认/已取消原样保留 */
+  const targets = [...document.querySelectorAll('#page-menu .meal-card')]
+    .filter(item => item.dataset.menuId
+      && !item.classList.contains('is-confirmed')
+      && item.style.display !== 'none'
+      && item.dataset.cancelled !== '1');
+  const menuIds = [...new Set(targets.map(item => Number(item.dataset.menuId)))];
+  if (!menuIds.length) { toast('所有餐单都已确认，没有需要重新生成的餐'); return; }
+  const kept = [...document.querySelectorAll('#page-menu .meal-card')]
+    .filter(item => item.dataset.menuId && item.classList.contains('is-confirmed')).length;
   try {
-    await writeJSON('/api/tomorrow/repair', {
-      menu_id:Number(card.dataset.menuId), location:window.currentFamilyLocation()
-    });
-    await reloadLiveData('餐单已重新生成');
+    for (const menu_id of menuIds) {
+      await writeJSON('/api/tomorrow/repair', {
+        menu_id, location:window.currentFamilyLocation()
+      });
+    }
+    const done = menuIds.length;
+    await reloadLiveData(kept > 0
+      ? '已重新生成 ' + done + ' 餐 · ' + kept + ' 餐已确认未改动'
+      : '已重新生成全部 ' + done + ' 餐');
   } catch (error) { toast(error.message); }
 });
 
@@ -3600,7 +3626,16 @@ pickModal.addEventListener('click',
     rows.forEach(row => container.insertBefore(row, anchor));
   }
 
-  function setWarning(card, dishes, availability) {
+  /* 槽位中文名（与后端 SLOT_LABELS 对齐，SoT 缺料横幅语义） */
+  const SLOT_LABELS = {
+    protein_main: '蛋白质', meat_main: '肉类蛋白', vegetable_dish: '蔬菜',
+    staple: '主食', slow_soup: '慢火汤', quick_soup: '快手汤',
+    egg: '鸡蛋', tofu: '豆腐', porridge: '粥',
+    companion_staple: '主食伴侣', coarse_grain: '粗粮',
+    breakfast_meat: '肉类蛋白菜', vegetable: '蔬菜'
+  };
+
+  function setWarning(card, dishes, availability, slotGaps, mealType) {
     const warning = card.querySelector('.warn-banner');
     if (!warning) return;
     const names = [];
@@ -3613,12 +3648,21 @@ pickModal.addEventListener('click',
       const entry = availability && availability[dish.dish_id];
       return entry && entry.status !== 'available';
     });
-    warning.style.display = hasUnavailable ? 'flex' : 'none';
+    /* 结构缺口（SoT：模板缺什么显示什么）*/
+    const gaps = (slotGaps && slotGaps[mealType]) || {};
+    const gapParts = Object.entries(gaps)
+      .filter(([, v]) => v && v.missing_min > 0)
+      .map(([slot, v]) => (SLOT_LABELS[slot] || slot) + ' ' + v.missing_min + ' 份');
+    const hasGaps = gapParts.length > 0;
+    warning.style.display = (hasUnavailable || hasGaps) ? 'flex' : 'none';
     const text = warning.querySelector('span:not(.go)');
-    if (text && hasUnavailable) {
+    if (text && (hasUnavailable || hasGaps)) {
       const strong = document.createElement('strong');
       strong.textContent = '缺少 Missing：';
-      text.replaceChildren(strong, document.createTextNode(unique.length ? unique.join('、') : '食材信息待完善'));
+      const parts = [];
+      if (gapParts.length) parts.push(gapParts.join('、'));
+      if (hasUnavailable) parts.push(unique.length ? '食材：' + unique.join('、') : '食材信息待完善');
+      text.replaceChildren(strong, document.createTextNode(parts.join('；')));
     }
   }
 
@@ -3663,7 +3707,7 @@ pickModal.addEventListener('click',
     });
   }
 
-  function updateMealCard(card, menu, mealType) {
+  function updateMealCard(card, menu, mealType, slotGaps) {
     const dishes = menu.meals && Array.isArray(menu.meals[mealType]) ? menu.meals[mealType] : [];
     const diners = menu.diners_count == null ? 0 : menu.diners_count;
     card.dataset.menuId = menu.menu_id == null ? '' : String(menu.menu_id);
@@ -3683,7 +3727,7 @@ pickModal.addEventListener('click',
       const zone = card.querySelector('.drink-zone');
       if (zone) renderDrinkChips(zone, (menu.meal_notes || {}).breakfast_drinks || []);
     }
-    setWarning(card, dishes, menu.availability || {});
+    setWarning(card, dishes, menu.availability || {}, slotGaps || {}, mealType);
     setCount(card, dishes.length);
     setConfirmed(card, menu.status === 'confirmed');
   }
@@ -3695,7 +3739,7 @@ pickModal.addEventListener('click',
     const menu = day.menu || { meals: {}, availability: {}, meal_notes: {} };
     Object.entries(MEALS).forEach(([mealType, labels]) => {
       const card = [...section.querySelectorAll('.meal-card')].find(item => item.dataset.mtype === labels.zh);
-      if (card) updateMealCard(card, menu, mealType);
+      if (card) updateMealCard(card, menu, mealType, day.slot_gaps || {});
     });
   }
 
@@ -3723,7 +3767,7 @@ pickModal.addEventListener('click',
     setNote(hero, nextMeal?.note || '');
     const drinkZone = hero.querySelector('.drink-zone');
     if (drinkZone && mealType === 'breakfast') renderDrinkChips(drinkZone, nextMeal?.drinks || []);
-    setWarning(hero, dishes, nextMeal?.availability || {});
+    setWarning(hero, dishes, nextMeal?.availability || {}, nextMeal?.slot_gaps || {}, mealType);
     setCount(hero, dishes.length);
     setConfirmed(hero, nextMeal?.status === 'confirmed');
   }

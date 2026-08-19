@@ -1157,12 +1157,16 @@ def repair_menu(menu_id, location="shenzhen", seed=None):
     """
     重新推荐 AI 菜品 (Refresh AI Suggestions)：
     只替换 source=ai (is_locked=0) 的菜，绝对不修改 owner (is_locked=1) 的菜。
+    SoT 语义：重新生成只动未确认的餐，已确认（confirmed/pushed）菜单原样保留，
+    必须先回退到 draft 才能重新生成。
     """
     conn = get_db()
     try:
-        menu = conn.execute("SELECT date FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        menu = conn.execute("SELECT date, status FROM menus WHERE id = ?", (menu_id,)).fetchone()
         if not menu:
             return False, "菜单不存在", None
+        if menu["status"] in ("confirmed", "pushed"):
+            return False, "已确认菜单不可直接重新生成，请先回退到草稿", None
 
         date_str = menu["date"]
 

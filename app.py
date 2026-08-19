@@ -1402,6 +1402,18 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
                     },
                 }
             weekday_cn, weekday_en = WEEKDAY_LABELS[day_date.weekday()]
+            # SoT 语义：缺料横幅 = 模板结构缺口实时提示。把后端的槽位缺口
+            # (missing_by_meal) 暴露给前端渲染；不存在/空的菜单不产生噪音缺口。
+            slot_gaps = {}
+            if menu.get("exists"):
+                try:
+                    menu_validation = validate_menu_meals(
+                        menu, menu.get("diners_count") or 4
+                    )
+                    slot_gaps = menu_validation.get("missing_by_meal", {})
+                except Exception:
+                    # 只读展示层：legacy schema 或缺表环境下尽力而为，不给前端报错
+                    slot_gaps = {}
             days.append({
                 "offset": offset,
                 "label_cn": label_cn,
@@ -1410,6 +1422,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
                 "weekday_en": weekday_en,
                 "date": date_str,
                 "menu": menu,
+                "slot_gaps": slot_gaps,
             })
 
     start_offset, start_meal = _readonly_starting_meal(now)
@@ -1449,6 +1462,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
             "is_skipped": menu.get("meal_settings", {}).get(meal_type, {}).get("is_skipped", False),
             "dishes": menu.get("meals", {}).get(meal_type, []),
             "availability": menu.get("availability", {}),
+            "slot_gaps": day.get("slot_gaps", {}),
         }
 
     tabs = build_family_ui_readonly_tabs(location, as_of=today)
