@@ -76,7 +76,7 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
         self.assertEqual(audit["status"], "PASS")
         self.assertTrue(audit["passed"])
 
-    def test_explicit_egg_tofu_combo_can_cover_two_breakfast_slots_at_six_dishes(self):
+    def test_egg_tofu_combo_cannot_cover_two_breakfast_slots(self):
         record = valid_record()
         breakfast = record["menu"]["meals"]["breakfast"]
         egg = next(item for item in breakfast if "egg_dish" in item["meal_roles"])
@@ -84,14 +84,16 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
         combo = copy.deepcopy(egg)
         combo["id"] = combo["dish_id"] = "explicit_egg_tofu_combo"
         combo["meal_roles"] = ["egg_dish", "tofu_dish"]
+        combo["ingredient_ids"] = ["鸡蛋", "tofu"]
         breakfast[:] = [
             item for item in breakfast if item not in (egg, tofu)
         ] + [combo]
 
         audit = audit_final_menu(record["menu"], record["evidence"])
 
-        self.assertEqual(len(breakfast), 6)
-        self.assertEqual(audit["status"], "PASS")
+        self.assertEqual(len(breakfast), 7)
+        self.assertEqual(audit["status"], "VIOLATION")
+        self.assertIn("A01", audit["violation_ids"])
 
     def test_ordinary_multi_role_dish_cannot_fill_two_breakfast_slots(self):
         record = valid_record()

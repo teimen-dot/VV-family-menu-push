@@ -328,12 +328,31 @@ class DatabaseFeatureTests(unittest.TestCase):
     def test_direct_switch_keeps_tofu_and_egg_slots_separate(self):
         conn = db.get_db()
         self._prepare_switch_inventory(conn)
+        conn.execute(
+            "INSERT INTO ingredients (ingredient_id,name_cn,name_en) "
+            "VALUES ('tofu','豆腐','Tofu')"
+        )
+        conn.execute(
+            "INSERT INTO current_pantry (location,ingredient_id,status,is_active) "
+            "VALUES ('shenzhen','tofu','available',1)"
+        )
         for dish_id, role in (
             ("dish_tofu_a", "tofu_dish"), ("dish_tofu_b", "tofu_dish"),
             ("dish_tofu_missing", "tofu_dish"),
             ("dish_egg_a", "egg_dish"), ("dish_egg_b", "egg_dish"),
         ):
             self._insert_switch_dish(conn, dish_id, "egg_tofu", [role])
+            if role == "tofu_dish":
+                conn.execute(
+                    "UPDATE dishes SET protein_types='[\"tofu\"]', "
+                    "cooking_methods='[\"cold_mix\"]' WHERE id=?",
+                    (dish_id,),
+                )
+                conn.execute(
+                    "INSERT INTO dish_ingredients "
+                    "(dish_id,ingredient_id,required) VALUES (?,'tofu',1)",
+                    (dish_id,),
+                )
         conn.execute(
             "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES ('missing','缺货','Missing')"
         )

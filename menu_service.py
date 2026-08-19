@@ -18,6 +18,7 @@ from rule_engine import (
     analyze_meal_slots, filter_candidates_for_slot,
     BREAKFAST_COMPANION_STAPLES, NO_CANDIDATE_MESSAGE,
     counted_primary_protein_source, primary_vegetable_subject,
+    is_breakfast_meat_candidate, is_breakfast_tofu_candidate,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -58,6 +59,14 @@ def _load_pool():
 
     conn = get_db()
     try:
+        ingredient_rows = conn.execute(
+            "SELECT dish_id, ingredient_id FROM dish_ingredients"
+        ).fetchall()
+        ingredient_ids = {}
+        for row in ingredient_rows:
+            ingredient_ids.setdefault(row["dish_id"], set()).add(
+                row["ingredient_id"]
+            )
         rows = conn.execute(
             "SELECT * FROM dishes WHERE is_active = 1 OR is_active IS NULL ORDER BY id"
         ).fetchall()
@@ -73,6 +82,7 @@ def _load_pool():
                         d[field] = []
                 else:
                     d[field] = []
+            d["ingredient_ids"] = sorted(ingredient_ids.get(d["id"], set()))
             dishes.append(d)
         pool = {"dishes": dishes}
         _catalog_cache["version"] = catalog_version
@@ -279,6 +289,7 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
             (menu["id"],)
         ).fetchall()
 
+        dish_ingredient_ids = get_dish_ingredients_map()
         meals = {"breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": []}
         for item in items:
             mt = item["meal_type"]
@@ -322,6 +333,9 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
                 else:
                     d[field] = []
             d["is_locked"] = bool(d.get("is_locked"))
+            d["ingredient_ids"] = sorted(
+                dish_ingredient_ids.get(dish_id, set())
+            )
             meals[mt].append(d)
 
         # V5: 使用统一 InventoryService 检查可用性（只看 required ingredients）
@@ -766,7 +780,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
     """
     V8/V9: 槽位分析 + Available Now 优先补齐。
     用于 breakfast / lunch / dinner。
-    V9: 早餐按固定顺序补齐 (porridge → companion_staple → egg_dish → tofu → vegetable → protein → coarse_grain)。
+    早餐按锁死顺序补齐（粥→伴侣→独立凉拌豆腐→蛋→蔬菜×2→独立肉菜→粗粮）。
     V9: 晚餐按人数精确 target 补齐 (不再只补 minimum)。
     V10: unmet_slots 去重 — 同一个 (meal, slot) 只记录一次。
     V10: 幂等 — 所有槽位已满足时 0 change。
@@ -784,7 +798,7 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
 
     BREAKFAST_SLOT_ORDER = [
         "porridge", "companion_staple", "tofu", "egg",
-        "vegetable", "coarse_grain"
+        "vegetable", "breakfast_meat", "coarse_grain"
     ]
 
     for round_i in range(max_rounds):
@@ -932,6 +946,7 @@ _RECONCILE_SLOT_ROLES = {
     "quick_soup": ["quick_soup"],
     "egg": ["egg_dish"],
     "tofu": ["tofu_dish"],
+    "breakfast_meat": ["protein_main"],
     "porridge": [],
     "companion_staple": [],
     "coarse_grain": [],
@@ -1014,7 +1029,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
             elif mt == "breakfast":
                 target = {
                     "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
-                    "protein_main": 1, "vegetable": 2, "egg": 1, "tofu": 1
+                    "breakfast_meat": 1, "vegetable": 2, "egg": 1, "tofu": 1
                 }
             else:
                 continue
@@ -1079,7 +1094,9 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                     elif slot_name == "egg":
                         contributes = "egg_dish" in roles
                     elif slot_name == "tofu":
-                        contributes = "tofu_dish" in roles
+                        contributes = is_breakfast_tofu_candidate(analysis)
+                    elif slot_name == "breakfast_meat":
+                        contributes = is_breakfast_meat_candidate(analysis)
                     elif slot_name == "porridge":
                         contributes = analysis.get("carb_type") == "porridge"
                     elif slot_name == "companion_staple":

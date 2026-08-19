@@ -15,6 +15,12 @@ from rule_engine import GapFiller, MealState, NutritionAnalyzer, get_rotation_co
 
 def dish(dish_id, roles, meals, *, proteins=None, category="protein_main",
          carb_type=None, companion=None, name=None):
+    proteins = list(proteins or [])
+    ingredient_ids = []
+    if "egg" in proteins or "egg_dish" in roles:
+        ingredient_ids.append("鸡蛋")
+    if "tofu" in proteins or "tofu_dish" in roles:
+        ingredient_ids.append("tofu")
     return {
         "id": dish_id,
         "name_cn": name or dish_id,
@@ -22,9 +28,13 @@ def dish(dish_id, roles, meals, *, proteins=None, category="protein_main",
         "category_id": category,
         "meal_roles": list(roles),
         "meal_tags": list(meals),
-        "protein_types": list(proteins or []),
+        "protein_types": proteins,
+        "ingredient_ids": ingredient_ids,
         "vegetables": [dish_id] if "vegetable_dish" in roles else [],
-        "cooking_methods": ["steam" if dish_id.endswith("0") else "stir_fry"],
+        "cooking_methods": (
+            ["cold_mix"] if "tofu_dish" in roles
+            else ["steam" if dish_id.endswith("0") else "stir_fry"]
+        ),
         "carb_type": carb_type,
         "breakfast_staple_type": companion,
         "taste": "normal",
@@ -49,6 +59,11 @@ def complete_pool():
     for index in range(24):
         rows.append(dish(f"veg_{index:02d}", ["vegetable_dish"], ["breakfast", "lunch", "dinner"], category="vegetable_mushroom"))
     proteins = ["chicken", "beef", "pork", "fish", "shrimp"]
+    for index in range(4):
+        rows.append(dish(
+            f"breakfast_meat_{index}", ["protein_main"], ["breakfast"],
+            proteins=[proteins[index]],
+        ))
     for index in range(20):
         rows.append(dish(f"meat_{index:02d}", ["protein_main"], ["lunch", "dinner"], proteins=[proteins[index % len(proteins)]]))
     for index in range(8):
@@ -70,12 +85,18 @@ class FrozenRuleBlackBoxTests(unittest.TestCase):
         result, _ = self._day()
         state = result["breakfast"]["state"]
         self.assertEqual(state.egg_dish_count, 1)
-        self.assertEqual(len(result["breakfast"]["dishes"]), 7)
+        self.assertEqual(len(result["breakfast"]["dishes"]), 8)
 
-    def test_02_breakfast_has_no_extra_protein_slot(self):
+    def test_02_breakfast_has_one_independent_meat_slot(self):
         result, _ = self._day()
         breakfast = result["breakfast"]["dishes"]
-        self.assertFalse(any("protein_main" in row["meal_roles"] for row in breakfast))
+        proteins = [
+            row for row in breakfast
+            if "protein_main" in row["meal_roles"]
+            and set(row["proteins"]) & {"fish", "shrimp", "beef", "pork", "chicken"}
+        ]
+        self.assertEqual(len(proteins), 1)
+        self.assertFalse(proteins[0]["is_soup"])
         self.assertEqual({role for row in breakfast for role in row["meal_roles"]} & {"egg_dish", "tofu_dish"}, {"egg_dish", "tofu_dish"})
 
     def test_03_automatic_day_has_at_most_two_eggs(self):

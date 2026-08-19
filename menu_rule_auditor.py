@@ -11,21 +11,23 @@ from datetime import date
 from inventory import PANTRY_EXEMPT_CANONICAL_IDS, normalize_ingredient_id
 from rule_engine import (
     AUTO_POOL_MINIMUMS,
-    BREAKFAST_COMPANION_STAPLES,
     MEAT_PROTEINS,
     LEAFY_VEGETABLE_CANONICAL_IDS,
     counted_primary_protein_source,
     is_leafy_vegetable,
     primary_vegetable_canonical_id,
     primary_vegetable_subject,
+    assign_breakfast_slots,
+    has_egg_ingredient,
+    has_tofu_ingredient,
 )
 
 
 AUDIT_RULES = (
     {
         "id": "A01",
-        "clause": "§2 / §11.1 / §11.2 / §13.3",
-        "rule": "早餐粥、主食伴侣、豆腐、蛋、蔬菜×2、粗粮全满；仅显式蛋豆双角色可一顶二，不机械增设蛋白槽。",
+        "clause": "§2（2026-08-19 19:43 锁死版）",
+        "rule": "早餐八槽各自独立：粥、主食伴侣、蛋、早餐标签凉拌豆腐、蔬菜×2、独立肉类蛋白菜、粗粮；任何菜不得一顶二。",
     },
     {
         "id": "A02",
@@ -148,63 +150,9 @@ def _degradation_warning(evidence, meal, slot):
     )
 
 
-def _breakfast_eligible(item, slot):
-    roles = _roles(item)
-    if slot == "porridge":
-        return item.get("carb_type") == "porridge"
-    if slot == "companion_staple":
-        return item.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
-    if slot == "tofu":
-        return "tofu_dish" in roles
-    if slot == "egg":
-        return "egg_dish" in roles
-    if slot.startswith("vegetable"):
-        return "vegetable_dish" in roles
-    if slot == "coarse_grain":
-        return item.get("carb_type") == "coarse_grain"
-    return False
-
-
 def _breakfast_assignment(items):
-    """Assign one dish per slot; only an explicit egg+tofu dish may be reused."""
-    slots = (
-        "porridge", "companion_staple", "tofu", "egg",
-        "vegetable_1", "vegetable_2", "coarse_grain",
-    )
-    candidates = {
-        slot: [index for index, item in enumerate(items)
-               if _breakfast_eligible(item, slot)]
-        for slot in slots
-    }
-    ordered = sorted(slots, key=lambda slot: len(candidates[slot]))
-    assigned = {}
-
-    def can_reuse(index, slot):
-        existing = {name.split("_")[0] for name, value in assigned.items()
-                    if value == index}
-        base = slot.split("_")[0]
-        return (
-            existing
-            and existing | {base} <= {"egg", "tofu"}
-            and {"egg_dish", "tofu_dish"} <= _roles(items[index])
-        )
-
-    def search(position):
-        if position == len(ordered):
-            return True
-        slot = ordered[position]
-        used = set(assigned.values())
-        for index in candidates[slot]:
-            if index in used and not can_reuse(index, slot):
-                continue
-            assigned[slot] = index
-            if search(position + 1):
-                return True
-            assigned.pop(slot, None)
-        return False
-
-    matched = search(0)
-    return matched, candidates, dict(assigned) if matched else {}
+    """Assign exactly one distinct dish to every locked §2 breakfast slot."""
+    return assign_breakfast_slots(items)
 
 
 def _slot_status(evidence, missing_slots):
@@ -221,7 +169,8 @@ def _audit_breakfast(menu, evidence):
     assigned, candidates, assignment = _breakfast_assignment(items)
     targets = {
         "porridge": 1, "companion_staple": 1, "tofu": 1,
-        "egg": 1, "vegetable": 2, "coarse_grain": 1,
+        "egg": 1, "vegetable": 2, "breakfast_meat": 1,
+        "coarse_grain": 1,
     }
     current = {
         "porridge": len(candidates["porridge"]),
@@ -229,6 +178,7 @@ def _audit_breakfast(menu, evidence):
         "tofu": len(candidates["tofu"]),
         "egg": len(candidates["egg"]),
         "vegetable": len({*candidates["vegetable_1"], *candidates["vegetable_2"]}),
+        "breakfast_meat": len(candidates["breakfast_meat"]),
         "coarse_grain": len(candidates["coarse_grain"]),
     }
     missing = [
@@ -236,6 +186,16 @@ def _audit_breakfast(menu, evidence):
         if current[slot] < target
     ]
     status = _slot_status(evidence, missing)
+    dual_role_ingredient_offenders = []
+    for item in items:
+        if {"egg_dish", "tofu_dish"} <= _roles(item) and not (
+            has_egg_ingredient(item) and has_tofu_ingredient(item)
+        ):
+            dual_role_ingredient_offenders.append(
+                item.get("dish_id") or item.get("id")
+            )
+    if dual_role_ingredient_offenders:
+        status = "FAIL"
     if not assigned and not missing:
         status = "FAIL"
     unused_automatic = [
@@ -252,6 +212,8 @@ def _audit_breakfast(menu, evidence):
         "dish_count_informational": len(items),
         "missing_slots": [slot for _, slot in missing],
         "unused_automatic_dishes": unused_automatic,
+        "dual_role_ingredient_offenders": dual_role_ingredient_offenders,
+        "distinct_dish_per_slot": True,
     }
     return _check("A01", status, details)
 

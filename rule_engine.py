@@ -9,10 +9,10 @@
   4. LOCKED 菜品只计算一次营养贡献
   5. Final Review 只生成 Warning，不阻断 Confirm (V3 变更)
   6. VV 是唯一最终确认人 (V3 新增)
-  7. 早餐新增 tofu slot + egg slot (V3 新增)
+  7. 早餐使用最终锁死八槽，蛋/豆腐/肉菜必须各自独立
   8. 午餐新增 quick_soup slot (V3 新增)
   9. 晚餐新增 slow_soup slot (V3 新增)
-  10. 组合菜可同时满足多个槽位 (V3 新增)
+  10. 早餐以外的组合菜可按显式角色满足多个槽位
 
 LLM 不负责决定规则是否合格，只负责食材语义理解、文案生成等。
 """
@@ -101,6 +101,12 @@ WEAK_CARB_TYPES = {"other", "dim_sum"}
 BREAKFAST_COMPANION_STAPLES = {"mantou", "jiaozi", "bao", "sourdough", "huajuan"}
 
 MEAT_PROTEINS = {"fish", "shrimp", "other_seafood", "beef", "pork", "猪肉", "chicken"}
+BREAKFAST_MEAT_PROTEINS = {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"}
+TOFU_INGREDIENT_CANONICAL_IDS = frozenset(
+    normalize_ingredient_id(value)
+    for value in ("tofu", "silken_tofu", "tofu_skin", "腐竹")
+)
+EGG_INGREDIENT_CANONICAL_IDS = frozenset({normalize_ingredient_id("鸡蛋")})
 MANUAL_SOURCES = {"manual", "owner"}
 TANG_JIAO_NAME = "汤饺"
 NO_CANDIDATE_MESSAGE = "暂无符合条件菜品，请手动选择或补录"
@@ -112,6 +118,7 @@ AUTO_POOL_MINIMUMS = {
     "companion_staple": 4,
     "egg": 4,
     "tofu": 4,
+    "breakfast_meat": 4,
     "vegetable": 24,
     "vegetable_dish": 24,
     "coarse_grain": 4,
@@ -125,7 +132,7 @@ AUTO_POOL_MINIMUMS = {
 MEAL_SLOT_ORDER = {
     "breakfast": [
         "porridge", "companion_staple", "tofu", "egg",
-        "vegetable", "coarse_grain",
+        "vegetable", "breakfast_meat", "coarse_grain",
     ],
     "lunch": ["meat_main", "protein_main", "vegetable_dish", "staple", "quick_soup"],
     "dinner": ["meat_main", "protein_main", "vegetable_dish", "staple", "slow_soup"],
@@ -286,7 +293,145 @@ class NutritionAnalyzer:
             "is_slow_soup": is_slow_soup,
             "manual_only_breakfast": manual_only_breakfast,
             "meal_roles": meal_roles,
+            "ingredient_ids": list(dish.get("ingredient_ids") or []),
         }
+
+
+def _json_list(value):
+    if not value:
+        return []
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return [value]
+        return parsed if isinstance(parsed, list) else [parsed]
+    return list(value)
+
+
+def _ingredient_ids(item):
+    return {
+        normalize_ingredient_id(str(value).strip())
+        for value in _json_list(item.get("ingredient_ids"))
+        if value and str(value).strip()
+    }
+
+
+def has_tofu_ingredient(item):
+    """Use linked ingredient ids, never the dish name, as tofu evidence."""
+    return bool(_ingredient_ids(item) & TOFU_INGREDIENT_CANONICAL_IDS)
+
+
+def has_egg_ingredient(item):
+    """Use linked ingredient ids, never the dish name, as egg evidence."""
+    return bool(_ingredient_ids(item) & EGG_INGREDIENT_CANONICAL_IDS)
+
+
+def _item_roles(item):
+    return set(_json_list(item.get("meal_roles")))
+
+
+def _item_meal_tags(item):
+    return set(_json_list(item.get("meal_tags")))
+
+
+def _item_cooking_methods(item):
+    return set(NutritionAnalyzer.normalize_cooking_methods(
+        _json_list(item.get("cooking_methods"))
+    ))
+
+
+def _item_is_soup(item):
+    return item.get("category_id") == "soup" or bool(
+        _item_roles(item) & {"quick_soup", "slow_soup"}
+    )
+
+
+def is_breakfast_tofu_candidate(item):
+    """Frozen §2 breakfast tofu: tagged breakfast, cold, visible tofu dish."""
+    return (
+        "breakfast" in _item_meal_tags(item)
+        and "tofu_dish" in _item_roles(item)
+        and "cold_mix" in _item_cooking_methods(item)
+        and not _item_is_soup(item)
+        and has_tofu_ingredient(item)
+    )
+
+
+def is_breakfast_meat_candidate(item):
+    """Frozen §2 independent breakfast meat main; porridge/filling/soup do not count."""
+    proteins = set(item.get("proteins") or item.get("protein_types") or [])
+    roles = _item_roles(item)
+    return (
+        "breakfast" in _item_meal_tags(item)
+        and "protein_main" in roles
+        and "tofu_dish" not in roles
+        and not _item_is_soup(item)
+        and bool(proteins & BREAKFAST_MEAT_PROTEINS)
+    )
+
+
+BREAKFAST_ASSIGNMENT_SLOTS = (
+    "porridge", "companion_staple", "tofu", "egg",
+    "vegetable_1", "vegetable_2", "breakfast_meat", "coarse_grain",
+)
+
+
+def breakfast_slot_eligible(item, slot):
+    roles = _item_roles(item)
+    if slot == "porridge":
+        return item.get("carb_type") == "porridge"
+    if slot == "companion_staple":
+        return item.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
+    if slot == "tofu":
+        return is_breakfast_tofu_candidate(item)
+    if slot == "egg":
+        return "egg_dish" in roles
+    if slot.startswith("vegetable"):
+        return "vegetable_dish" in roles
+    if slot == "breakfast_meat":
+        return is_breakfast_meat_candidate(item)
+    if slot == "coarse_grain":
+        return item.get("carb_type") == "coarse_grain"
+    return False
+
+
+def assign_breakfast_slots(items):
+    """Return a maximum one-dish-per-slot assignment for frozen §2."""
+    candidates = {
+        slot: [index for index, item in enumerate(items)
+               if breakfast_slot_eligible(item, slot)]
+        for slot in BREAKFAST_ASSIGNMENT_SLOTS
+    }
+    ordered = sorted(
+        BREAKFAST_ASSIGNMENT_SLOTS,
+        key=lambda slot: (len(candidates[slot]), BREAKFAST_ASSIGNMENT_SLOTS.index(slot)),
+    )
+    assigned = {}
+    best = {}
+
+    def search(position, used):
+        nonlocal best
+        if len(assigned) > len(best):
+            best = dict(assigned)
+        if len(best) == len(BREAKFAST_ASSIGNMENT_SLOTS):
+            return True
+        if position == len(ordered):
+            return False
+        if len(assigned) + len(ordered) - position <= len(best):
+            return False
+        slot = ordered[position]
+        for index in candidates[slot]:
+            if index in used:
+                continue
+            assigned[slot] = index
+            if search(position + 1, used | {index}):
+                return True
+            assigned.pop(slot, None)
+        return search(position + 1, used)
+
+    search(0, set())
+    return len(best) == len(BREAKFAST_ASSIGNMENT_SLOTS), candidates, best
 
 
 def _ordered_vegetable_values(item):
@@ -527,14 +672,14 @@ class RuleEngine:
     @staticmethod
     def check_breakfast_rules(state):
         """
-        V3 早餐规则（全部为 Warning，不阻断 Confirm）：
+        最终锁死早餐规则（全部为 Warning，不阻断 Confirm）：
           1. porridge_slot == 1
           2. companion_staple_slot == 1 (馒头/饺子/酸种面包/花卷)
           3. coarse_grain_slot >= 1
-          4. protein >= 1
-          5. vegetable_types >= 2
-          6. egg_slot >= 1 (V3 新增)
-          7. tofu_slot >= 1 (V3 新增)
+          4. vegetable dishes == 2
+          5. independent egg dish == 1
+          6. breakfast-tagged cold tofu dish == 1
+          7. independent non-soup meat protein dish == 1
         返回: (passed, issues, warnings)
         V3: 所有问题都返回为 warnings，不再有 hard_errors
         """
@@ -542,19 +687,22 @@ class RuleEngine:
 
         if state.has_manual_one_pot_meal:
             return True, [], []
-        if state.porridge_slot < 1:
+        slots = analyze_meal_slots("breakfast", state)
+        if slots["porridge"]["current"] < 1:
             warnings.append("早餐缺粥 / No porridge")
-        if state.companion_staple_slot < 1:
+        if slots["companion_staple"]["current"] < 1:
             warnings.append("早餐缺搭配主食 / No companion staple (mantou/jiaozi/bao/sourdough/huajuan)")
-        if state.coarse_grain_slot < 1:
+        if slots["coarse_grain"]["current"] < 1:
             warnings.append("早餐缺粗粮 / No coarse grain")
-        if state.vegetable_dish_count < 2:
-            warnings.append(f"早餐蔬菜不足: {state.vegetable_dish_count}/2 / Insufficient vegetable dishes ({state.vegetable_dish_count}/2)")
-        # V3 新增
-        if state.egg_slot < 1:
+        breakfast_vegetables = slots["vegetable"]["current"]
+        if breakfast_vegetables < 2:
+            warnings.append(f"早餐蔬菜不足: {breakfast_vegetables}/2 / Insufficient vegetable dishes ({breakfast_vegetables}/2)")
+        if slots["egg"]["current"] < 1:
             warnings.append("早餐还没有鸡蛋 / No egg for breakfast")
-        if state.tofu_slot < 1:
-            warnings.append("早餐还没有豆腐 / No tofu for breakfast")
+        if slots["tofu"]["current"] < 1:
+            warnings.append("早餐还没有独立凉拌豆腐 / No independent cold tofu for breakfast")
+        if slots["breakfast_meat"]["current"] < 1:
+            warnings.append("早餐还没有独立肉类蛋白菜 / No independent meat protein dish for breakfast")
         if state.auto_egg_dish_count > 1:
             warnings.append(f"早餐自动蛋类过多: {state.auto_egg_dish_count}/1 / Too many automatic egg dishes")
 
@@ -727,13 +875,11 @@ class RuleEngine:
         if meal_type == "breakfast":
             if state.has_manual_one_pot_meal:
                 return True
-            return (
-                state.porridge_slot >= 1
-                and state.companion_staple_slot >= 1
-                and state.coarse_grain_slot >= 1
-                and state.vegetable_dish_count >= 2
-                and state.egg_slot >= 1
-                and state.tofu_slot >= 1
+            return all(
+                value["current"] >= value["target_min"]
+                for value in analyze_meal_slots(
+                    "breakfast", state, diners_count
+                ).values()
             )
         elif meal_type == "lunch":
             if state.has_manual_one_pot_meal:
@@ -825,16 +971,20 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
     elif meal_type == "breakfast":
         target = {
             "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
-            "vegetable": 2, "egg": 1, "tofu": 1
+            "vegetable": 2, "egg": 1, "tofu": 1,
+            "breakfast_meat": 1,
         }
+        _, _, assignment = assign_breakfast_slots(state.dishes)
         current = {
-            "porridge": state.porridge_slot,
-            "companion_staple": state.companion_staple_slot,
-            "coarse_grain": state.coarse_grain_slot,
-            "vegetable": state.vegetable_dish_count,
-            # V9: egg/tofu 基于 meal_roles 而非 ingredients
-            "egg": state.egg_dish_count,
-            "tofu": state.tofu_dish_count,
+            "porridge": int("porridge" in assignment),
+            "companion_staple": int("companion_staple" in assignment),
+            "coarse_grain": int("coarse_grain" in assignment),
+            "vegetable": sum(
+                slot in assignment for slot in ("vegetable_1", "vegetable_2")
+            ),
+            "egg": int("egg" in assignment),
+            "tofu": int("tofu" in assignment),
+            "breakfast_meat": int("breakfast_meat" in assignment),
         }
     else:
         return {}
@@ -888,6 +1038,11 @@ SLOT_ROLE_MAP = {
     },
     "tofu": {
         "roles": ["tofu_dish"],
+        "require_breakfast_tofu": True,
+    },
+    "breakfast_meat": {
+        "roles": ["protein_main"],
+        "require_breakfast_meat": True,
     },
     "porridge": {
         "require_carb_type": "porridge",
@@ -929,6 +1084,10 @@ def filter_candidates_for_slot(candidates, slot_name):
             continue
         if spec.get("require_meat") and not (set(c.get("proteins", [])) & MEAT_PROTEINS):
             continue
+        if spec.get("require_breakfast_tofu") and not is_breakfast_tofu_candidate(c):
+            continue
+        if spec.get("require_breakfast_meat") and not is_breakfast_meat_candidate(c):
+            continue
         # 要求 carb_type
         if spec.get("require_carb_type") and c.get("carb_type") != spec["require_carb_type"]:
             continue
@@ -941,7 +1100,8 @@ def filter_candidates_for_slot(candidates, slot_name):
         if spec.get("require_vegetables") and not c.get("vegetables"):
             continue
 
-        if role_match or spec.get("require_carb_type") or spec.get("require_breakfast_staple"):
+        if (role_match or spec.get("require_carb_type")
+                or spec.get("require_breakfast_staple")):
             filtered.append(c)
 
     return filtered
@@ -1194,9 +1354,14 @@ class GapFiller:
     def __init__(self, dish_pool, seed=None, dish_ingredients=None):
         self.dishes = dish_pool.get("dishes", [])
         self.rng = random.Random(seed)
+        self.dish_ingredients = dish_ingredients or {}
         self.analyzed = {}
         for d in self.dishes:
-            self.analyzed[d["id"]] = NutritionAnalyzer.analyze(d)
+            analysis = NutritionAnalyzer.analyze(d)
+            linked = set(analysis.get("ingredient_ids") or [])
+            linked.update(self.dish_ingredients.get(d["id"], set()))
+            analysis["ingredient_ids"] = sorted(linked)
+            self.analyzed[d["id"]] = analysis
         self.scorer = ScoringEngine(rng=self.rng)
         self.degradation_warnings = []
         self.degradation_events = []
@@ -1205,8 +1370,6 @@ class GapFiller:
         self.slot_pool_sizes = {}
         self.candidate_selection_traces = []
         self._last_candidate_filter_trace = None
-        # dish_id → set of ingredient_ids
-        self.dish_ingredients = dish_ingredients or {}
 
     def get_candidates(self, meal_type, exclude_ids=None, context=None):
         ctx = context or {}
@@ -1375,7 +1538,7 @@ class GapFiller:
                         row["qualification"] = "DEGRADED_LEGAL"
                 return available_slot, degradation_message
 
-        if slot_name in {"protein_main", "meat_main"}:
+        if slot_name in {"protein_main", "meat_main", "breakfast_meat"}:
             detail = "蛋白质/肉类必需槽位缺失"
         else:
             detail = "必需槽位缺失"

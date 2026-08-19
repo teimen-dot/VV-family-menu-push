@@ -12,6 +12,7 @@ from rule_engine import (
     AUTO_POOL_MINIMUMS,
     GapFiller,
     MealState,
+    analyze_meal_slots,
     get_rotation_context,
 )
 from test_t002_blackbox import complete_pool, dish
@@ -128,14 +129,18 @@ class ProteinSlotDegradationTests(unittest.TestCase):
             filler.hard_slot_warnings[("dinner", "meat_main")],
         )
 
-    def test_breakfast_contract_is_unchanged(self):
+    def test_breakfast_contract_uses_final_locked_eight_slots(self):
         result, _ = GapFiller(complete_pool(), seed=4).generate_day(
             context={"historical_last_used": {}, "hard_locked_dish_ids": set()},
             diners_count=4,
         )
         state = result["breakfast"]["state"]
-        self.assertEqual(len(result["breakfast"]["dishes"]), 7)
+        self.assertEqual(len(result["breakfast"]["dishes"]), 8)
         self.assertEqual((state.egg_dish_count, state.tofu_dish_count), (1, 1))
+        self.assertEqual(
+            analyze_meal_slots("breakfast", state)["breakfast_meat"]["current"],
+            1,
+        )
 
 
 @unittest.skipUnless(os.path.exists(REAL_PREVIEW_DB), "real preview DB is unavailable")
