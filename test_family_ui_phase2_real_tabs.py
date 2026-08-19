@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 read-only real-data regressions for Pantry, Dishes, and History."""
+"""Phase 2 real-data regressions for Pantry, Dishes, and History."""
 
 import os
 import sqlite3
@@ -158,18 +158,28 @@ class Phase2RealTabsStaticTests(unittest.TestCase):
         with open(path, encoding="utf-8") as handle:
             cls.html = handle.read()
 
-    def test_static_fake_write_handlers_are_disconnected_and_capture_guard_exists(self):
-        self.assertNotIn("pAddBtn.addEventListener('click'", self.html)
-        self.assertNotIn("pInput.addEventListener('keydown'", self.html)
-        self.assertNotIn("document.querySelector('#page-pantry').addEventListener", self.html)
-        self.assertNotIn("function addIngredient", self.html)
-        self.assertNotIn("function logRecent", self.html)
-        self.assertNotIn("consumedStock", self.html)
+    def test_static_tabs_use_real_write_endpoints_without_capture_blockers(self):
         self.assertIn("PHASE2_REAL_TABS_BRIDGE_START", self.html)
-        self.assertIn("event.stopImmediatePropagation()", self.html)
-        self.assertIn("document.addEventListener('keydown', stopPhase2Write, true)", self.html)
-        self.assertIn("#page-pantry #stockList .mini-btn", self.html)
-        self.assertIn("#page-pantry #recentList .mini-btn", self.html)
+        self.assertNotIn("stopPhase2Write", self.html)
+        self.assertNotIn("stopWrite", self.html)
+        for endpoint in (
+            "/api/pantry/add-by-name", "/api/pantry/update_status", "/api/pantry/consume",
+            "/api/dishes/create", "/api/dishes/update", "/api/dishes/favorite",
+        ):
+            self.assertIn(endpoint, self.html)
+        self.assertIn("data-action=\"consume\"", self.html)
+        self.assertIn("data-action=\"restock\"", self.html)
+        self.assertNotIn("只读预览", self.html)
+        self.assertNotIn("当前为只读", self.html)
+
+    def test_pantry_rows_have_no_ingredient_image_surface(self):
+        pantry_row = self.html.split("function pantryRow(item, recent = false)", 1)[1].split(
+            "function renderPantry", 1
+        )[0]
+        self.assertNotIn("<img", pantry_row)
+        self.assertNotIn("item.image", pantry_row)
+        self.assertIn("data-action=\"consume\"", pantry_row)
+        self.assertIn("data-action=\"restock\"", pantry_row)
 
     def test_static_rows_are_hidden_or_loading_until_sqlite_hydration(self):
         self.assertIn('id="historyList" hidden', self.html)

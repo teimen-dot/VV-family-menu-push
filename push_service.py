@@ -24,6 +24,11 @@ def push_is_enabled():
     return push_enabled()
 
 
+def push_on_confirm_is_enabled():
+    """Require the existing production push gate and the explicit confirm hook."""
+    return push_is_enabled() and os.environ.get("PUSH_ON_CONFIRM", "false").lower() == "true"
+
+
 def get_h5_base_url():
     value = os.environ.get("H5_BASE_URL", "").strip()
     if not value:

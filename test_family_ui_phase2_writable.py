@@ -153,6 +153,40 @@ class Phase2WritableRuntimeTests(unittest.TestCase):
             conn.close()
         self.assertEqual(status, "needed")
 
+    def test_status_update_commits_version_before_audit_connection(self):
+        conn = db.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO ingredients(ingredient_id,name_cn) "
+                "VALUES('batch3_status_ing','三棒状态食材')"
+            )
+            conn.execute(
+                "INSERT INTO current_pantry(location,ingredient_id,status,is_active) "
+                "VALUES('shenzhen','batch3_status_ing','available',1)"
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = inventory.update_ingredient_status(
+            "shenzhen", "batch3_status_ing", "expiring", submitted_by="batch3-test"
+        )
+
+        self.assertTrue(result["ok"])
+        conn = db.get_db()
+        try:
+            status = conn.execute(
+                "SELECT status FROM current_pantry "
+                "WHERE location='shenzhen' AND ingredient_id='batch3_status_ing'"
+            ).fetchone()["status"]
+            event = conn.execute(
+                "SELECT event_type FROM events ORDER BY id DESC LIMIT 1"
+            ).fetchone()["event_type"]
+        finally:
+            conn.close()
+        self.assertEqual(status, "expiring")
+        self.assertEqual(event, "pantry_status_updated")
+
 
 if __name__ == "__main__":
     unittest.main()

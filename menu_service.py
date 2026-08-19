@@ -7,6 +7,7 @@
 
 import json
 import random
+import sqlite3
 from datetime import date, datetime, timedelta
 from db import get_db, log_event, get_config
 from rule_engine import (
@@ -329,6 +330,20 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
         except (TypeError, json.JSONDecodeError):
             diners = []
 
+        try:
+            setting_rows = conn.execute(
+                "SELECT meal_type, is_skipped FROM menu_meal_settings WHERE menu_id = ?",
+                (menu["id"],),
+            ).fetchall()
+            meal_settings = {
+                row["meal_type"]: {"is_skipped": bool(row["is_skipped"])}
+                for row in setting_rows
+            }
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc).lower():
+                raise
+            meal_settings = {}
+
         return {
             "date": date_str,
             "exists": True,
@@ -346,7 +361,57 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
             "shortages": shortage_map,
             "review_issues": menu["notes_zh"] or "",
             "meal_notes": meal_notes,
+            "meal_settings": meal_settings,
         }
+    finally:
+        conn.close()
+
+
+def update_menu_diners_count(menu_id, diners_count, location=None):
+    """Update only diners_count; the legacy diners member list is never consulted."""
+    if isinstance(diners_count, bool) or not isinstance(diners_count, int) or not 1 <= diners_count <= 30:
+        return False, "diners_count must be between 1 and 30"
+    conn = get_db()
+    try:
+        menu = conn.execute("SELECT location FROM menus WHERE id = ?", (menu_id,)).fetchone()
+        if not menu:
+            return False, "menu not found"
+        if location and menu["location"] != location:
+            return False, "menu location mismatch"
+        conn.execute(
+            "UPDATE menus SET diners_count = ?, updated_at = datetime('now') WHERE id = ?",
+            (diners_count, menu_id),
+        )
+        conn.commit()
+        log_event("diners_count_updated", "menu", str(menu_id), {"diners_count": diners_count})
+        return True, "updated"
+    finally:
+        conn.close()
+
+
+def set_menu_meal_skipped(menu_id, meal_type, skipped):
+    """Persist cancel/restore state for one meal without inventing menu items."""
+    if meal_type not in ("breakfast", "lunch", "afternoon_snack", "dinner"):
+        return False, "invalid meal_type"
+    conn = get_db()
+    try:
+        if not conn.execute("SELECT 1 FROM menus WHERE id = ?", (menu_id,)).fetchone():
+            return False, "menu not found"
+        conn.execute(
+            "INSERT INTO menu_meal_settings (menu_id, meal_type, is_skipped, updated_at) "
+            "VALUES (?, ?, ?, datetime('now')) "
+            "ON CONFLICT(menu_id, meal_type) DO UPDATE SET "
+            "is_skipped=excluded.is_skipped, updated_at=excluded.updated_at",
+            (menu_id, meal_type, 1 if skipped else 0),
+        )
+        conn.commit()
+        log_event(
+            "meal_cancelled" if skipped else "meal_restored",
+            "menu",
+            str(menu_id),
+            {"meal_type": meal_type},
+        )
+        return True, "updated"
     finally:
         conn.close()
 

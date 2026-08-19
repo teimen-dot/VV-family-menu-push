@@ -268,6 +268,21 @@ def init_db():
         )
     """)
 
+    # Per-meal UI state. Kept separate from menu generation inputs so diners_count
+    # remains the only source for meal sizing.
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS menu_meal_settings (
+            menu_id         INTEGER NOT NULL,
+            meal_type       TEXT NOT NULL,
+            diners          TEXT,
+            note            TEXT DEFAULT '',
+            is_skipped      INTEGER DEFAULT 0,
+            updated_at      TEXT DEFAULT (datetime('now')),
+            PRIMARY KEY (menu_id, meal_type),
+            FOREIGN KEY (menu_id) REFERENCES menus(id)
+        )
+    """)
+
     # V6 迁移：为已存在的 menu_items 表添加新列（幂等）
     _safe_add_column(c, "menu_items", "custom_name", "TEXT")
     _safe_add_column(c, "menu_items", "source", "TEXT DEFAULT 'ai'")

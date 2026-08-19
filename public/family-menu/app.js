@@ -203,7 +203,7 @@
     setKitchenChrome(data);
     renderDayNav(data.days);
     root.innerHTML = `${nextMealMarkup(data)}${data.days.map(dayMarkup).join('')}
-      <p class="readonly-note">第一阶段为真实数据只读视图；确认、取消、人数、备注、换菜、增删、智能补充和重新生成均未开放。<br><small>LIVE DATA · READ ONLY · NO MENU MUTATIONS</small></p>`;
+      <p class="readonly-note">真实测试数据已接通，所有操作均保存到隔离测试库。<br><small>LIVE TEST DATA · WRITES ENABLED</small></p>`;
     bindReadOnlyInteractions();
   }
 
@@ -218,7 +218,7 @@
       const response = await fetch('/api/family-menu/bootstrap', {credentials: 'same-origin'});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || data.error || `HTTP ${response.status}`);
-      if (!data.readonly || !Array.isArray(data.days)) throw new Error('Invalid bootstrap response');
+      if (data.readonly || !Array.isArray(data.days)) throw new Error('Invalid bootstrap response');
       render(data);
     } catch (error) {
       renderError(error);

@@ -472,6 +472,7 @@ def update_ingredient_status(location, ingredient_id, status, submitted_by="nann
 
         _increment_inventory_version(conn, location)
         _invalidate_availability_cache(location)
+        conn.commit()
 
         log_event("pantry_status_updated", "current_pantry", ingredient_id, {
             "location": location, "ingredient_id": ingredient_id,

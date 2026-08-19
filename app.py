@@ -40,6 +40,7 @@ from menu_service import (
     replace_dish_in_menu, lock_dish, ai_fill_menu, repair_menu,
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
     get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
+    update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
@@ -79,6 +80,12 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/delete-meal",
     "/api/tomorrow/cycle-replace",
     "/api/menu/diners",
+    "/api/menu/diners-count",
+    "/api/tomorrow/meal-state",
+    "/api/tomorrow/drinks",
+    "/api/dishes/create",
+    "/api/dishes/update",
+    "/api/dishes/favorite",
 }
 PANTRY_POST_PATHS = {
     "/api/pantry/submit",
@@ -94,6 +101,7 @@ MENU_DRAFT_WRITE_PATHS = {
     "/api/tomorrow/ai-fill", "/api/tomorrow/repair", "/api/tomorrow/diners",
     "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal", "/api/tomorrow/cycle-replace",
+    "/api/menu/diners-count", "/api/tomorrow/meal-state", "/api/tomorrow/drinks",
 }
 
 INGREDIENT_TYPO_MAP = {
@@ -675,6 +683,184 @@ def get_dish_detail(dish_id):
         conn.close()
 
 
+def _dish_json_list(value):
+    if not isinstance(value, list):
+        return []
+    return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
+
+
+def _next_dish_id(conn):
+    numbers = []
+    for row in conn.execute("SELECT id FROM dishes WHERE id LIKE 'dish_%'").fetchall():
+        try:
+            numbers.append(int(row["id"].split("_", 1)[1]))
+        except (ValueError, IndexError):
+            continue
+    return f"dish_{(max(numbers, default=0) + 1):04d}"
+
+
+def _sync_dish_ingredients(conn, dish_id, ingredient_names):
+    ingredient_rows = conn.execute(
+        "SELECT ingredient_id, name_cn, name_en, aliases FROM ingredients"
+    ).fetchall()
+    ingredient_ids = []
+    for raw_name in _dish_json_list(ingredient_names):
+        matched, normalized_name, _ = resolve_ingredient_name(raw_name, ingredient_rows)
+        if matched:
+            ingredient_id = matched["ingredient_id"]
+        else:
+            ingredient_id = normalized_name.casefold().replace(" ", "_")
+            if conn.execute(
+                "SELECT 1 FROM ingredients WHERE ingredient_id = ?", (ingredient_id,)
+            ).fetchone():
+                ingredient_id = "custom_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
+            conn.execute(
+                "INSERT INTO ingredients "
+                "(ingredient_id, name_cn, name_en, aliases, category, ingredient_group, is_common) "
+                "VALUES (?, ?, '', '[]', '', 'other', 0)",
+                (ingredient_id, normalized_name),
+            )
+            ingredient_rows.append({
+                "ingredient_id": ingredient_id,
+                "name_cn": normalized_name,
+                "name_en": "",
+                "aliases": "[]",
+            })
+        if ingredient_id not in ingredient_ids:
+            ingredient_ids.append(ingredient_id)
+
+    conn.execute("DELETE FROM dish_ingredients WHERE dish_id = ?", (dish_id,))
+    conn.executemany(
+        "INSERT INTO dish_ingredients (dish_id, ingredient_id, required) VALUES (?, ?, 1)",
+        [(dish_id, ingredient_id) for ingredient_id in ingredient_ids],
+    )
+    return ingredient_ids
+
+
+def save_family_dish(payload, dish_id=None):
+    """Create or update one real catalog dish using the production SQLite schema."""
+    name_cn = str(payload.get("name_cn", "")).strip()
+    name_en = str(payload.get("name_en", "")).strip()
+    category_id = str(payload.get("category_id", "")).strip()
+    if not name_cn or not category_id:
+        return False, {"error": "name_cn and category_id required"}
+
+    meal_tags = _dish_json_list(payload.get("meal_tags"))
+    protein_types = _dish_json_list(payload.get("protein_types"))
+    vegetables = _dish_json_list(payload.get("vegetables"))
+    cooking_methods = _dish_json_list(payload.get("cooking_methods"))
+    custom_tags = _dish_json_list(payload.get("custom_tags"))
+    ingredient_names = _dish_json_list(payload.get("ingredients"))
+    drink = payload.get("drink")
+    drink_json = json.dumps(drink, ensure_ascii=False) if drink else None
+
+    conn = get_db()
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM categories WHERE id = ? AND active = 1", (category_id,)
+        ).fetchone():
+            return False, {"error": "invalid category_id"}
+        duplicate = conn.execute(
+            "SELECT id FROM dishes WHERE name_cn = ? AND (is_active = 1 OR is_active IS NULL)",
+            (name_cn,),
+        ).fetchone()
+        if duplicate and duplicate["id"] != dish_id:
+            return False, {"error": f"菜品已存在: {name_cn}"}
+
+        from photo_manager import _increment_catalog_version
+
+        if dish_id:
+            old = conn.execute("SELECT name_cn FROM dishes WHERE id = ?", (dish_id,)).fetchone()
+            if not old:
+                return False, {"error": "dish not found"}
+            conn.execute(
+                "UPDATE dishes SET name_cn=?, name_en=?, category_id=?, meal_tags=?, banquet=?, "
+                "protein_types=?, vegetables=?, vegetable_count=?, carb_type=?, taste=?, "
+                "cooking_methods=?, custom_tags=?, quick_soup=?, slow_soup=?, "
+                "manual_only_for_breakfast=?, drink=?, ingredients_pending=?, needs_review=?, "
+                "updated_at=datetime('now') WHERE id=?",
+                (
+                    name_cn, name_en, category_id, json.dumps(meal_tags, ensure_ascii=False),
+                    1 if payload.get("banquet") else 0,
+                    json.dumps(protein_types, ensure_ascii=False),
+                    json.dumps(vegetables, ensure_ascii=False), len(vegetables),
+                    payload.get("carb_type"), str(payload.get("taste", "normal")),
+                    json.dumps(cooking_methods, ensure_ascii=False),
+                    json.dumps(custom_tags, ensure_ascii=False),
+                    1 if payload.get("quick_soup") else 0,
+                    1 if payload.get("slow_soup") else 0,
+                    1 if payload.get("manual_only_for_breakfast") else 0,
+                    drink_json, 0 if ingredient_names else 1, 0 if ingredient_names else 1,
+                    dish_id,
+                ),
+            )
+            event_type = "dish_edited"
+            event_details = {"old_name": old["name_cn"], "new_name": name_cn, "via": "family_ui"}
+        else:
+            dish_id = _next_dish_id(conn)
+            conn.execute(
+                "INSERT INTO dishes "
+                "(id,name_cn,name_en,category_id,meal_tags,banquet,protein_types,vegetables,"
+                "vegetable_count,carb_type,meal_components,taste,cooking_methods,can_serve_warm,"
+                "custom_tags,needs_review,image,image_uploaded,quick_soup,slow_soup,"
+                "manual_only_for_breakfast,drink,ingredients_pending,is_active,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?, '[]',?,?,0,?,?,NULL,0,?,?,?,?,?,1,datetime('now'),datetime('now'))",
+                (
+                    dish_id, name_cn, name_en, category_id,
+                    json.dumps(meal_tags, ensure_ascii=False), 1 if payload.get("banquet") else 0,
+                    json.dumps(protein_types, ensure_ascii=False),
+                    json.dumps(vegetables, ensure_ascii=False), len(vegetables), payload.get("carb_type"),
+                    str(payload.get("taste", "normal")),
+                    json.dumps(cooking_methods, ensure_ascii=False),
+                    json.dumps(custom_tags, ensure_ascii=False), 0 if ingredient_names else 1,
+                    1 if payload.get("quick_soup") else 0,
+                    1 if payload.get("slow_soup") else 0,
+                    1 if payload.get("manual_only_for_breakfast") else 0,
+                    drink_json, 0 if ingredient_names else 1,
+                ),
+            )
+            event_type = "dish_added"
+            event_details = {"name_cn": name_cn, "name_en": name_en, "via": "family_ui"}
+
+        _sync_dish_ingredients(conn, dish_id, ingredient_names)
+        _increment_catalog_version(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    invalidate_catalog_cache()
+    log_event(event_type, "dishes", dish_id, event_details)
+    return True, {"id": dish_id, "name_cn": name_cn, "name_en": name_en}
+
+
+def toggle_family_dish_favorite(dish_id):
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT custom_tags FROM dishes WHERE id = ?", (dish_id,)).fetchone()
+        if not row:
+            return False, {"error": "dish not found"}
+        try:
+            tags = _dish_json_list(json.loads(row["custom_tags"] or "[]"))
+        except (TypeError, json.JSONDecodeError):
+            tags = []
+        favorite = "favorite" not in tags
+        tags = [tag for tag in tags if tag != "favorite"]
+        if favorite:
+            tags.append("favorite")
+        conn.execute(
+            "UPDATE dishes SET custom_tags=?, updated_at=datetime('now') WHERE id=?",
+            (json.dumps(tags, ensure_ascii=False), dish_id),
+        )
+        from photo_manager import _increment_catalog_version
+        _increment_catalog_version(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    invalidate_catalog_cache()
+    log_event("dish_favorite_updated", "dishes", dish_id, {"favorite": favorite})
+    return True, {"id": dish_id, "favorite": favorite}
+
+
 def get_categories():
     conn = get_db()
     try:
@@ -1069,9 +1255,36 @@ def build_family_ui_readonly_tabs(location, as_of=None):
         common = get_common_ingredients()
         recent = _get_recent_pantry_rows(location)
         history = get_history_menus(30, location, as_of=as_of)
+        conn = get_db()
+        try:
+            ingredient_rows = conn.execute(
+                "SELECT di.dish_id, i.name_cn FROM dish_ingredients di "
+                "JOIN ingredients i ON i.ingredient_id = di.ingredient_id "
+                "WHERE di.required = 1 ORDER BY di.dish_id, di.id"
+            ).fetchall()
+        finally:
+            conn.close()
+
+    dish_ingredients = {}
+    for row in ingredient_rows:
+        dish_ingredients.setdefault(row["dish_id"], []).append(row["name_cn"])
+
+    def decoded_list(value):
+        if isinstance(value, list):
+            return value
+        try:
+            decoded = json.loads(value or "[]")
+        except (TypeError, json.JSONDecodeError):
+            return []
+        return decoded if isinstance(decoded, list) else []
 
     dish_rows = []
     for dish in dishes:
+        custom_tags = decoded_list(dish.get("custom_tags"))
+        try:
+            drink = json.loads(dish.get("drink")) if dish.get("drink") else None
+        except (TypeError, json.JSONDecodeError):
+            drink = None
         dish_rows.append({
             "id": dish["id"],
             "name_cn": dish.get("name_cn") or dish["id"],
@@ -1079,6 +1292,19 @@ def build_family_ui_readonly_tabs(location, as_of=None):
             "category_id": dish.get("category_id") or "",
             "carb_type": dish.get("carb_type"),
             "banquet": bool(dish.get("banquet")),
+            "favorite": "favorite" in custom_tags,
+            "meal_tags": decoded_list(dish.get("meal_tags")),
+            "protein_types": decoded_list(dish.get("protein_types")),
+            "vegetables": decoded_list(dish.get("vegetables")),
+            "cooking_methods": decoded_list(dish.get("cooking_methods")),
+            "custom_tags": custom_tags,
+            "carb_type": dish.get("carb_type"),
+            "taste": dish.get("taste") or "normal",
+            "quick_soup": bool(dish.get("quick_soup")),
+            "slow_soup": bool(dish.get("slow_soup")),
+            "manual_only_for_breakfast": bool(dish.get("manual_only_for_breakfast")),
+            "drink": drink,
+            "ingredients": dish_ingredients.get(dish["id"], []),
             "image": _existing_photo_url(dish.get("image")),
             "availability": availability.get(dish["id"], {
                 "status": "incomplete",
@@ -1170,7 +1396,8 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
     selected = None
     for day_offset, meal_type in candidates:
         menu = days[day_offset]["menu"]
-        if menu.get("exists") and menu.get("meals", {}).get(meal_type):
+        skipped = menu.get("meal_settings", {}).get(meal_type, {}).get("is_skipped", False)
+        if menu.get("exists") and not skipped and menu.get("meals", {}).get(meal_type):
             selected = (day_offset, meal_type)
             break
     if selected is None and candidates:
@@ -1191,13 +1418,15 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
             "status": menu.get("status"),
             "diners_count": menu.get("diners_count"),
             "note": menu.get("meal_notes", {}).get(meal_type, ""),
+            "drinks": menu.get("meal_notes", {}).get("breakfast_drinks", []),
+            "is_skipped": menu.get("meal_settings", {}).get(meal_type, {}).get("is_skipped", False),
             "dishes": menu.get("meals", {}).get(meal_type, []),
             "availability": menu.get("availability", {}),
         }
 
     tabs = build_family_ui_readonly_tabs(location, as_of=today)
     return {
-        "readonly": True,
+        "readonly": False,
         "role": role,
         "location": location,
         "location_label": LOCATIONS[location],
@@ -3701,6 +3930,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 ).fetchone()["count"]
                 conn.commit()
                 _invalidate_availability_cache(loc)
+                log_event("pantry_item_added", "current_pantry", ingredient_id, {
+                    "location": loc, "created": created, "submitted_by": "owner",
+                })
                 self.send_json({
                     "ok": True, "already_in_pantry": False, "created": created,
                     "ingredient_id": ingredient_id, "name_cn": display_name,
@@ -3720,23 +3952,14 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(result)
 
         elif path == "/api/pantry/update_status":
-            # V4: 单项状态更新
             loc = body.get("location", location)
-            conn = get_db()
-            try:
-                conn.execute(
-                    "UPDATE current_pantry SET status = ?, updated_at = datetime('now') "
-                    "WHERE location = ? AND ingredient_id = ? AND is_active = 1",
-                    (body["status"], loc, body["ingredient_id"])
-                )
-                # V5: 递增 inventory_version
-                _increment_inventory_version(conn, loc)
-                conn.commit()
-                # V5: 清除 availability 缓存
-                _invalidate_availability_cache(loc)
-                self.send_json({"ok": True})
-            finally:
-                conn.close()
+            status = body.get("status")
+            if status not in ("available", "priority_use", "expiring"):
+                self.send_json({"ok": False, "error": "invalid status"}, 400)
+                return
+            self.send_json(update_ingredient_status(
+                loc, body["ingredient_id"], status, submitted_by=username
+            ))
 
         elif path == "/api/pantry/consume":
             # Preview Pantry: consumption is an event, not a persistent stock status.
@@ -3771,28 +3994,19 @@ class AppHandler(BaseHTTPRequestHandler):
                 _increment_inventory_version(conn, loc)
                 conn.commit()
                 _invalidate_availability_cache(loc)
+                log_event("pantry_item_consumed", "current_pantry", ingredient_id, {
+                    "location": loc, "consumed_by": body.get("consumed_by", username),
+                    "consumption_id": cursor.lastrowid,
+                })
                 self.send_json({"ok": True, "consumption_id": cursor.lastrowid, "consumed_at": consumed_at})
             finally:
                 conn.close()
 
         elif path == "/api/pantry/remove":
-            # V4: 从当前库存移除单项
             loc = body.get("location", location)
-            conn = get_db()
-            try:
-                conn.execute(
-                    "UPDATE current_pantry SET is_active = 0, updated_at = datetime('now') "
-                    "WHERE location = ? AND ingredient_id = ?",
-                    (loc, body["ingredient_id"])
-                )
-                # V5: 递增 inventory_version
-                _increment_inventory_version(conn, loc)
-                conn.commit()
-                # V5: 清除 availability 缓存
-                _invalidate_availability_cache(loc)
-                self.send_json({"ok": True})
-            finally:
-                conn.close()
+            self.send_json(remove_ingredient_from_pantry(
+                loc, body["ingredient_id"], submitted_by=username
+            ))
 
         elif path == "/api/ingredients/add":
             # Add new ingredient (needs_review = true)
@@ -3834,6 +4048,18 @@ class AppHandler(BaseHTTPRequestHandler):
                                 "corrected_from": corrected_from})
             finally:
                 conn.close()
+
+        elif path == "/api/dishes/create":
+            ok, result = save_family_dish(body)
+            self.send_json({"ok": ok, **result}, 200 if ok else 400)
+
+        elif path == "/api/dishes/update":
+            ok, result = save_family_dish(body, dish_id=body.get("dish_id"))
+            self.send_json({"ok": ok, **result}, 200 if ok else 400)
+
+        elif path == "/api/dishes/favorite":
+            ok, result = toggle_family_dish_favorite(body.get("dish_id"))
+            self.send_json({"ok": ok, **result}, 200 if ok else 404)
 
         elif path == "/api/dishes/availability":
             dish_ids = body.get("dish_ids", [])
@@ -3877,6 +4103,66 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": ok, "replaced": ok, "dish": chosen if ok else None,
                             "error": msg if not ok else None})
 
+        elif path == "/api/menu/diners-count":
+            try:
+                diners_count = int(body.get("diners_count"))
+            except (TypeError, ValueError):
+                self.send_json({"ok": False, "error": "invalid diners_count"}, 400)
+                return
+            ok, message = update_menu_diners_count(
+                body["menu_id"], diners_count, location=location
+            )
+            if ok:
+                from menu_service import reconcile_meal_for_diners
+                reconcile_ok, reconcile_message, review = reconcile_meal_for_diners(
+                    body["menu_id"], location=location
+                )
+                self.send_json({
+                    "ok": True, "diners_count": diners_count,
+                    "reconciled": reconcile_ok, "message": reconcile_message,
+                    "review": review,
+                })
+            else:
+                self.send_json({"ok": False, "error": message}, 400)
+
+        elif path == "/api/tomorrow/meal-state":
+            skipped = bool(body.get("skipped"))
+            ok, message = set_menu_meal_skipped(
+                body["menu_id"], body.get("meal_type"), skipped
+            )
+            self.send_json({"ok": ok, "skipped": skipped,
+                            "error": None if ok else message}, 200 if ok else 400)
+
+        elif path == "/api/tomorrow/drinks":
+            drinks = _dish_json_list(body.get("drinks"))
+            if len(drinks) > 12:
+                self.send_json({"ok": False, "error": "too many drinks"}, 400)
+                return
+            conn = get_db()
+            try:
+                row = conn.execute(
+                    "SELECT meal_notes FROM menus WHERE id=?", (body["menu_id"],)
+                ).fetchone()
+                if not row:
+                    self.send_json({"ok": False, "error": "menu not found"}, 404)
+                    return
+                try:
+                    notes = json.loads(row["meal_notes"] or "{}")
+                except (TypeError, json.JSONDecodeError):
+                    notes = {}
+                notes["breakfast_drinks"] = drinks
+                conn.execute(
+                    "UPDATE menus SET meal_notes=?,updated_at=datetime('now') WHERE id=?",
+                    (json.dumps(notes, ensure_ascii=False), body["menu_id"]),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            log_event("breakfast_drinks_updated", "menu", str(body["menu_id"]), {
+                "drinks": drinks,
+            })
+            self.send_json({"ok": True, "drinks": drinks})
+
         elif path == "/api/tomorrow/meal-note":
             meal_type = body.get("meal_type")
             if meal_type not in ("breakfast", "lunch", "afternoon_snack", "dinner"):
@@ -3900,6 +4186,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 conn.execute("UPDATE menus SET meal_notes=?,updated_at=datetime('now') WHERE id=?",
                              (json.dumps(notes, ensure_ascii=False), body["menu_id"]))
                 conn.commit()
+                log_event("meal_note_updated", "menu", str(body["menu_id"]), {
+                    "meal_type": meal_type, "note": note,
+                })
                 self.send_json({"ok": True, "meal_notes": notes})
             finally:
                 conn.close()

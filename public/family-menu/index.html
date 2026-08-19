@@ -283,6 +283,11 @@ button { font-family: inherit; }
   display: block; font-size: 10.5px; color: var(--c-mut);
   margin-top: 2px; letter-spacing: .03em;
 }
+#page-menu .dish-row { min-height: 87px; }
+#page-menu .dish-row .tile-lg { width: 62px; height: 62px; flex: 0 0 62px; }
+#page-menu .dish-row .info h4 { font-size: 15.5px; line-height: 1.2; }
+#page-menu .dish-row .info small { font-size: 10.5px; line-height: 1.25; }
+#page-menu .dish-row .dish-ops { flex: 0 0 auto; }
 .dish-ops { display: flex; gap: 7px; }
 .op-btn {
   width: 36px; height: 36px; border-radius: 11px; cursor: pointer;
@@ -613,6 +618,9 @@ button { font-family: inherit; }
 .db-low  { background: rgba(185,133,47,.9); color: #fff8e8; }
 .db-miss { background: rgba(182,84,71,.9); color: #fdeeeb; }
 .d-card .d-body { padding: 11px 13px 13px; position: relative; padding-right: 48px; }
+.d-card-actions { display:flex; gap:6px; padding:0 10px 11px; }
+.d-card-actions button { flex:1; min-height:34px; border:1px solid var(--c-line); border-radius:9px; background:#fff; color:var(--c-forest-800); font-size:10px; font-weight:700; cursor:pointer; }
+.d-card-actions button.on { color:#c0453a; border-color:#eccfc9; background:#fdeeeb; }
 .d-card .d-body h4 { font-size: 14.5px; font-weight: 700; }
 .d-card .d-body small { display: block; font-size: 10px; color: var(--c-mut); margin-top: 2px; }
 /* 卡片右下角 ＋：加入餐单（点卡片本体仍是编辑） */
@@ -1678,7 +1686,7 @@ button { font-family: inherit; }
       <input class="search-in" type="text" placeholder="搜索或添加食材 / Search ingredient">
     </div>
 
-    <button class="big-add" type="button" disabled aria-disabled="true">
+    <button class="big-add" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
            stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       <span>添加食材 <small>ADD INGREDIENT</small></span>
@@ -1722,13 +1730,13 @@ button { font-family: inherit; }
         <span class="qa-t"><strong>快速录入新菜品</strong><small>Quick Add · 只需菜名，后面再补资料 Name only</small></span>
       </div>
       <div class="qa-row">
-        <input type="text" placeholder="本轮只读 / Read only" disabled aria-disabled="true">
-        <button type="button" disabled aria-disabled="true">暂未开放<small>READ ONLY</small></button>
+        <input type="text" placeholder="输入菜名 / Dish name">
+        <button type="button">继续填写<small>CONTINUE</small></button>
       </div>
     </div>
 
     <div class="avail fav-row">
-      <button class="chip chip-fav" id="favChip" type="button" disabled aria-disabled="true">❤️ 收藏 <small>Saved · 暂未开放</small></button>
+      <button class="chip chip-fav" id="favChip" type="button">❤️ 收藏 <small>Saved</small></button>
     </div>
 
     <div class="search-wrap">
@@ -2113,9 +2121,9 @@ button { font-family: inherit; }
         <label>图片 <small>IMAGE · emoji 按分类自动识别，可传照片</small></label>
         <div class="def-imgrow">
           <span class="tile tile-lg tile-staple" id="defPreview"><span>🍚</span></span>
-          <button class="mini-btn" id="defPhotoBtn" type="button">📷 上传照片<small>PHOTO</small></button>
-          <button class="mini-btn" id="defPhotoClear" type="button" style="display:none;">↩ 恢复 emoji<small>RESET</small></button>
-          <input type="file" id="defPhoto" accept="image/*" style="display:none;">
+          <span class="mini-btn" id="defPhotoBtn">图片由照片管理器维护<small>PHOTO MANAGER</small></span>
+          <span id="defPhotoClear" style="display:none;"></span>
+          <input type="file" id="defPhoto" style="display:none;" disabled>
         </div>
       </div>
 
@@ -2299,6 +2307,27 @@ const DISH_DB = [
   { zh: '香蕉',       en: 'Banana',                   cat: 'fruit',  emoji: '🍌', avail: 'ok'   },
   { zh: '蓝莓',       en: 'Blueberries',              cat: 'fruit',  emoji: '🫐', avail: 'ok'   },
 ];
+
+const DISH_CATEGORY_ID = {
+  meat:'protein_main', sea:'protein_main', egg:'egg_tofu', veg:'vegetable_mushroom',
+  soup:'soup', staple:'staple_carb', cold:'cold_dish', onepot:'one_pot_meal', fruit:'fruit_snack'
+};
+const MEAL_TAG_OF = {早餐:'breakfast', 午餐:'lunch', 晚餐:'dinner', 下午茶:'afternoon_snack'};
+
+async function writeJSON(path, body) {
+  const response = await fetch(path, {
+    method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  const result = await response.json();
+  if (!response.ok || result.ok === false) throw new Error(result.error || `请求失败 ${response.status}`);
+  return result;
+}
+
+async function reloadLiveData(message) {
+  if (message) toast(message);
+  if (typeof window.reloadFamilyData === 'function') await window.reloadFamilyData();
+}
 const TILE_OF = {
   meat: 'tile-meat', veg: 'tile-veg', soup: 'tile-soup', staple: 'tile-staple',
   egg: 'tile-egg', sea: 'tile-sea', fruit: 'tile-fruit', cold: 'tile-cold'
@@ -2421,24 +2450,22 @@ function openSwap(row) {
 }
 function closeSwap() { modal.classList.remove('open'); swapRow = null; }
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const findBtn = e.target.closest('.op-btn.find');
   if (findBtn) { e.stopPropagation(); openSwap(findBtn.closest('.dish-row')); return; }
 
   const item = e.target.closest('.mo-item');
-  if (item && swapRow) {
+  if (item && swapRow && !addTarget) {
     const d = DISH_DB.find(x => x.zh === item.dataset.zh);
-    if (d) {
-      swapRow.dataset.zh  = d.zh;
-      swapRow.dataset.cat = d.cat;
-      const tile = swapRow.querySelector('.tile');
-      tile.className = 'tile ' + (tile.classList.contains('tile-lg') ? 'tile-lg ' : 'tile-sm ')
-        + TILE_OF[d.cat];
-      tile.innerHTML = '<span>' + d.emoji + '</span>';
-      swapRow.querySelector('.info h4').textContent    = d.zh;
-      swapRow.querySelector('.info small').textContent = d.en;
-    }
-    closeSwap();
+    if (!d) return;
+    try {
+      await writeJSON('/api/tomorrow/replace', {
+        menu_id:Number(swapRow.dataset.menuId),
+        menu_item_id:Number(swapRow.dataset.menuItemId), new_dish_id:d.id
+      });
+      closeSwap();
+      await reloadLiveData('换菜已保存');
+    } catch (error) { toast(error.message); }
   }
 });
 moInput.addEventListener('input', () => renderMoList(moInput.value));
@@ -2485,22 +2512,6 @@ window.addEventListener('scroll', () => {
 }, { passive: true });
 
 /* ================= Kitchen Switch ================= */
-document.querySelectorAll('#kSwitch .k-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#kSwitch .k-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('kName').textContent = btn.dataset.k;
-  });
-});
-
-/* ================= Diner Stepper ================= */
-document.querySelectorAll('.stepper button').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const num = document.getElementById('dinerNum');
-    num.textContent = Math.max(1, parseInt(num.textContent) + parseInt(btn.dataset.step));
-  });
-});
-
 /* ================= Meal Accordion ================= */
 document.querySelectorAll('[data-meal]').forEach(row => {
   row.addEventListener('click', () => row.closest('.meal-card').classList.toggle('open'));
@@ -2727,12 +2738,17 @@ document.getElementById('drinkList').addEventListener('click', e => {
   const chip = e.target.closest('.chip');
   if (chip) chip.classList.toggle('on');
 });
-document.getElementById('drinkSave').addEventListener('click', () => {
+document.getElementById('drinkSave').addEventListener('click', async () => {
   if (!drinkTarget) return;
   const sel = [...document.querySelectorAll('#drinkList .chip.on')]
     .map(c => c.dataset.drink);
-  renderDrinkChips(drinkTarget, sel);
-  drinkModal.classList.remove('open');
+  const card = drinkTarget.closest('.meal-card');
+  try {
+    await writeJSON('/api/tomorrow/drinks', {menu_id:Number(card.dataset.menuId), drinks:sel});
+    renderDrinkChips(drinkTarget, sel);
+    drinkModal.classList.remove('open');
+    await reloadLiveData('早餐饮品已保存');
+  } catch (error) { toast(error.message); }
 });
 document.getElementById('drinkClose').addEventListener('click',
   () => drinkModal.classList.remove('open'));
@@ -2740,7 +2756,7 @@ drinkModal.addEventListener('click',
   e => { if (e.target === drinkModal) drinkModal.classList.remove('open'); });
 
 /* 餐卡内"＋ 添加饮品"；点已选饮品 chip 直接弹框更换（事件委托，兼容后续新建的早餐卡） */
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   const add = e.target.closest('.drink-add');
   if (add) { openDrinkPicker(add.closest('.drink-zone')); return; }
   const dc = e.target.closest('.drink-chip');
@@ -2794,11 +2810,18 @@ document.querySelectorAll('.meal-card').forEach(enhanceMeal);
 })();
 
 /* ================= 每餐人数步进器（事件委托） ================= */
-document.addEventListener('click', e => {
-  const st = e.target.closest('.md-controls .stepper button');
+document.addEventListener('click', async e => {
+  const st = e.target.closest('#page-menu .stepper button');
   if (!st) return;
+  const card = st.closest('.meal-card');
   const num = st.parentElement.querySelector('.num');
-  num.textContent = Math.max(1, parseInt(num.textContent) + parseInt(st.dataset.step));
+  const dinersCount = Math.max(1, parseInt(num.textContent) + parseInt(st.dataset.step));
+  try {
+    await writeJSON('/api/menu/diners-count', {
+      menu_id:Number(card.dataset.menuId), diners_count:dinersCount
+    });
+    await reloadLiveData(`用餐人数已改为 ${dinersCount}`);
+  } catch (error) { toast(error.message); }
 });
 
 /* ================= Per-Meal Interactions ================= */
@@ -2890,20 +2913,20 @@ function tagAllMissing() {
 }
 tagAllMissing();
 
-document.addEventListener('click', e => {
+document.addEventListener('click', async e => {
   /* 打开搜索换菜时清除添加模式 */
   if (e.target.closest('.op-btn.find')) addTarget = null;
 
-  /* 收藏 / 取消收藏：只记清单，不进推荐池 */
+  /* 收藏 / 取消收藏：真实写入菜品标签，不改变推荐权重。 */
   const fav = e.target.closest('.op-btn.fav');
   if (fav) {
     const row = fav.closest('.dish-row');
     const d = DISH_DB.find(x => x.zh === row.dataset.zh);
-    if (d) {
-      d.fav = !d.fav;
-      fav.classList.toggle('on', d.fav);
-      toast(d.fav ? '已收藏「' + d.zh + '」· 菜品库「收藏」里可看' : '已取消收藏「' + d.zh + '」');
-    }
+    if (!d) return;
+    try {
+      await writeJSON('/api/dishes/favorite', {dish_id:d.id});
+      await reloadLiveData('收藏状态已保存');
+    } catch (error) { toast(error.message); }
     return;
   }
 
@@ -2911,32 +2934,56 @@ document.addEventListener('click', e => {
   const sk = e.target.closest('.meal-skip');
   if (sk) {
     const card = sk.closest('.meal-card');
-    card.dataset.cancelled = '1';
-    card.style.display = 'none';
-    updateConfirmProgress();
+    try {
+      await writeJSON('/api/tomorrow/meal-state', {
+        menu_id:Number(card.dataset.menuId), meal_type:card.dataset.mealType, skipped:true
+      });
+      await reloadLiveData('餐次已取消，可从「加一餐」恢复');
+    } catch (error) { toast(error.message); }
     return;
   }
   /* 每餐确认 / 修改 */
   const cfmBtn = e.target.closest('.confirm-meal-btn');
-  if (cfmBtn) { setConfirmed(cfmBtn.closest('.meal-card'), true); return; }
+  if (cfmBtn) {
+    const card = cfmBtn.closest('.meal-card');
+    try {
+      await writeJSON('/api/tomorrow/confirm', {menu_id:Number(card.dataset.menuId)});
+      await reloadLiveData('餐单已确认');
+    } catch (error) { toast(error.message); }
+    return;
+  }
   const cStrip = e.target.closest('.confirmed-strip');
-  if (cStrip) { setConfirmed(cStrip.closest('.meal-card'), false); return; }
+  if (cStrip) {
+    const card = cStrip.closest('.meal-card');
+    try {
+      await writeJSON('/api/tomorrow/revert', {menu_id:Number(card.dataset.menuId)});
+      await reloadLiveData('餐单已恢复编辑');
+    } catch (error) { toast(error.message); }
+    return;
+  }
   /* 删除菜品 */
   const del = e.target.closest('.op-btn.del');
   if (del) {
-    const card = del.closest('.meal-card') || del.closest('.meal-hero');
-    del.closest('.dish-row').remove();
-    if (card) refreshBadge(card);
+    const row = del.closest('.dish-row');
+    try {
+      await writeJSON('/api/tomorrow/remove', {
+        menu_id:Number(row.dataset.menuId), menu_item_id:Number(row.dataset.menuItemId)
+      });
+      await reloadLiveData('菜品已删除');
+    } catch (error) { toast(error.message); }
     return;
   }
   /* 随机换一个 */
   const shuf = e.target.closest('.op-btn.shuf, .mh-dishes .op-btn:not(.find):not(.del)');
   if (shuf) {
     const row  = shuf.closest('.dish-row');
-    const pool = DISH_DB.filter(d =>
-      d.cat === row.dataset.cat && d.avail === 'ok' && d.zh !== row.dataset.zh);
-    const d = pool[Math.floor(Math.random() * pool.length)];
-    if (d) applyDish(row, d);
+    try {
+      const result = await writeJSON('/api/tomorrow/cycle-replace', {
+        menu_id:Number(row.dataset.menuId), menu_item_id:Number(row.dataset.menuItemId),
+        location:window.currentFamilyLocation()
+      });
+      await reloadLiveData(result.replaced ? '随机换菜已保存' : (result.message || '暂无可换菜品'));
+    } catch (error) { toast(error.message); }
     return;
   }
   /* 每餐操作按钮：备注 / 智能补充 / 添加（下一餐卡与餐卡通用） */
@@ -2947,39 +2994,27 @@ document.addEventListener('click', e => {
     if (act.dataset.act === 'note') {
       const note = detail.querySelector('.md-note');
       note.classList.add('show');
-      makeEditable(note.querySelector('.txt'), () => {
+      makeEditable(note.querySelector('.txt'), async () => {
         const txt = note.querySelector('.txt');
         /* 内容被清空：收起备注区，按钮回到「备注」 */
         if (!noteHasText(txt)) { txt.innerHTML = ''; note.classList.remove('show'); }
         syncNoteBtn(card);
+        try {
+          await writeJSON('/api/tomorrow/meal-note', {
+            menu_id:Number(card.dataset.menuId), meal_type:card.dataset.mealType,
+            note:txt.textContent.trim()
+          });
+          await reloadLiveData('备注已保存');
+        } catch (error) { toast(error.message); }
       });
     } else if (act.dataset.act === 'ai') {
-      /* 智能补充：把该餐缺失的分类【全部】补齐（每类一道）；
-         有一餐型料理 = 整餐已被覆盖，不再补（雇主反馈 #2/#8）。 */
-      const need = MEAL_NEED[card.dataset.mtype] || ['meat', 'veg', 'staple', 'soup'];
-      const rows = [...detail.querySelectorAll('.dish-row')];
-      const haveCats = rows.map(r => r.dataset.cat);
-      if (haveCats.includes('onepot')) { toast('已有一餐型料理，本餐无需补充'); return; }
-      const missingCats = need.filter(c => !hasCat(haveCats, c));
-      if (!missingCats.length) { toast('本餐结构完整，无需补充'); return; }
-      let added = 0;
-      for (const c of missingCats) {
-        const usedZh = [...detail.querySelectorAll('.dish-row')].map(r => r.dataset.zh);
-        const pool = DISH_DB.filter(d => d.avail === 'ok' && !d.manualOnly && !d.drink &&
-          !usedZh.includes(d.zh) &&
-          (c === 'meat' ? (d.cat === 'meat' || d.cat === 'sea') : d.cat === c));
-        if (!pool.length) continue;   /* 该分类菜池空（可能都缺食材），跳过 */
-        const d = pool[Math.floor(Math.random() * pool.length)];
-        detail.querySelector('.md-note').insertAdjacentHTML('beforebegin', miniRowHTML(d));
-        added++;
-      }
-      if (added) {
-        refreshBadge(card);
-        tagAllMissing();
-        toast('已按缺失分类补齐 ' + added + ' 道');
-      } else {
-        toast('菜池里没有可补的菜（该分类可能都缺食材）');
-      }
+      try {
+        await writeJSON('/api/tomorrow/ai-fill', {
+          menu_id:Number(card.dataset.menuId), location:window.currentFamilyLocation(),
+          meal_type:card.dataset.mealType
+        });
+        await reloadLiveData('AI 智能补充已保存');
+      } catch (error) { toast(error.message); }
     } else if (act.dataset.act === 'add') {
       addTarget = { detail, card };
       swapRow = null;
@@ -2994,24 +3029,20 @@ document.addEventListener('click', e => {
   const moPick = e.target.closest('.mo-item');
   if (moPick && addTarget) {
     const d = DISH_DB.find(x => x.zh === moPick.dataset.zh);
-    if (d) {
-      addTarget.detail.querySelector('.md-note')
-        .insertAdjacentHTML('beforebegin', miniRowHTML(d));
-      refreshBadge(addTarget.card);
-      tagAllMissing();
-    }
-    addTarget = null;
-    closeSwap();
+    if (!d) return;
+    try {
+      await writeJSON('/api/tomorrow/add', {
+        menu_id:Number(addTarget.card.dataset.menuId), dish_id:d.id,
+        meal_type:addTarget.card.dataset.mealType
+      });
+      addTarget = null;
+      closeSwap();
+      await reloadLiveData('菜品已加入餐单');
+    } catch (error) { toast(error.message); }
   }
 });
 
 /* ================= Kitchen Banner Color ================= */
-document.querySelectorAll('#kSwitch .k-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelector('.k-banner').classList.toggle('hk', btn.dataset.k.includes('香港'));
-  });
-});
-
 /* ================= 确认进度初始化（每餐确认在餐卡上，底部只显示进度） ================= */
 updateConfirmProgress();
 
@@ -3040,34 +3071,19 @@ function toast(msg) {
 /* ================= 重新生成：只生成未确认的餐，已确认的原样保留 =================
    已确认（is-confirmed）与已取消（隐藏）的餐卡跳过；
    未确认餐卡内每道菜按同分类从有食材的菜池重抽，不引入"不自动推荐"/饮品。 */
-document.getElementById('regenBtn').addEventListener('click', () => {
-  const cards = [...document.querySelectorAll('#page-menu .meal-card')]
-    .filter(c => c.style.display !== 'none');
-  const targets = cards.filter(c => !c.classList.contains('is-confirmed'));
-  const kept    = cards.length - targets.length;
-  if (!targets.length) {
-    toast('所有餐单都已确认，没有需要重新生成的餐');
-    return;
-  }
-  targets.forEach(card => {
-    const rows = [...card.querySelectorAll('.dish-row')];
-    const used = rows.map(r => r.dataset.zh);
-    rows.forEach(row => {
-      const pool = DISH_DB.filter(d =>
-        d.cat === row.dataset.cat && d.avail === 'ok' &&
-        !d.manualOnly && !d.drink && !used.includes(d.zh));
-      const d = pool[Math.floor(Math.random() * pool.length)];
-      if (d) { applyDish(row, d); used.push(d.zh); }
+document.getElementById('regenBtn').addEventListener('click', async () => {
+  const card = [...document.querySelectorAll('#page-menu .meal-card')]
+    .find(item => item.dataset.menuId && !item.classList.contains('is-confirmed'));
+  if (!card) { toast('没有可重新生成的草稿餐单'); return; }
+  try {
+    await writeJSON('/api/tomorrow/repair', {
+      menu_id:Number(card.dataset.menuId), location:window.currentFamilyLocation()
     });
-    refreshBadge(card);
-  });
-  tagAllMissing();
-  toast(kept > 0
-    ? '已重新生成 ' + targets.length + ' 餐 · ' + kept + ' 餐已确认未改动'
-    : '已重新生成全部 ' + targets.length + ' 餐');
+    await reloadLiveData('餐单已重新生成');
+  } catch (error) { toast(error.message); }
 });
 
-/* ================= Pantry: read-only real-data view ================= */
+/* ================= Pantry: real-data view ================= */
 const pInput  = document.querySelector('#page-pantry .search-in');
 const stockList = document.getElementById('stockList');
 
@@ -3126,11 +3142,11 @@ document.querySelectorAll('#page-menu .day-sec').forEach(daySec => {
     picker.className = 'meal-picker';
     /* 今天：五种餐次都可加；其他天：默认只给 下午茶/宵夜，
        若当天有餐次被取消，额外提供加回入口（雇主反馈 #4 #7 + 调整） */
-    const cancelled = [...daySec.querySelectorAll('.meal-card[data-cancelled]')]
+    const cancelled = [...daySec.querySelectorAll('.meal-card[data-cancelled="1"]')]
       .map(c => c.dataset.mtype);
     const isToday = daySec.id === 'day-today';
-    MEAL_TYPES.filter(t =>
-      isToday || t.zh === '下午茶' || t.zh === '宵夜' || cancelled.includes(t.zh)
+    MEAL_TYPES.filter(t => MEAL_TAG_OF[t.zh] &&
+      (isToday || t.zh === '下午茶' || cancelled.includes(t.zh))
     ).forEach(t => {
       const b = document.createElement('button');
       b.className = 'chip';
@@ -3145,29 +3161,13 @@ document.querySelectorAll('#page-menu .day-sec').forEach(daySec => {
   });
 });
 
-function createMeal(daySec, wrap, t) {
-  /* 加回已取消的餐次：清掉旧的隐藏卡，避免重复 */
-  daySec.querySelectorAll('.meal-card[data-cancelled]').forEach(c => {
-    if (c.dataset.mtype === t.zh) c.remove();
-  });
-  const card = document.createElement('div');
-  card.className = 'card meal-card open';
-  card.dataset.mtype = t.zh;
-  card.innerHTML =
-    '<div class="meal-row">' +
-    '<span class="meal-ico ' + t.ico + '">' + t.svg + '</span>' +
-    '<div class="info"><h3>' + t.zh + ' <small>' + t.en + '</small></h3>' +
-    '<small>2 人 Diners · 0 道菜 Dishes</small></div>' +
-    '<span class="chev">' + CHEV_SVG + '</span></div>' +
-    '<div class="meal-detail"></div>';
-  daySec.insertBefore(card, wrap);
-  enhanceMeal(card);   /* 统一注入：徽章/取消/人数/缺料/备注/三键/确认 */
-  card.querySelector('.meal-row').addEventListener('click', e => {
-    if (e.target.closest('.meal-skip')) return;
-    card.classList.toggle('open');
-  });
-  updateConfirmProgress();
-  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+async function createMeal(daySec, wrap, t) {
+  try {
+    await writeJSON('/api/tomorrow/meal-state', {
+      menu_id:Number(daySec.dataset.menuId), meal_type:MEAL_TAG_OF[t.zh], skipped:false
+    });
+    await reloadLiveData(`${t.zh}已恢复`);
+  } catch (error) { toast(error.message); }
 }
 
 /* ================= 默认三餐（雇主反馈 #8） =================
@@ -3199,7 +3199,9 @@ function dishCardHTML(d) {
     (d.banquet ? '<span class="d-fav">家宴</span>' : '') +
     '<span class="d-badge ' + a[2] + '">' + a[0] +
     '<small>' + a[1] + '</small></span></div>' +
-    '<div class="d-body"><h4>' + d.zh + '</h4><small>' + d.en + '</small></div></article>';
+    '<div class="d-body"><h4>' + d.zh + '</h4><small>' + d.en + '</small></div>' +
+    '<div class="d-card-actions"><button class="d-card-fav' + (d.fav ? ' on' : '') + '" type="button">♥ 收藏</button>' +
+    '<button class="d-card-pick" type="button">＋ 餐单</button></div></article>';
 }
 
 function renderDishGrid() {
@@ -3222,7 +3224,6 @@ function renderDishGrid() {
              : '没有匹配的菜品<small>NO MATCHING DISH</small>') + '</div>';
 }
 /* 收藏筛选：独立开关，可与分类/库存叠加 */
-/* Favourite writes are not open in this read-only phase. */
 document.querySelectorAll('#catRow .cat, #availRow .chip').forEach(b =>
   b.addEventListener('click', () => setTimeout(renderDishGrid, 0)));
 dSearch.addEventListener('input', renderDishGrid);
@@ -3252,20 +3253,23 @@ toggleGroup('#dmfMeals', true);
 toggleGroup('#dmfTags', true);
 bindAutoTranslate('dmfName', 'dmfEn');
 
-function saveDish(detailed) {
+async function saveDish(detailed) {
   const name = document.getElementById('dmfName').value.trim();
   if (!name) { document.getElementById('dmfName').focus(); return; }
   const cat  = detailed ? document.getElementById('dmfCat').value : 'veg';
   const en   = document.getElementById('dmfEn').value.trim() || autoTranslate(name) || 'New Dish';
   const tags = chipsGet('#dmfTags');
-  DISH_DB.unshift({ zh: name, en: en, cat: cat,
-                    emoji: EMOJI_OF[cat] || '🍽️', avail: 'ok',
-                    meals: chipsGet('#dmfMeals'),
-                    banquet: tags.includes('banquet'),
-                    manualOnly: tags.includes('manual') });
-  qaInput.value = '';
-  dishModal.classList.remove('open');
-  renderDishGrid();
+  try {
+    await writeJSON('/api/dishes/create', {
+      name_cn:name, name_en:en, category_id:DISH_CATEGORY_ID[cat],
+      meal_tags:(detailed ? chipsGet('#dmfMeals') : ['午餐','晚餐']).map(value => MEAL_TAG_OF[value]),
+      banquet:tags.includes('banquet'), custom_tags:tags.includes('manual') ? ['manual'] : [],
+      ingredients:[]
+    });
+    qaInput.value = '';
+    dishModal.classList.remove('open');
+    await reloadLiveData('新菜品已保存');
+  } catch (error) { toast(error.message); }
 }
 document.getElementById('dmfSave').addEventListener('click', () => saveDish(true));
 document.getElementById('dmfQuick').addEventListener('click', () => saveDish(false));
@@ -3345,50 +3349,39 @@ document.getElementById('defCat').addEventListener('change', () => {
 });
 document.getElementById('defTags').addEventListener('click',
   () => setTimeout(syncDefConditional, 0));
-document.getElementById('defPhotoClear').addEventListener('click', () => {
-  editPhoto = null;
-  document.getElementById('defPhoto').value = '';
-  renderDefPreview();
-});
-document.getElementById('defPhotoBtn').addEventListener('click',
-  () => document.getElementById('defPhoto').click());
-document.getElementById('defPhoto').addEventListener('change', e => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const r = new FileReader();
-  r.onload = () => { editPhoto = r.result; renderDefPreview(); };
-  r.readAsDataURL(f);
-});
 function closeDishEdit() { editModal.classList.remove('open'); editDish = null; }
 document.getElementById('defCancel').addEventListener('click', closeDishEdit);
 document.getElementById('defClose').addEventListener('click', closeDishEdit);
 editModal.addEventListener('click', e => { if (e.target === editModal) closeDishEdit(); });
 
-document.getElementById('defSave').addEventListener('click', () => {
+document.getElementById('defSave').addEventListener('click', async () => {
   if (!editDish) return;
   const tags = chipsGet('#defTags');
-  editDish.zh = document.getElementById('defName').value.trim() || editDish.zh;
-  editDish.en = document.getElementById('defEn').value.trim() || 'New Dish';
-  editDish.cat = document.getElementById('defCat').value;
-  editDish.stapleType = document.getElementById('defStaple').value || null;
-  editDish.soupType = chipsGet('#defSoup')[0] || null;
-  editDish.meals = chipsGet('#defMeals');
-  editDish.banquet = tags.includes('banquet');
-  editDish.manualOnly = tags.includes('manual');
-  editDish.drink = tags.includes('drink')
-    ? { sub: document.getElementById('defDrinkSub').value } : null;
-  editDish.proteins = chipsGet('#defProtein');
-  editDish.taste = document.getElementById('defTaste').value;
-  editDish.cookMethods = chipsGet('#defCook');
-  editDish.ingredients = splitList(document.getElementById('defIng').value);
-  editDish.veg = splitList(document.getElementById('defVeg').value);
-  editDish.emoji = EMOJI_OF[editDish.cat] || editDish.emoji || '🍽️';
-  editDish.photo = editPhoto;
-  closeDishEdit();
-  renderDishGrid();
+  const cat = document.getElementById('defCat').value;
+  const soupType = chipsGet('#defSoup')[0] || null;
+  try {
+    await writeJSON('/api/dishes/update', {
+      dish_id:editDish.id,
+      name_cn:document.getElementById('defName').value.trim() || editDish.zh,
+      name_en:document.getElementById('defEn').value.trim(),
+      category_id:DISH_CATEGORY_ID[cat],
+      carb_type:document.getElementById('defStaple').value || null,
+      meal_tags:chipsGet('#defMeals').map(value => MEAL_TAG_OF[value]),
+      banquet:tags.includes('banquet'),
+      custom_tags:[...(editDish.fav ? ['favorite'] : []), ...(tags.includes('manual') ? ['manual'] : [])],
+      drink:tags.includes('drink') ? {sub:document.getElementById('defDrinkSub').value} : null,
+      protein_types:chipsGet('#defProtein'), taste:document.getElementById('defTaste').value,
+      cooking_methods:chipsGet('#defCook'), ingredients:splitList(document.getElementById('defIng').value),
+      vegetables:splitList(document.getElementById('defVeg').value),
+      quick_soup:soupType === 'quick', slow_soup:soupType === 'slow',
+      manual_only_for_breakfast:tags.includes('manual')
+    });
+    closeDishEdit();
+    await reloadLiveData('菜品修改已保存');
+  } catch (error) { toast(error.message); }
 });
 
-/* Dish cards are display-only in Phase 2. */
+/* Dish cards persist edits, favorites, and manual menu additions. */
 
 /* ================= 加入餐单（菜品库 → 日期×餐次） =================
    面板从餐单页实际的 天×餐 动态生成：默认三餐；已取消/默认隐藏的餐次不出现，
@@ -3423,17 +3416,14 @@ function openPick(d) {
   pickModal.classList.add('open');
 }
 
-function addDishToMeal(card) {
-  const detail = card.querySelector('.meal-detail');
-  detail.querySelector('.md-note').insertAdjacentHTML('beforebegin', miniRowHTML(pickDish));
-  refreshBadge(card);
-  tagAllMissing();
-  pickModal.classList.remove('open');
-  /* 若该餐已确认，加入新菜后自动退回未确认态，避免"确认过的餐被悄悄改动" */
-  if (card.classList.contains('is-confirmed')) setConfirmed(card, false);
-  const sec = card.closest('.day-sec');
-  const dayName = sec ? sec.querySelector('.sec-head strong').textContent.trim().split(' ')[0] : '餐单';
-  toast('已加入 ' + dayName + ' · ' + card.dataset.mtype);
+async function addDishToMeal(card) {
+  try {
+    await writeJSON('/api/tomorrow/add', {
+      menu_id:Number(card.dataset.menuId), dish_id:pickDish.id, meal_type:card.dataset.mealType
+    });
+    pickModal.classList.remove('open');
+    await reloadLiveData('菜品已手动加入餐单');
+  } catch (error) { toast(error.message); }
 }
 
 document.getElementById('pickClose').addEventListener('click',
@@ -3441,7 +3431,7 @@ document.getElementById('pickClose').addEventListener('click',
 pickModal.addEventListener('click',
   e => { if (e.target === pickModal) pickModal.classList.remove('open'); });
 
-/* Real dish rows are rendered after the read-only bootstrap resolves. */
+/* Real dish rows are rendered after the bootstrap resolves. */
 </script>
 
 <!-- PHASE1_REAL_DATA_BRIDGE_START -->
@@ -3461,34 +3451,9 @@ pickModal.addEventListener('click',
     meat: '🥩', sea: '🐟', veg: '🥬', soup: '🍲', staple: '🍚',
     egg: '🥚', cold: '🥗', onepot: '🍲', fruit: '🍎'
   };
-  const WRITE_SELECTOR = [
-    '.stepper button', '.meal-skip', '#skipBtn', '.op-btn.fav', '.op-btn.shuf',
-    '.op-btn.find', '.op-btn.del', '.mh-dishes .op-btn:not(.find):not(.del)',
-    '.foot-btn[data-act]', '.confirm-meal-btn', '.confirmed-strip', '#regenBtn',
-    '.drink-add', '.drink-chip', '.add-meal-btn', '.meal-picker .chip'
-  ].join(',');
-
   let requestVersion = 0;
   let currentLocation = 'shenzhen';
   const rowTemplate = document.querySelector('#day-tomorrow .dish-row')?.cloneNode(true);
-
-  function readonlyToast() {
-    if (typeof toast === 'function') toast('当前为只读预览');
-  }
-
-  function stopWrite(event) {
-    const target = event.target instanceof Element ? event.target : event.target.parentElement;
-    if (!target) return;
-    const writeTarget = event.type === 'click' ? target.closest(WRITE_SELECTOR) : null;
-    if (event.type === 'click' && !writeTarget) return;
-    if (event.type === 'click' && !target.closest(MENU_PAGE) && !writeTarget.matches('#regenBtn')) return;
-    if ((event.type === 'input' || event.type === 'beforeinput') &&
-        (!target.closest(MENU_PAGE) || !target.matches('input, textarea, [contenteditable="true"]'))) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-    readonlyToast();
-  }
 
   function categoryOf(dish) {
     const raw = String(dish.category_id || dish.carb_type || '').toLowerCase();
@@ -3670,14 +3635,24 @@ pickModal.addEventListener('click',
     const diners = menu.diners_count == null ? 0 : menu.diners_count;
     card.dataset.menuId = menu.menu_id == null ? '' : String(menu.menu_id);
     card.dataset.mealType = mealType;
+    const mealSetting = menu.meal_settings?.[mealType];
+    const skipped = mealSetting ? Boolean(mealSetting.is_skipped) :
+      (mealType === 'afternoon_snack' && dishes.length === 0);
+    card.dataset.cancelled = skipped ? '1' : '';
+    card.style.display = skipped ? 'none' : '';
     const meta = card.querySelector('.meal-row .info > small');
     if (meta) meta.textContent = diners + ' 人 Diners · ' + dishes.length + ' 道菜 Dishes';
     card.querySelectorAll('.stepper .num').forEach(node => { node.textContent = String(diners); });
     const detail = card.querySelector('.meal-detail');
-    if (detail) setRows(detail, dishes, menu, menu.availability || {}, false);
+    if (detail) setRows(detail, dishes, menu, menu.availability || {}, true);
     setNote(card, (menu.meal_notes || {})[mealType] || '');
+    if (mealType === 'breakfast') {
+      const zone = card.querySelector('.drink-zone');
+      if (zone) renderDrinkChips(zone, (menu.meal_notes || {}).breakfast_drinks || []);
+    }
     setWarning(card, dishes, menu.availability || {});
     setCount(card, dishes.length);
+    setConfirmed(card, menu.status === 'confirmed');
   }
 
   function updateFutureDay(day, sectionId) {
@@ -3713,8 +3688,11 @@ pickModal.addEventListener('click',
     const dishContainer = hero.querySelector('.mh-dishes');
     if (dishContainer) setRows(dishContainer, dishes, menu, nextMeal?.availability || {}, true);
     setNote(hero, nextMeal?.note || '');
+    const drinkZone = hero.querySelector('.drink-zone');
+    if (drinkZone && mealType === 'breakfast') renderDrinkChips(drinkZone, nextMeal?.drinks || []);
     setWarning(hero, dishes, nextMeal?.availability || {});
     setCount(hero, dishes.length);
+    setConfirmed(hero, nextMeal?.status === 'confirmed');
   }
 
   function applyLocation(data) {
@@ -3733,12 +3711,15 @@ pickModal.addEventListener('click',
     updateDayNav(days);
     days.forEach((day, index) => {
       const section = document.getElementById(DAY_SECTIONS[index]);
-      if (section) updateSectionHeader(section, day);
+      if (section) {
+        updateSectionHeader(section, day);
+        section.dataset.menuId = day.menu?.menu_id == null ? '' : String(day.menu.menu_id);
+      }
       if (index > 0) updateFutureDay(day, DAY_SECTIONS[index]);
     });
     updateHero(data.next_meal || null);
     const progress = document.getElementById('confirmProgress');
-    if (progress) progress.innerHTML = '只读预览<small>READ ONLY</small>';
+    if (progress) progress.innerHTML = '可操作测试版<small>LIVE TEST DATA</small>';
     if (typeof window.hydratePhase2Tabs === 'function') window.hydratePhase2Tabs(data);
   }
 
@@ -3774,18 +3755,14 @@ pickModal.addEventListener('click',
     }
   }
 
-  document.addEventListener('click', event => {
-    const button = event.target instanceof Element ? event.target.closest('#kSwitch .k-btn') : null;
-    if (!button) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-    load(button.dataset.k.includes('香港') ? 'hongkong' : 'shenzhen');
-  }, true);
-  document.addEventListener('click', stopWrite, true);
-  document.addEventListener('beforeinput', stopWrite, true);
-  document.addEventListener('input', stopWrite, true);
+  window.reloadFamilyData = () => load(currentLocation);
+  window.currentFamilyLocation = () => currentLocation;
 
+  document.querySelectorAll('#kSwitch .k-btn').forEach(button => {
+    button.addEventListener('click', () => {
+      load(button.dataset.k.includes('香港') ? 'hongkong' : 'shenzhen');
+    });
+  });
   load();
 })();
 </script>
@@ -3796,37 +3773,12 @@ pickModal.addEventListener('click',
 (function () {
   'use strict';
 
-  const readonlyMessage = '当前为真实数据只读预览，写操作暂未开放';
   const historyList = document.getElementById('historyList');
   const historyStats = document.querySelectorAll('#page-history .stats strong');
   const pantrySearch = document.querySelector('#page-pantry .search-in');
-  const phase2WriteSelector = [
-    '#page-pantry .big-add', '#page-pantry #commonChips .chip',
-    '#page-pantry #stockList .mini-btn', '#page-pantry #recentList .mini-btn',
-    '#page-dishes .quick-add', '#page-dishes #favChip', '#page-dishes .d-card',
-    '#dishModal button', '#dishEditModal button', '#pickModal button'
-  ].join(',');
-
   const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[char]));
-
-  function readOnlyToast() {
-    if (typeof toast === 'function') toast(readonlyMessage);
-  }
-
-  function stopPhase2Write(event) {
-    const target = event.target instanceof Element ? event.target : null;
-    if (!target) return;
-    const enterWrite = event.type === 'keydown' && event.key === 'Enter' &&
-      target.matches('#page-pantry .search-in, #page-dishes .quick-add input');
-    const clickWrite = event.type === 'click' && target.closest(phase2WriteSelector);
-    if (!enterWrite && !clickWrite) return;
-    event.preventDefault();
-    event.stopPropagation();
-    event.stopImmediatePropagation();
-    readOnlyToast();
-  }
 
   function categoryOf(dish) {
     const raw = String(dish.category_id || dish.carb_type || '').toLowerCase();
@@ -3852,11 +3804,10 @@ pickModal.addEventListener('click',
     const expiring = item.status === 'expiring';
     const meta = recent ? `已用完 Used up · ${safe(String(item.updated_at || '').slice(0, 10))}` : safe(item.name_en || '');
     return `<div class="ing-row ${expiring ? 'is-expiring' : ''}" data-ingredient-id="${safe(item.ingredient_id)}" data-source="sqlite">
-      <span class="tile tile-lg tile-staple"><span>🧺</span></span>
       <div class="info"><h4>${safe(item.name_cn || item.ingredient_id)}${expiring ? '<span class="exp-badge">⏱ 快过期 EXP</span>' : ''}</h4><small>${meta}</small></div>
       <div class="ops">${recent
-        ? '<button class="mini-btn restock" type="button" disabled aria-disabled="true">补货 Restock</button>'
-        : `<button class="mini-btn warn ${expiring ? 'marked' : ''}" type="button" disabled aria-disabled="true">${expiring ? '⏱ 快过期 Expiring' : '标记快过期 Expiring'}</button><button class="mini-btn used-up" type="button" disabled aria-disabled="true">已用完 Used up</button>`}
+        ? '<button class="mini-btn restock" type="button" data-action="restock">补货 Restock</button>'
+        : `<button class="mini-btn warn ${expiring ? 'marked' : ''}" type="button" data-action="expiring">${expiring ? '撤销快过期 Undo' : '标记快过期 Expiring'}</button><button class="mini-btn used-up" type="button" data-action="consume">已用完 Used up</button>`}
       </div></div>`;
   }
 
@@ -3871,7 +3822,7 @@ pickModal.addEventListener('click',
     recentList.innerHTML = recent.length ? recent.map(item => pantryRow(item, true)).join('') :
       '<div class="mo-empty">暂无消耗记录<small>NO RECENT</small></div>';
     document.getElementById('commonChips').innerHTML = common.map(item =>
-      `<button class="chip ${item.in_pantry ? 'on' : ''}" type="button" disabled aria-disabled="true" data-source="sqlite">${safe(item.name_cn)} <small>${safe(item.name_en || '')}</small><span class="tick">${item.in_pantry ? '✓' : '+'}</span></button>`
+      `<button class="chip ${item.in_pantry ? 'on' : ''}" type="button" data-source="sqlite" data-ingredient-id="${safe(item.ingredient_id)}" data-in-pantry="${item.in_pantry ? 'true' : 'false'}">${safe(item.name_cn)} <small>${safe(item.name_en || '')}</small><span class="tick">${item.in_pantry ? '✓' : '+'}</span></button>`
     ).join('');
     const tabs = document.querySelectorAll('#page-pantry .tabs button');
     if (tabs[0]) tabs[0].querySelector('small').textContent = `All ${items.length}`;
@@ -3887,7 +3838,13 @@ pickModal.addEventListener('click',
       return {
         id: dish.id, zh: dish.name_cn, en: dish.name_en || '', cat,
         emoji: emoji[cat] || '🍽️', avail: availabilityOf(dish),
-        banquet: Boolean(dish.banquet), photo: dish.image || null, readonly: true
+        categoryId: dish.category_id, banquet: Boolean(dish.banquet), fav: Boolean(dish.favorite),
+        photo: dish.image || null, meals: (dish.meal_tags || []).map(tag => ({breakfast:'早餐',lunch:'午餐',dinner:'晚餐',afternoon_snack:'下午茶'}[tag] || tag)),
+        proteins: dish.protein_types || [], veg: dish.vegetables || [], cookMethods: dish.cooking_methods || [],
+        ingredients: dish.ingredients || [], stapleType: dish.carb_type || null,
+        soupType: dish.quick_soup ? 'quick' : dish.slow_soup ? 'slow' : null,
+        manualOnly: (dish.custom_tags || []).includes('manual') || Boolean(dish.manual_only_for_breakfast),
+        taste: dish.taste || 'normal', drink: dish.drink || null, customTags: dish.custom_tags || []
       };
     });
     DISH_DB.splice(0, DISH_DB.length, ...rows);
@@ -3937,9 +3894,90 @@ pickModal.addEventListener('click',
       row.hidden = Boolean(query) && !row.textContent.toLowerCase().includes(query);
     });
   });
-  document.addEventListener('click', stopPhase2Write, true);
-  document.addEventListener('keydown', stopPhase2Write, true);
 
+  async function phase3Post(path, body) {
+    const response = await fetch(path, {
+      method: 'POST', credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)
+    });
+    const result = await response.json();
+    if (!response.ok || result.ok === false) throw new Error(result.error || `请求失败 ${response.status}`);
+    return result;
+  }
+
+  async function reloadLive(message) {
+    if (message && typeof toast === 'function') toast(message);
+    if (typeof window.reloadFamilyData === 'function') await window.reloadFamilyData();
+  }
+
+  document.querySelector('#page-pantry .big-add').addEventListener('click', async () => {
+    const name = pantrySearch.value.trim();
+    if (!name) { pantrySearch.focus(); return; }
+    try {
+      await phase3Post('/api/pantry/add-by-name', {
+        ingredient_name: name, location: window.currentFamilyLocation(), submitted_by: 'owner'
+      });
+      pantrySearch.value = '';
+      await reloadLive(`已加入 ${name}`);
+    } catch (error) { toast(error.message); }
+  });
+  pantrySearch.addEventListener('keydown', event => {
+    if (event.key === 'Enter') document.querySelector('#page-pantry .big-add').click();
+  });
+
+  document.getElementById('commonChips').addEventListener('click', async event => {
+    const button = event.target.closest('[data-ingredient-id]');
+    if (!button) return;
+    if (button.dataset.inPantry === 'true') { toast('该食材已在当前库存'); return; }
+    try {
+      await phase3Post('/api/pantry/add', {
+        ingredient_id: button.dataset.ingredientId,
+        location: window.currentFamilyLocation(), submitted_by: 'owner'
+      });
+      await reloadLive('已加入常用食材');
+    } catch (error) { toast(error.message); }
+  });
+
+  async function pantryAction(event) {
+    const button = event.target.closest('[data-action]');
+    if (!button) return;
+    const row = button.closest('[data-ingredient-id]');
+    const payload = {ingredient_id: row.dataset.ingredientId, location: window.currentFamilyLocation()};
+    try {
+      if (button.dataset.action === 'expiring') {
+        await phase3Post('/api/pantry/update_status', {
+          ...payload, status: row.classList.contains('is-expiring') ? 'available' : 'expiring'
+        });
+      } else if (button.dataset.action === 'consume') {
+        await phase3Post('/api/pantry/consume', {...payload, consumed_by: 'owner'});
+      } else if (button.dataset.action === 'restock') {
+        await phase3Post('/api/pantry/add', {...payload, submitted_by: 'owner'});
+      }
+      await reloadLive('库存已保存');
+    } catch (error) { toast(error.message); }
+  }
+  stockList.addEventListener('click', pantryAction);
+  recentList.addEventListener('click', pantryAction);
+
+  dGrid.addEventListener('click', async event => {
+    const card = event.target.closest('.d-card');
+    if (!card) return;
+    const dish = DISH_DB.find(item => item.zh === card.dataset.zh);
+    if (!dish) return;
+    if (event.target.closest('.d-card-fav')) {
+      try {
+        await phase3Post('/api/dishes/favorite', {dish_id: dish.id});
+        await reloadLive('收藏状态已保存');
+      } catch (error) { toast(error.message); }
+      return;
+    }
+    if (event.target.closest('.d-card-pick')) { openPick(dish); return; }
+    openDishEdit(dish);
+  });
+  document.getElementById('favChip').addEventListener('click', event => {
+    event.currentTarget.classList.toggle('on');
+    renderDishGrid();
+  });
   historyList.replaceChildren();
   historyList.hidden = false;
   historyList.innerHTML = '<div class="mo-empty">加载真实历史<small>LOADING HISTORY</small></div>';

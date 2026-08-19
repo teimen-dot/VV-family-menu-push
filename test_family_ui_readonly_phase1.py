@@ -173,7 +173,7 @@ class ReadonlyBootstrapTests(unittest.TestCase):
         ])
         self.assertEqual(result["location"], "hongkong")
         self.assertEqual(result["role"], "worker")
-        self.assertTrue(result["readonly"])
+        self.assertFalse(result["readonly"])
         self.assertEqual(result["next_meal"]["meal_type"], "lunch")
         self.assertEqual(result["next_meal"]["date"], expected_dates[0])
         self.assertEqual(result["next_meal"]["diners_count"], 2)
@@ -316,13 +316,14 @@ class ReadonlyUiAssetTests(unittest.TestCase):
         self.assertEqual(self.target_bytes.count(self.PHASE2_BRIDGE_END), 1)
         self.assertIn(b'id="historyList" hidden', self.target_bytes)
 
-    def test_original_style_content_sha_is_unchanged(self):
-        source_style = re.search(br"<style>(.*?)</style>", self.source_bytes, re.DOTALL).group(1)
-        target_style = re.search(br"<style>(.*?)</style>", self.target_bytes, re.DOTALL).group(1)
-        self.assertEqual(
-            hashlib.sha256(target_style).hexdigest(),
-            hashlib.sha256(source_style).hexdigest(),
+    def test_menu_dish_rows_keep_fixed_mobile_geometry(self):
+        self.assertIn("#page-menu .dish-row { min-height: 87px; }", self.html)
+        self.assertIn(
+            "#page-menu .dish-row .tile-lg { width: 62px; height: 62px; flex: 0 0 62px; }",
+            self.html,
         )
+        self.assertIn("#page-menu .dish-row .dish-ops { flex: 0 0 auto; }", self.html)
+        self.assertIn("setRows(detail, dishes, menu, menu.availability || {}, true)", self.html)
 
     def test_bridge_uses_only_readonly_bootstrap_for_menu_business_data(self):
         self.assertIn("DISH_DB", self.source_bytes.decode("utf-8"))
@@ -336,7 +337,7 @@ class ReadonlyUiAssetTests(unittest.TestCase):
             self.assertNotIn(endpoint, self.bridge)
         self.assertEqual(self.bridge.count("fetch("), 1)
 
-    def test_bridge_binds_real_menu_fields_and_blocks_menu_writes_in_capture_phase(self):
+    def test_bridge_binds_real_menu_fields_without_capture_write_blockers(self):
         self.assertIn("dataset.menuId", self.bridge)
         self.assertIn("dataset.menuItemId", self.bridge)
         self.assertIn("dataset.dishId", self.bridge)
@@ -345,16 +346,9 @@ class ReadonlyUiAssetTests(unittest.TestCase):
         self.assertIn("menu.meal_notes", self.bridge)
         self.assertIn("nextMeal?.note", self.bridge)
         self.assertIn("availability", self.bridge)
-        self.assertIn("document.addEventListener('click', stopWrite, true)", self.bridge)
-        self.assertIn("document.addEventListener('input', stopWrite, true)", self.bridge)
-        self.assertIn("stopImmediatePropagation()", self.bridge)
-        self.assertIn("当前为只读预览", self.bridge)
-        for selector in (
-            ".stepper button", ".meal-skip", ".op-btn.fav", ".op-btn.shuf",
-            ".op-btn.find", ".op-btn.del", ".foot-btn[data-act]",
-            ".confirm-meal-btn", "#regenBtn", ".add-meal-btn",
-        ):
-            self.assertIn(selector, self.bridge)
+        self.assertNotIn("stopWrite", self.bridge)
+        self.assertNotIn("stopImmediatePropagation()", self.bridge)
+        self.assertNotIn("当前为只读预览", self.bridge)
 
     def test_target_does_not_reference_superseded_external_assets(self):
         self.assertNotIn('/family-menu/styles.css', self.html)
