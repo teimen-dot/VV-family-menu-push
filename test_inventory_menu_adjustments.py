@@ -147,48 +147,99 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertEqual(result["dish_almost"]["status"], "almost_available")
         self.assertEqual(result["dish_missing"]["status"], "missing")
 
-    def test_rice_is_the_only_pantry_exempt_required_ingredient(self):
+    def test_all_21_canonical_household_staples_are_pantry_exempt(self):
+        expected = {
+            "大米", "米", "米饭", "面粉", "水", "油", "食用油", "盐", "糖",
+            "生抽", "老抽", "蚝油", "醋", "料酒", "葱", "姜", "蒜", "淀粉",
+            "胡椒", "鸡精", "小米",
+        }
+        self.assertEqual(set(inventory.PANTRY_EXEMPT_CANONICAL_IDS), expected)
+
         conn = db.get_db()
-        for ingredient_id in ("rice", "oyster", "salt"):
+        dish_ids = []
+        for index, ingredient_id in enumerate(sorted(expected)):
             conn.execute(
                 "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
                 (ingredient_id, ingredient_id, ingredient_id),
             )
-        for dish_id, required_ids in (
-            ("dish_plain_rice", ("rice",)),
-            ("dish_rice_oyster", ("rice", "oyster")),
-            ("dish_salt", ("salt",)),
-        ):
+            dish_id = f"dish_exempt_{index}"
+            dish_ids.append(dish_id)
             conn.execute(
                 "INSERT INTO dishes (id,name_cn,name_en,meal_tags,is_active) VALUES (?,?,?,'[\"lunch\"]',1)",
                 (dish_id, dish_id, dish_id),
             )
-            for ingredient_id in required_ids:
-                conn.execute(
-                    "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
-                    (dish_id, ingredient_id),
-                )
+            conn.execute(
+                "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                (dish_id, ingredient_id),
+            )
         conn.commit()
-        pantry_count = conn.execute(
-            "SELECT COUNT(*) AS count FROM current_pantry WHERE location='shenzhen' AND is_active=1"
-        ).fetchone()["count"]
         conn.close()
-        self.assertEqual(pantry_count, 0)
+
+        for location in ("shenzhen", "hongkong"):
+            result = inventory.check_dishes_availability_batch(dish_ids, location)
+            self.assertTrue(all(row["status"] == "available" for row in result.values()))
+            self.assertTrue(all(not row["missing_required"] for row in result.values()))
+
+    def test_canonical_aliases_and_backend_ids_receive_the_same_exemption(self):
+        conn = db.get_db()
+        aliases = (
+            "rice", "白米", "scallion", "葱花",
+            "ginger", "garlic", "蒜蓉", "小米",
+        )
+        for index, ingredient_id in enumerate(aliases):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+            conn.execute(
+                "INSERT INTO dishes (id,name_cn,name_en,meal_tags,is_active) VALUES (?,?,?,'[\"lunch\"]',1)",
+                (f"dish_alias_{index}", ingredient_id, ingredient_id),
+            )
+            conn.execute(
+                "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                (f"dish_alias_{index}", ingredient_id),
+            )
+        conn.commit()
+        conn.close()
 
         result = inventory.check_dishes_availability_batch(
-            ["dish_plain_rice", "dish_rice_oyster", "dish_salt"], "shenzhen"
+            [f"dish_alias_{index}" for index in range(len(aliases))], "shenzhen"
         )
-        self.assertEqual(result["dish_plain_rice"]["status"], "available")
+        self.assertTrue(all(row["status"] == "available" for row in result.values()))
+
+    def test_non_exempt_common_beef_is_still_reported_precisely(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO ingredients (ingredient_id,name_cn,name_en,is_common) "
+            "VALUES ('beef','牛肉','Beef',1)"
+        )
+        conn.execute(
+            "INSERT INTO ingredients (ingredient_id,name_cn,name_en) "
+            "VALUES ('rice','米饭','Rice')"
+        )
+        conn.execute(
+            "INSERT INTO dishes (id,name_cn,name_en,meal_tags,is_active) "
+            "VALUES ('dish_rice_beef','牛肉饭','Beef rice','[\"lunch\"]',1)"
+        )
+        conn.executemany(
+            "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES ('dish_rice_beef',?,1)",
+            (("rice",), ("beef",)),
+        )
+        conn.commit()
+        conn.close()
+
+        result = inventory.check_dish_availability("dish_rice_beef", "shenzhen")
+
+        self.assertEqual(result["status"], "almost_available")
         self.assertEqual(
-            [item["ingredient_id"] for item in result["dish_plain_rice"]["available_required"]],
-            ["rice"],
+            [item["name_cn"] for item in result["missing_required"]],
+            ["牛肉"],
         )
-        self.assertEqual(result["dish_rice_oyster"]["status"], "almost_available")
-        self.assertEqual(
-            [item["ingredient_id"] for item in result["dish_rice_oyster"]["missing_required"]],
-            ["oyster"],
+        missing_label = "缺 " + "、".join(
+            item["name_cn"] for item in result["missing_required"]
         )
-        self.assertEqual(result["dish_salt"]["status"], "missing")
+        self.assertEqual(missing_label, "缺 牛肉")
+        self.assertNotIn("米饭", [item["name_cn"] for item in result["missing_required"]])
 
     def test_ai_fill_adds_only_inventory_available_lunch_roles(self):
         conn = db.get_db()

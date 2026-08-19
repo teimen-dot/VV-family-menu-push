@@ -195,13 +195,13 @@ class DatabaseRuleTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("历史", message)
 
-    def test_placeholder_classes_and_noodle_exemption_are_strict(self):
+    def test_placeholder_classes_and_exact_household_exemptions_are_strict(self):
         conn = db.get_db()
         for ingredient_id, name in (
             ("any_available_fish", "任意可用鱼"),
             ("any_available_protein", "任意可用蛋白质"),
             ("fish_stock", "鳕鱼"), ("tofu_stock", "豆腐"),
-            ("noodle_stock", "面条"), ("oyster", "生蚝"),
+            ("noodle_stock", "面条"), ("面粉", "面粉"), ("oyster", "生蚝"),
         ):
             conn.execute(
                 "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES (?,?,?)",
@@ -216,6 +216,7 @@ class DatabaseRuleTests(unittest.TestCase):
             ("fish_dish", "any_available_fish"),
             ("protein_dish", "any_available_protein"),
             ("noodle_dish", "noodle_stock"),
+            ("flour_dish", "面粉"),
         ):
             conn.execute(
                 "INSERT INTO dishes(id,name_cn,meal_tags,is_active) VALUES (?,?, '[\"lunch\"]',1)",
@@ -236,7 +237,14 @@ class DatabaseRuleTests(unittest.TestCase):
         self.assertEqual(inventory.check_dish_availability("fish_dish", "shenzhen")["status"], "available")
         self.assertEqual(inventory.check_dish_availability("fish_dish", "hongkong")["status"], "missing")
         self.assertEqual(inventory.check_dish_availability("protein_dish", "hongkong")["status"], "available")
-        self.assertEqual(inventory.check_dish_availability("noodle_dish", "shenzhen")["status"], "available")
+        self.assertEqual(
+            inventory.check_dish_availability("noodle_dish", "shenzhen")["status"],
+            "missing",
+        )
+        self.assertEqual(
+            inventory.check_dish_availability("flour_dish", "shenzhen")["status"],
+            "available",
+        )
 
     def test_zero_candidate_leaves_slots_empty_with_exact_message(self):
         conn = db.get_db()

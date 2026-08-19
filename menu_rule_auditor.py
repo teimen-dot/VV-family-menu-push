@@ -8,6 +8,7 @@ repairs, confirms, pushes, or mutates a menu.
 from collections import Counter
 from datetime import date
 
+from inventory import PANTRY_EXEMPT_CANONICAL_IDS, normalize_ingredient_id
 from rule_engine import (
     AUTO_POOL_MINIMUMS,
     BREAKFAST_COMPANION_STAPLES,
@@ -60,6 +61,11 @@ AUDIT_RULES = (
         "id": "A09",
         "clause": "§11.15 / §13.3",
         "rule": "深圳/香港轮换历史与库存上下文按厨房隔离。",
+    },
+    {
+        "id": "A10",
+        "clause": "§4 REQUIREMENTS_V2 / UI SoT DEFAULT_PANTRY",
+        "rule": "家庭常备 20 项加小米按 canonical id 视为可用，不得进入缺食材结果；非豁免缺口保持精确。",
     },
 )
 
@@ -454,6 +460,32 @@ def _audit_kitchen_scope(menu, evidence):
     return _check("A09", "FAIL" if failed else "PASS", scopes)
 
 
+def _audit_pantry_exemption(menu):
+    offenders = []
+    checked_missing = 0
+    for dish_id, availability in (menu.get("availability") or {}).items():
+        for ingredient in availability.get("missing_required", []):
+            checked_missing += 1
+            raw_id = ingredient.get("ingredient_id")
+            canonical_id = normalize_ingredient_id(raw_id)
+            if canonical_id in PANTRY_EXEMPT_CANONICAL_IDS:
+                offenders.append({
+                    "dish_id": dish_id,
+                    "ingredient_id": raw_id,
+                    "canonical_id": canonical_id,
+                    "name_cn": ingredient.get("name_cn"),
+                })
+    return _check(
+        "A10",
+        "FAIL" if offenders else "PASS",
+        {
+            "canonical_ids": sorted(PANTRY_EXEMPT_CANONICAL_IDS),
+            "checked_missing_ingredients": checked_missing,
+            "exempt_items_reported_missing": offenders,
+        },
+    )
+
+
 def audit_final_menu(menu, evidence=None, previous_records=None):
     """Audit one final menu. No generation helper state is accepted or trusted."""
     evidence = evidence or {}
@@ -468,6 +500,7 @@ def audit_final_menu(menu, evidence=None, previous_records=None):
         _audit_rotation(menu, evidence, previous_records),
         _audit_degradation(evidence),
         _audit_kitchen_scope(menu, evidence),
+        _audit_pantry_exemption(menu),
     ]
     violations = [item for item in checks if item["status"] == "FAIL"]
     shortages = [item for item in checks if item["status"] == "HARD_SHORTAGE"]

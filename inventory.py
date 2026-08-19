@@ -59,9 +59,22 @@ INGREDIENT_ALIASES = {
     "Pork": "猪肉",
     "猪肉": "猪肉",
     # Rice
-    "rice": "rice",
-    "Rice": "rice",
-    "米饭": "rice",
+    "rice": "米饭",
+    "Rice": "米饭",
+    "米饭": "米饭",
+    "白米": "米饭",
+    # Household seasoning backend IDs and canonical_map aliases
+    "scallion": "葱",
+    "Scallion": "葱",
+    "葱花": "葱",
+    "ginger": "姜",
+    "Ginger": "姜",
+    "garlic": "蒜",
+    "Garlic": "蒜",
+    "蒜蓉": "蒜",
+    "millet": "小米",
+    "Millet": "小米",
+    "小米": "小米",
     # Corn
     "corn": "corn",
     "Corn": "corn",
@@ -87,10 +100,13 @@ INGREDIENT_ALIASES = {
     "娃娃菜": "baby_cabbage",
 }
 
-# Pantry-exempt staples are still required recipe ingredients, but do not need
-# to be entered in Current Pantry to count as available.
-PANTRY_EXEMPT_INGREDIENT_IDS = {"rice"}
-PANTRY_EXEMPT_INGREDIENT_CLASSES = {"noodle"}
+# UI SoT deploy/index.html DEFAULT_PANTRY (20) + REQUIREMENTS_V2 v2.1 millet.
+# These are required recipe ingredients, but never need Current Pantry rows.
+PANTRY_EXEMPT_SOURCE_NAMES = (
+    "大米", "米", "米饭", "面粉", "水", "油", "食用油", "盐", "糖",
+    "生抽", "老抽", "蚝油", "醋", "料酒", "葱", "姜", "蒜", "淀粉",
+    "胡椒", "鸡精", "小米",
+)
 
 PLACEHOLDER_CLASS = {
     "any_available_vegetable": "vegetable",
@@ -121,6 +137,11 @@ def normalize_ingredient_id(raw_id):
     if not raw_id:
         return raw_id
     return INGREDIENT_ALIASES.get(raw_id, raw_id)
+
+
+PANTRY_EXEMPT_CANONICAL_IDS = frozenset(
+    normalize_ingredient_id(name) for name in PANTRY_EXEMPT_SOURCE_NAMES
+)
 
 
 def _ingredient_classes(conn, ingredient_ids):
@@ -623,12 +644,9 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                         available_required.append(ing_data)
                     else:
                         missing_required.append(ing_data)
-                elif (norm_id in PANTRY_EXEMPT_INGREDIENT_IDS
+                elif (norm_id in PANTRY_EXEMPT_CANONICAL_IDS
                         or norm_id in normalized_pantry
                         or ing["ingredient_id"] in available_ings):
-                    available_required.append(ing_data)
-                elif (class_mapping_known
-                        and bool(required_classes & PANTRY_EXEMPT_INGREDIENT_CLASSES)):
                     available_required.append(ing_data)
                 elif not class_mapping_known:
                     unknown_required.append(ing_data)

@@ -66,7 +66,7 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
     def test_clause_catalog_is_numbered_and_source_tagged(self):
         self.assertEqual([item["id"] for item in AUDIT_RULES], [
             "A01", "A02", "A03", "A04", "A05",
-            "A06", "A07", "A08", "A09",
+            "A06", "A07", "A08", "A09", "A10",
         ])
         self.assertTrue(all(item["clause"].startswith("§") for item in AUDIT_RULES))
 
@@ -140,6 +140,24 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
 
         self.assertEqual(audit["status"], "VIOLATION")
         self.assertIn("A09", audit["violation_ids"])
+
+    def test_pantry_exempt_ingredient_reported_missing_is_rejected(self):
+        record = valid_record()
+        dish_id = record["menu"]["meals"]["lunch"][0]["dish_id"]
+        record["menu"]["availability"] = {
+            dish_id: {
+                "required": [{"ingredient_id": "garlic", "name_cn": "蒜"}],
+                "available_required": [],
+                "missing_required": [
+                    {"ingredient_id": "garlic", "name_cn": "蒜"}
+                ],
+            }
+        }
+
+        audit = audit_final_menu(record["menu"], record["evidence"])
+
+        self.assertEqual(audit["status"], "VIOLATION")
+        self.assertIn("A10", audit["violation_ids"])
 
     def test_healthy_pool_filter_empty_is_explicit_hard_shortage_not_degradation(self):
         record = valid_record()
