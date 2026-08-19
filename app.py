@@ -56,7 +56,8 @@ PWA_DIR = os.path.join(BASE_DIR, "pwa", "family")
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 FAMILY_MENU_UI_DIR = os.path.join(PUBLIC_DIR, "family-menu")
 LOCATIONS = {"shenzhen": "深圳 Shenzhen", "hongkong": "香港 Hong Kong"}
-SESSION_COOKIE_NAME = "__Host-family_session"
+PRODUCTION_SESSION_COOKIE_NAME = "__Host-family_session"
+PREVIEW_SESSION_COOKIE_NAME = "family_session"
 SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
 LOGIN_WINDOW_SECONDS = 5 * 60
 LOGIN_MAX_FAILURES = 8
@@ -341,6 +342,21 @@ def create_session(username, role):
     return f"{encoded}.{_base64url_encode(signature)}"
 
 
+def session_cookie_name():
+    if os.environ.get("APP_ENV", "development").strip().lower() == "production":
+        return PRODUCTION_SESSION_COOKIE_NAME
+    return PREVIEW_SESSION_COOKIE_NAME
+
+
+def session_cookie_header(value, max_age):
+    name = session_cookie_name()
+    secure = "; Secure" if name == PRODUCTION_SESSION_COOKIE_NAME else ""
+    return (
+        f"{name}={value}; Path=/; Max-Age={max_age}"
+        f"{secure}; HttpOnly; SameSite=Lax"
+    )
+
+
 def session_from_cookie(cookie_header):
     if not cookie_header:
         return None, None
@@ -349,7 +365,7 @@ def session_from_cookie(cookie_header):
         cookie.load(cookie_header)
     except Exception:
         return None, None
-    morsel = cookie.get(SESSION_COOKIE_NAME)
+    morsel = cookie.get(session_cookie_name())
     if not morsel:
         return None, None
     token = morsel.value
@@ -3396,12 +3412,12 @@ class AppHandler(BaseHTTPRequestHandler):
         if session_id:
             self.send_header(
                 "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}={session_id}; Path=/; Max-Age={SESSION_TTL_SECONDS}; Secure; HttpOnly; SameSite=Lax",
+                session_cookie_header(session_id, SESSION_TTL_SECONDS),
             )
         elif clear_session:
             self.send_header(
                 "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax",
+                session_cookie_header("", 0),
             )
         self.end_headers()
 
@@ -3410,7 +3426,7 @@ class AppHandler(BaseHTTPRequestHandler):
         if refreshed:
             self.send_header(
                 "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}={refreshed}; Path=/; Max-Age={SESSION_TTL_SECONDS}; Secure; HttpOnly; SameSite=Lax",
+                session_cookie_header(refreshed, SESSION_TTL_SECONDS),
             )
 
     def send_login_page(self, error=""):

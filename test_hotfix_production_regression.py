@@ -16,15 +16,80 @@ TEST_ENV = {
 }
 
 
+class HeaderRecorder:
+    def __init__(self):
+        self.headers = []
+        self._session_refresh = None
+
+    def send_response(self, status):
+        self.status = status
+
+    def send_header(self, name, value):
+        self.headers.append((name, value))
+
+    def end_headers(self):
+        pass
+
+    def cookie_header(self):
+        return next(value for name, value in self.headers if name == "Set-Cookie")
+
+
 class SessionTests(unittest.TestCase):
     def test_signed_session_is_30_days_and_restart_safe(self):
         with patch.dict(os.environ, TEST_ENV, clear=False):
             token = app.create_session("vivian", "owner")
-            refreshed, session = app.session_from_cookie(f"{app.SESSION_COOKIE_NAME}={token}")
+            refreshed, session = app.session_from_cookie(f"{app.session_cookie_name()}={token}")
             self.assertEqual(session["role"], "owner")
             self.assertNotEqual(refreshed, token)
             self.assertEqual(app.SESSION_TTL_SECONDS, 30 * 24 * 60 * 60)
-            self.assertIsNone(app.session_from_cookie(f"{app.SESSION_COOKIE_NAME}={token}x")[1])
+            self.assertIsNone(app.session_from_cookie(f"{app.session_cookie_name()}={token}x")[1])
+
+    def test_preview_login_logout_and_refresh_cookies_work_over_http(self):
+        with patch.dict(os.environ, TEST_ENV, clear=False):
+            login = HeaderRecorder()
+            app.AppHandler.send_redirect(login, "/tomorrow", session_id="login-token")
+
+            logout = HeaderRecorder()
+            app.AppHandler.send_redirect(logout, "/login", clear_session=True)
+
+            refresh = HeaderRecorder()
+            refresh._session_refresh = "refresh-token"
+            app.AppHandler.send_session_refresh_header(refresh)
+
+            token = app.create_session("vivian", "owner")
+            self.assertEqual(app.session_cookie_name(), "family_session")
+            self.assertIsNotNone(app.session_from_cookie(f"family_session={token}")[1])
+            self.assertIsNone(app.session_from_cookie(f"__Host-family_session={token}")[1])
+            self.assertIn(f"Max-Age={app.SESSION_TTL_SECONDS}", login.cookie_header())
+            self.assertIn("Max-Age=0", logout.cookie_header())
+            self.assertIn(f"Max-Age={app.SESSION_TTL_SECONDS}", refresh.cookie_header())
+            self.assertTrue(login.cookie_header().startswith("family_session=login-token;"))
+            self.assertTrue(logout.cookie_header().startswith("family_session=;"))
+            self.assertTrue(refresh.cookie_header().startswith("family_session=refresh-token;"))
+            for header in (login.cookie_header(), logout.cookie_header(), refresh.cookie_header()):
+                self.assertNotIn("Secure", header)
+                self.assertIn("HttpOnly; SameSite=Lax", header)
+
+    def test_production_login_logout_and_refresh_cookies_keep_host_and_secure(self):
+        production_env = {**TEST_ENV, "APP_ENV": "production"}
+        with patch.dict(os.environ, production_env, clear=False):
+            login = HeaderRecorder()
+            app.AppHandler.send_redirect(login, "/tomorrow", session_id="login-token")
+
+            logout = HeaderRecorder()
+            app.AppHandler.send_redirect(logout, "/login", clear_session=True)
+
+            refresh = HeaderRecorder()
+            refresh._session_refresh = "refresh-token"
+            app.AppHandler.send_session_refresh_header(refresh)
+
+            token = app.create_session("vivian", "owner")
+            self.assertEqual(app.session_cookie_name(), "__Host-family_session")
+            self.assertIsNotNone(app.session_from_cookie(f"__Host-family_session={token}")[1])
+            self.assertIsNone(app.session_from_cookie(f"family_session={token}")[1])
+            for header in (login.cookie_header(), logout.cookie_header(), refresh.cookie_header()):
+                self.assertTrue(header.startswith("__Host-family_session="))
+                self.assertIn("; Secure; HttpOnly; SameSite=Lax", header)
 
     def test_production_requires_fixed_session_secret(self):
         with patch.dict(os.environ, {"APP_ENV": "production", "H5_BASE_URL": "https://menu.ourmenu.site", "SESSION_SECRET": ""}, clear=False):
