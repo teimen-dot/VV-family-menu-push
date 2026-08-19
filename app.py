@@ -848,11 +848,12 @@ def _lookup_english_name(cn_name, name_map):
     return ""
 
 
-def get_history_menus(days=30, location=None):
+def get_history_menus(days=30, location=None, as_of=None):
     conn = get_db()
     try:
-        today = date.today().isoformat()
-        past = (date.today() - timedelta(days=days)).isoformat()
+        history_day = as_of or date.today()
+        today = history_day.isoformat()
+        past = (history_day - timedelta(days=days)).isoformat()
         if location:
             menus = conn.execute(
                 "SELECT * FROM menus WHERE location=? AND date >= ? AND date < ? "
@@ -996,6 +997,114 @@ def _bootstrap_image_url(value):
     return f"/photos/{value}"
 
 
+def _existing_photo_url(value):
+    """Return a browser URL only when the configured local photo really exists."""
+    if not value:
+        return None
+    if value.startswith(("http://", "https://")):
+        return value
+    filename = value[8:] if value.startswith("/photos/") else value
+    try:
+        filepath = resolve_photo_path(PHOTOS_DIR, filename)
+    except PhotoValidationError:
+        return None
+    if not os.path.isfile(filepath):
+        return None
+    return f"/photos/{filename}"
+
+
+def _get_recent_pantry_rows(location, limit=20):
+    """Read the latest inactive pantry rows without creating preview-only tables."""
+    conn = get_db()
+    try:
+        rows = conn.execute(
+            "SELECT cp.ingredient_id, cp.updated_at, i.name_cn, i.name_en "
+            "FROM current_pantry cp "
+            "JOIN ingredients i ON i.ingredient_id=cp.ingredient_id "
+            "WHERE cp.location=? AND cp.is_active=0 "
+            "ORDER BY datetime(cp.updated_at) DESC, i.name_cn LIMIT ?",
+            (location, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def build_family_ui_readonly_tabs(location, as_of=None):
+    """Build the three non-menu tabs entirely from SQLite, with no write side effects."""
+    with legacy_schema_safe_availability():
+        dishes = get_all_dishes()
+        availability = get_dish_availability([dish["id"] for dish in dishes], location)
+        for dish in dishes:
+            if dish["id"] in availability:
+                continue
+            item = check_dish_availability(dish["id"], location)
+            availability[dish["id"]] = {
+                "available": item["status"] == "available",
+                "missing_count": len(item["missing_required"]),
+                "missing_names": [row["name_cn"] for row in item["missing_required"]],
+                "missing_names_en": [row.get("name_en", "") for row in item["missing_required"]],
+                "matched_names": [row["name_cn"] for row in item["available_required"]],
+                "total_ingredients": len(item["required"]),
+                "status": item["status"],
+                "data_complete": item.get("data_complete", False),
+            }
+        pantry = get_current_pantry(location)
+        common = get_common_ingredients()
+        recent = _get_recent_pantry_rows(location)
+        history = get_history_menus(30, location, as_of=as_of)
+
+    dish_rows = []
+    for dish in dishes:
+        dish_rows.append({
+            "id": dish["id"],
+            "name_cn": dish.get("name_cn") or dish["id"],
+            "name_en": dish.get("name_en") or "",
+            "category_id": dish.get("category_id") or "",
+            "carb_type": dish.get("carb_type"),
+            "banquet": bool(dish.get("banquet")),
+            "image": _existing_photo_url(dish.get("image")),
+            "availability": availability.get(dish["id"], {
+                "status": "incomplete",
+                "missing_count": 0,
+                "missing_names": [],
+                "missing_names_en": [],
+                "data_complete": False,
+            }),
+        })
+
+    history_meals = 0
+    history_dishes = 0
+    for menu in history:
+        for items in menu.get("meals", {}).values():
+            if items:
+                history_meals += 1
+            history_dishes += len(items)
+            for item in items:
+                item["image"] = _existing_photo_url(item.get("image"))
+
+    active_ids = {item["ingredient_id"] for item in pantry.get("items", [])}
+    return {
+        "pantry": {
+            "location": location,
+            "items": pantry.get("items", []),
+            "common": [
+                {**item, "in_pantry": item["ingredient_id"] in active_ids}
+                for item in common
+            ],
+            "recent": recent,
+        },
+        "dishes": dish_rows,
+        "categories": get_categories(),
+        "history": history,
+        "history_stats": {
+            "days": len(history),
+            "meals": history_meals,
+            "dishes": history_dishes,
+        },
+    }
+
+
 def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
     """Build the final UI's four-day read-only view without generating or mutating data."""
     if location not in LOCATIONS:
@@ -1070,6 +1179,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
             "availability": menu.get("availability", {}),
         }
 
+    tabs = build_family_ui_readonly_tabs(location, as_of=today)
     return {
         "readonly": True,
         "role": role,
@@ -1078,6 +1188,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
         "server_now": now.isoformat(timespec="seconds"),
         "days": days,
         "next_meal": next_meal,
+        **tabs,
     }
 
 
@@ -3362,19 +3473,13 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_header("Location", "/pantry")
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
-        elif path == "/" or path == "/tomorrow":
+        elif path in ("/", "/tomorrow", "/pantry", "/dishes", "/history"):
             self.send_html(render_family_menu_readonly(role, location))
-        elif path == "/pantry":
-            self.send_html(render_pantry(role, location))
         elif path == "/pantry/submit":
             # V6: pantry submit 已合并到主页面，重定向
             self.send_response(302)
             self.send_header("Location", "/pantry")
             self.end_headers()
-        elif path == "/dishes":
-            self.send_html(render_dishes(role, location))
-        elif path == "/history":
-            self.send_html(render_history(role, location))
 
         # API 路由
         elif path == "/api/dishes":

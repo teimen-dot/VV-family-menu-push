@@ -46,6 +46,16 @@ def menu_for(date_str, location, with_dishes=True, **_kwargs):
     }
 
 
+def empty_real_tabs(*_args, **_kwargs):
+    return {
+        "pantry": {"location": "shenzhen", "items": [], "common": [], "recent": []},
+        "dishes": [],
+        "categories": [],
+        "history": [],
+        "history_stats": {"days": 0, "meals": 0, "dishes": 0},
+    }
+
+
 class EffectiveDinersCountTests(unittest.TestCase):
     @staticmethod
     def _menu_row(**overrides):
@@ -135,6 +145,15 @@ class BanquetDishPreservationTests(unittest.TestCase):
 
 
 class ReadonlyBootstrapTests(unittest.TestCase):
+    def setUp(self):
+        self.tabs_patch = patch.object(
+            app, "build_family_ui_readonly_tabs", side_effect=empty_real_tabs
+        )
+        self.tabs_patch.start()
+
+    def tearDown(self):
+        self.tabs_patch.stop()
+
     def test_bootstrap_reads_exact_four_days_and_keeps_location_boundary(self):
         now = datetime(2026, 8, 18, 11, 0)
         calls = []
@@ -273,6 +292,8 @@ class ReadonlyUiAssetTests(unittest.TestCase):
     SOURCE_PATH = "/Users/heymen/Documents/kimi/Workspaces/菜单系统ui重组/deploy/index.html"
     BRIDGE_START = b"<!-- PHASE1_REAL_DATA_BRIDGE_START -->"
     BRIDGE_END = b"<!-- PHASE1_REAL_DATA_BRIDGE_END -->"
+    PHASE2_BRIDGE_START = b"<!-- PHASE2_REAL_TABS_BRIDGE_START -->"
+    PHASE2_BRIDGE_END = b"<!-- PHASE2_REAL_TABS_BRIDGE_END -->"
 
     @classmethod
     def setUpClass(cls):
@@ -288,17 +309,12 @@ class ReadonlyUiAssetTests(unittest.TestCase):
         with open(os.path.join(cls.root, "styles.css"), encoding="utf-8") as handle:
             cls.css = handle.read()
 
-    def test_source_is_byte_for_byte_identical_after_bridge_is_removed(self):
+    def test_phase1_and_phase2_bridges_are_single_bounded_blocks(self):
         self.assertEqual(self.target_bytes.count(self.BRIDGE_START), 1)
         self.assertEqual(self.target_bytes.count(self.BRIDGE_END), 1)
-        stripped = re.sub(
-            self.BRIDGE_START + br".*?" + self.BRIDGE_END + br"\n\n",
-            b"",
-            self.target_bytes,
-            count=1,
-            flags=re.DOTALL,
-        )
-        self.assertEqual(stripped, self.source_bytes)
+        self.assertEqual(self.target_bytes.count(self.PHASE2_BRIDGE_START), 1)
+        self.assertEqual(self.target_bytes.count(self.PHASE2_BRIDGE_END), 1)
+        self.assertIn(b'id="historyList" hidden', self.target_bytes)
 
     def test_original_style_content_sha_is_unchanged(self):
         source_style = re.search(br"<style>(.*?)</style>", self.source_bytes, re.DOTALL).group(1)
@@ -345,7 +361,7 @@ class ReadonlyUiAssetTests(unittest.TestCase):
         self.assertNotIn('/family-menu/app.js', self.html)
         self.assertIn("viewport-fit=cover", self.html)
 
-    def test_server_serves_frozen_source_plus_bridge_without_rewriting_it(self):
+    def test_server_serves_final_source_with_bounded_bridges(self):
         rendered = app.render_family_menu_readonly("worker", "hongkong")
         self.assertEqual(rendered, self.html)
 
@@ -490,7 +506,8 @@ class LegacySchemaBootstrapTests(unittest.TestCase):
             with self.subTest(source=source):
                 raw_menu = menu_for("2026-08-18", "shenzhen")
                 raw_menu["meals"]["breakfast"][0]["image"] = source
-                with patch.object(app, "get_menu_with_dishes", return_value=raw_menu):
+                with patch.object(app, "get_menu_with_dishes", return_value=raw_menu), \
+                     patch.object(app, "build_family_ui_readonly_tabs", side_effect=empty_real_tabs):
                     result = app.build_family_menu_bootstrap(
                         "shenzhen", "owner", now=datetime(2026, 8, 18, 8, 0)
                     )

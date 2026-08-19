@@ -1678,7 +1678,7 @@ button { font-family: inherit; }
       <input class="search-in" type="text" placeholder="搜索或添加食材 / Search ingredient">
     </div>
 
-    <button class="big-add">
+    <button class="big-add" type="button" disabled aria-disabled="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
            stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       <span>添加食材 <small>ADD INGREDIENT</small></span>
@@ -1687,65 +1687,15 @@ button { font-family: inherit; }
     <div class="sec-head">
       <strong>常用食材</strong> <span>点击快速加入 Tap to add</span> <small>COMMON</small>
     </div>
-    <div class="chip-grid" id="commonChips">
-      <button class="chip">鸡蛋 <small>Egg</small><span class="tick">✓</span></button>
-      <button class="chip">牛肉 <small>Beef</small><span class="tick">✓</span></button>
-      <button class="chip">小白菜 <small>Bok Choy</small><span class="tick">✓</span></button>
-      <button class="chip">红薯 <small>Sweet Potato</small><span class="tick">✓</span></button>
-      <button class="chip">玉米 <small>Corn</small><span class="tick">✓</span></button>
-      <button class="chip">西兰花 <small>Broccoli</small><span class="tick">✓</span></button>
-      <button class="chip">豆腐 <small>Tofu</small><span class="tick">✓</span></button>
-      <button class="chip">鸡肉 <small>Chicken</small><span class="tick">✓</span></button>
-    </div>
+    <div class="chip-grid" id="commonChips" aria-live="polite"></div>
 
     <div class="tabs">
-      <button class="on">全部 <small>All 52</small></button>
+      <button class="on">全部 <small>All 0</small></button>
       <button>需处理 <small>Attention</small><span class="cnt">0</span></button>
-      <button>最近消耗 <small>Recent · 20</small></button>
+      <button>最近消耗 <small>Recent · 0</small></button>
     </div>
 
-    <div class="ing-list" id="stockList">
-      <div class="ing-row">
-        <span class="tile tile-lg tile-egg"><span>🥚</span></span>
-        <div class="info">
-          <h4>鸡蛋</h4><small>Egg</small>
-          <div class="ops">
-            <button class="mini-btn warn">⏱ 快过期 Expiring</button>
-            <button class="mini-btn">已用完 Used up</button>
-          </div>
-        </div>
-      </div>
-      <div class="ing-row">
-        <span class="tile tile-lg tile-meat"><span>🥩</span></span>
-        <div class="info">
-          <h4>牛肉</h4><small>Beef</small>
-          <div class="ops">
-            <button class="mini-btn warn">⏱ 快过期 Expiring</button>
-            <button class="mini-btn">已用完 Used up</button>
-          </div>
-        </div>
-      </div>
-      <div class="ing-row">
-        <span class="tile tile-lg tile-veg"><span>🥬</span></span>
-        <div class="info">
-          <h4>小白菜</h4><small>Bok Choy</small>
-          <div class="ops">
-            <button class="mini-btn warn">⏱ 快过期 Expiring</button>
-            <button class="mini-btn">已用完 Used up</button>
-          </div>
-        </div>
-      </div>
-      <div class="ing-row">
-        <span class="tile tile-lg tile-staple"><span>🍠</span></span>
-        <div class="info">
-          <h4>红薯</h4><small>Sweet Potato</small>
-          <div class="ops">
-            <button class="mini-btn warn">⏱ 快过期 Expiring</button>
-            <button class="mini-btn">已用完 Used up</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <div class="ing-list" id="stockList"><div class="mo-empty">加载真实库存<small>LOADING PANTRY</small></div></div>
     <div class="ing-list" id="recentList" style="display:none;"></div>
   </section>
 
@@ -1772,13 +1722,13 @@ button { font-family: inherit; }
         <span class="qa-t"><strong>快速录入新菜品</strong><small>Quick Add · 只需菜名，后面再补资料 Name only</small></span>
       </div>
       <div class="qa-row">
-        <input type="text" placeholder="输入菜名，例如：番茄炒蛋 / Dish name">
-        <button>添加<small>ADD</small></button>
+        <input type="text" placeholder="本轮只读 / Read only" disabled aria-disabled="true">
+        <button type="button" disabled aria-disabled="true">暂未开放<small>READ ONLY</small></button>
       </div>
     </div>
 
     <div class="avail fav-row">
-      <button class="chip chip-fav" id="favChip">❤️ 收藏 <small>Saved · 不进推荐池</small></button>
+      <button class="chip chip-fav" id="favChip" type="button" disabled aria-disabled="true">❤️ 收藏 <small>Saved · 暂未开放</small></button>
     </div>
 
     <div class="search-wrap">
@@ -1841,32 +1791,7 @@ button { font-family: inherit; }
       <button class="chip">差少量 <small>Almost</small></button>
     </div>
 
-    <div class="dish-grid">
-      <button class="d-card">
-        <div class="d-img tile-egg"><span>🍅</span><span class="d-badge db-ok">库存可做<small>AVAIL</small></span></div>
-        <div class="d-body"><h4>番茄炒蛋</h4><small>Stir-fried Tomato with Egg</small></div>
-      </button>
-      <button class="d-card">
-        <div class="d-img tile-veg"><span>🥦</span><span class="d-badge db-ok">库存可做<small>AVAIL</small></span></div>
-        <div class="d-body"><h4>西兰花炒鸡胸肉</h4><small>Chicken with Broccoli</small></div>
-      </button>
-      <button class="d-card">
-        <div class="d-img tile-meat"><span>🥘</span><span class="d-badge db-low">差少量<small>ALMOST</small></span></div>
-        <div class="d-body"><h4>红烧五花肉</h4><small>Braised Pork Belly</small></div>
-      </button>
-      <button class="d-card">
-        <div class="d-img tile-sea"><span>🐟</span><span class="d-badge db-miss">缺食材<small>MISSING</small></span></div>
-        <div class="d-body"><h4>清蒸鲈鱼</h4><small>Steamed Sea Bass</small></div>
-      </button>
-      <button class="d-card">
-        <div class="d-img tile-soup"><span>🍲</span><span class="d-badge db-ok">库存可做<small>AVAIL</small></span></div>
-        <div class="d-body"><h4>冬瓜排骨汤</h4><small>Winter Melon Rib Soup</small></div>
-      </button>
-      <button class="d-card">
-        <div class="d-img tile-cold"><span>🥗</span><span class="d-badge db-low">差少量<small>ALMOST</small></span></div>
-        <div class="d-body"><h4>四味豆腐沙拉</h4><small>Tofu Salad</small></div>
-      </button>
-    </div>
+    <div class="dish-grid"><div class="mo-empty" style="grid-column:1/-1;">加载真实菜品<small>LOADING DISHES</small></div></div>
   </section>
 
   <!-- ================= PAGE: HISTORY ================= -->
@@ -1876,12 +1801,13 @@ button { font-family: inherit; }
       <h1>记录每一餐的美好时光</h1>
       <p>REVIEW PAST MEAL PLANS · 回顾过去的用餐计划</p>
       <div class="stats">
-        <span class="stat"><strong>28</strong><small>已记录天数 DAYS</small></span>
-        <span class="stat"><strong>102</strong><small>用餐顿数 MEALS</small></span>
-        <span class="stat"><strong>346</strong><small>菜品次数 DISHES</small></span>
+        <span class="stat"><strong>0</strong><small>已记录天数 DAYS</small></span>
+        <span class="stat"><strong>0</strong><small>用餐顿数 MEALS</small></span>
+        <span class="stat"><strong>0</strong><small>菜品次数 DISHES</small></span>
       </div>
     </div>
 
+    <div id="historyList" hidden>
     <div class="card h-card">
       <div class="h-top">
         <div>
@@ -2013,6 +1939,7 @@ button { font-family: inherit; }
           <div class="hm-names">牛排 · 蔬菜 · 饭<i>Steak, veggies, rice</i></div>
         </div>
       </div>
+    </div>
     </div>
   </section>
 
@@ -3140,87 +3067,12 @@ document.getElementById('regenBtn').addEventListener('click', () => {
     : '已重新生成全部 ' + targets.length + ' 餐');
 });
 
-/* ================= Pantry: Add Ingredient Flow ================= */
-const PANTRY_KNOWN = {
-  '猪肉': ['Pork', 'meat', '🥩'],   '牛肉': ['Beef', 'meat', '🥩'],
-  '鸡肉': ['Chicken', 'meat', '🍗'], '排骨': ['Pork Ribs', 'meat', '🍖'],
-  '鱼':   ['Fish', 'sea', '🐟'],    '虾':   ['Shrimp', 'sea', '🦐'],
-  '鸡蛋': ['Egg', 'egg', '🥚'],     '豆腐': ['Tofu', 'egg', '🧊'],
-  '白菜': ['Cabbage', 'veg', '🥬'],  '小白菜': ['Bok Choy', 'veg', '🥬'],
-  '西兰花': ['Broccoli', 'veg', '🥦'], '土豆': ['Potato', 'veg', '🥔'],
-  '胡萝卜': ['Carrot', 'veg', '🥕'],  '洋葱': ['Onion', 'veg', '🧅'],
-  '玉米': ['Corn', 'veg', '🌽'],     '红薯': ['Sweet Potato', 'staple', '🍠'],
-  '大米': ['Rice', 'staple', '🍚'],  '面条': ['Noodles', 'staple', '🍜'],
-  '牛奶': ['Milk', 'egg', '🥛'],     '苹果': ['Apple', 'fruit', '🍎'],
-  '紫菜': ['Seaweed', 'veg', '🌿'],   '香菇': ['Shiitake', 'veg', '🍄'],
-  '木耳': ['Wood Ear', 'veg', '🍄'],  '黄瓜': ['Cucumber', 'veg', '🥒'],
-  '番茄': ['Tomato', 'veg', '🍅'],    '青椒': ['Green Pepper', 'veg', '🫑'],
-  '大蒜': ['Garlic', 'veg', '🧄'],    '姜':   ['Ginger', 'veg', '🫚'],
-  '芹菜': ['Celery', 'veg', '🥬'],    '南瓜': ['Pumpkin', 'veg', '🎃'],
-  '冬瓜': ['Winter Melon', 'veg', '🍈'], '莲藕': ['Lotus Root', 'veg', '🪷'],
-  '鲈鱼': ['Sea Bass', 'sea', '🐟'],  '三文鱼': ['Salmon', 'sea', '🐟'],
-};
+/* ================= Pantry: read-only real-data view ================= */
 const pInput  = document.querySelector('#page-pantry .search-in');
-const pAddBtn = document.querySelector('#page-pantry .big-add');
 const stockList = document.getElementById('stockList');
-
-function ingRowHTML(name, en, tile, emoji) {
-  return '<div class="ing-row" style="animation:rise .3s ease;">' +
-    '<span class="tile tile-lg ' + tile + '"><span>' + emoji + '</span></span>' +
-    '<div class="info"><h4>' + name + '</h4>' +
-    '<small>' + en + '</small></div>' +
-    '<div class="ops">' +
-    '<button class="mini-btn warn">⏱ 快过期 Expiring</button>' +
-    '<button class="mini-btn used-up">已用完 Used up</button>' +
-    '</div></div>';
-}
-
-function bumpPantryCount(delta) {
-  const lbl = document.querySelector('#page-pantry .tabs button small');
-  if (!lbl) return;
-  const m = lbl.textContent.match(/(\d+)/);
-  if (m) lbl.textContent = 'All ' + (parseInt(m[1]) + delta);
-}
-
-/* 常用食材"已入库"状态同步：在库 = 绿色持久标签（雇主反馈：要知道加没加） */
-function syncCommonChips() {
-  const names = new Set([...stockList.querySelectorAll('.ing-row')].map(rowNameOf));
-  document.querySelectorAll('#commonChips .chip').forEach(c =>
-    c.classList.toggle('on', names.has(chipNameOf(c))));
-}
-
-function chipNameOf(btn) { return btn.childNodes[0].textContent.trim(); }
-
-function addIngredient(preset) {
-  const name = (typeof preset === 'string' ? preset : pInput.value).trim();
-  if (!name) { pInput.focus(); return; }
-  /* 已在库：不重复添加 */
-  const dup = [...stockList.querySelectorAll('.ing-row')]
-    .some(r => rowNameOf(r) === name);
-  if (dup) { toast(name + ' 已在食材库'); pInput.value = ''; return; }
-  /* 未收录的食材：用翻译词典自动译英文（雇主反馈 #3：紫菜没翻译） */
-  const known = PANTRY_KNOWN[name] || [autoTranslate(name) || 'New Item', 'staple', '🧺'];
-  stockList.insertAdjacentHTML('afterbegin',
-    ingRowHTML(name, known[0], 'tile-' + known[1], known[2]));
-  bumpPantryCount(1);
-  syncCommonChips();   /* 新入库 → 对应常用 chip 变绿 */
-  showPantryTab(0);   /* 添加后回到"全部"视图可见新行 */
-  syncPantryTabs(0);
-  pInput.value = '';
-  pInput.focus();
-}
-pAddBtn.addEventListener('click', () => addIngredient());
-pInput.addEventListener('keydown', e => { if (e.key === 'Enter') addIngredient(); });
-
-/* 常用食材：点击即添加入库（雇主反馈 #5：原来只是选中态，不会真加） */
-document.getElementById('commonChips').addEventListener('click', e => {
-  const b = e.target.closest('.chip');
-  if (b) addIngredient(chipNameOf(b));
-});
 
 /* ================= 食材页 Tabs：全部 / 需处理 / 最近消耗（雇主反馈 #4） ================= */
 const recentList = document.getElementById('recentList');
-const consumedStock = {};   /* name -> 被消耗行的 HTML，补货时还原 */
 const pantryTabBtns = document.querySelectorAll('#page-pantry .tabs button');
 function syncPantryTabs(i) {
   pantryTabBtns.forEach((b, j) => b.classList.toggle('on', i === j));
@@ -3243,99 +3095,6 @@ function showPantryTab(i) {
 }
 pantryTabBtns.forEach((b, i) => b.addEventListener('click',
   () => setTimeout(() => showPantryTab(i), 0)));
-
-/* 已用完：移出库存 + 记入"最近消耗"（可补货还原）（雇主反馈 #4） */
-function rowNameOf(row) {
-  return row.querySelector('.info h4').childNodes[0].textContent.trim();
-}
-/* 最近消耗：只保留最近 20 条（约一周的采购周期），更老的自动移出页面；
-   正式版后端保留完整历史，前端只展示最近一页（雇主反馈：怕页面越来越长） */
-const MAX_RECENT = 20;
-function logRecent(name, rowHTML) {
-  consumedStock[name] = rowHTML;
-  const empty = recentList.querySelector('.mo-empty');
-  if (empty) empty.remove();
-  recentList.insertAdjacentHTML('afterbegin',
-    '<div class="ing-row recent-row" data-name="' + name + '">' +
-    '<span class="tile tile-lg tile-staple"><span>🧺</span></span>' +
-    '<div class="info"><h4>' + name + '</h4><small>已用完 Used up · 刚刚</small></div>' +
-    '<div class="ops"><button class="mini-btn restock">补货 Restock</button></div></div>');
-  const recs = [...recentList.querySelectorAll('.recent-row')];
-  if (recs.length > MAX_RECENT) {
-    const old = recs[recs.length - 1];
-    delete consumedStock[old.dataset.name];
-    old.remove();
-  }
-}
-document.querySelector('#page-pantry').addEventListener('click', e => {
-  const re = e.target.closest('.restock');
-  if (re) {
-    const rec = re.closest('.recent-row');
-    const name = rec.dataset.name;
-    if (consumedStock[name]) {
-      stockList.insertAdjacentHTML('afterbegin', consumedStock[name]);
-      delete consumedStock[name];
-      bumpPantryCount(1);
-    }
-    rec.remove();
-    syncCommonChips();   /* 补货回库 → chip 变绿 */
-    toast(name + ' 已补货回食材库');
-    return;
-  }
-  const btn = e.target.closest('.used-up, #stockList .ing-row .mini-btn:not(.warn):not(.restock)');
-  if (!btn) return;
-  const rowEl = btn.closest('.ing-row');
-  const name = rowNameOf(rowEl);
-  const html = rowEl.outerHTML;   /* 先存原始 HTML 再淡出，补货还原不带透明样式 */
-  rowEl.style.opacity = '0';
-  rowEl.style.transition = 'opacity .25s';
-  setTimeout(() => {
-    logRecent(name, html);
-    rowEl.remove();
-    bumpPantryCount(-1);
-    syncCommonChips();   /* 消耗出库 → chip 变回灰 */
-    toast('已记录消耗：' + name + '（在"最近消耗"可补货）');
-  }, 240);
-});
-
-/* 快过期：可切换的状态标记，再点一次撤销 */
-function bumpAttention(delta) {
-  const cnt = document.querySelector('#page-pantry .tabs .cnt');
-  if (!cnt) return;
-  cnt.textContent = Math.max(0, parseInt(cnt.textContent) + delta);
-}
-document.querySelector('#page-pantry').addEventListener('click', e => {
-  const exp = e.target.closest('.mini-btn.warn');
-  if (!exp) return;
-  const row = exp.closest('.ing-row');
-  const marked = row.classList.toggle('is-expiring');
-  exp.classList.toggle('marked', marked);
-  exp.innerHTML = marked ? '↩ 撤销标记 Undo' : '⏱ 快过期 Expiring';
-  let badge = row.querySelector('.exp-badge');
-  if (marked && !badge) {
-    badge = document.createElement('span');
-    badge.className = 'exp-badge';
-    badge.innerHTML = '⏱ 快过期 EXP';
-    row.querySelector('.info h4').appendChild(badge);
-  } else if (!marked && badge) {
-    badge.remove();
-  }
-  bumpAttention(marked ? 1 : -1);
-});
-
-/* 演示数据：牛肉、红薯 预设为快过期（与"需处理 2"计数一致） */
-['牛肉', '红薯'].forEach(n => {
-  const row = [...stockList.querySelectorAll('.ing-row')].find(r => rowNameOf(r) === n);
-  if (row) row.querySelector('.mini-btn.warn').click();
-});
-/* 初始化：常用食材的"已入库"绿色状态 */
-syncCommonChips();
-
-/* 食材行排版统一：操作按钮移到行右侧（重构静态行） */
-document.querySelectorAll('#page-pantry .ing-row').forEach(row => {
-  const ops = row.querySelector('.ops');
-  if (ops) row.appendChild(ops);
-});
 
 /* ================= 加一餐 Add-a-Meal（每一天，雇主反馈 #7 #8） =================
    每天底部都有"＋ 加一餐"，可自选 早/午/下午茶/晚/宵夜；
@@ -3430,17 +3189,17 @@ const dGrid   = document.querySelector('#page-dishes .dish-grid');
 const dSearch = document.querySelector('#page-dishes .search-in');
 
 function dishCardHTML(d) {
-  const a = AVAIL_OF[d.avail];
+  const a = AVAIL_OF[d.avail] || AVAIL_OF.miss;
   const img = d.photo
-    ? '<div class="d-img" style="background-image:url(' + d.photo +
-      ');background-size:cover;background-position:center;">'
+    ? '<div class="d-img"><img src="' + d.photo + '" alt="' + d.zh +
+      '" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block" ' +
+      'onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>' + d.emoji + '</span>'
     : '<div class="d-img ' + TILE_OF[d.cat] + '"><span>' + d.emoji + '</span>';
-  return '<button class="d-card" data-zh="' + d.zh + '">' + img +
-    (d.fav ? '<span class="d-fav">♥</span>' : '') +
+  return '<article class="d-card" data-zh="' + d.zh + '">' + img +
+    (d.banquet ? '<span class="d-fav">家宴</span>' : '') +
     '<span class="d-badge ' + a[2] + '">' + a[0] +
     '<small>' + a[1] + '</small></span></div>' +
-    '<div class="d-body"><h4>' + d.zh + '</h4><small>' + d.en + '</small>' +
-    '<span class="d-add" role="button" title="加入餐单 Add to Menu">＋</span></div></button>';
+    '<div class="d-body"><h4>' + d.zh + '</h4><small>' + d.en + '</small></div></article>';
 }
 
 function renderDishGrid() {
@@ -3463,10 +3222,7 @@ function renderDishGrid() {
              : '没有匹配的菜品<small>NO MATCHING DISH</small>') + '</div>';
 }
 /* 收藏筛选：独立开关，可与分类/库存叠加 */
-document.getElementById('favChip').addEventListener('click', function () {
-  this.classList.toggle('on');
-  renderDishGrid();
-});
+/* Favourite writes are not open in this read-only phase. */
 document.querySelectorAll('#catRow .cat, #availRow .chip').forEach(b =>
   b.addEventListener('click', () => setTimeout(renderDishGrid, 0)));
 dSearch.addEventListener('input', renderDishGrid);
@@ -3632,15 +3388,7 @@ document.getElementById('defSave').addEventListener('click', () => {
   renderDishGrid();
 });
 
-/* 点击菜品卡片 → 编辑；点卡片上的 ＋ → 加入餐单 */
-dGrid.addEventListener('click', e => {
-  const cardEl = e.target.closest('.d-card');
-  if (!cardEl) return;
-  const d = DISH_DB.find(x => x.zh === cardEl.dataset.zh);
-  if (!d) return;
-  if (e.target.closest('.d-add')) { openPick(d); return; }
-  openDishEdit(d);
-});
+/* Dish cards are display-only in Phase 2. */
 
 /* ================= 加入餐单（菜品库 → 日期×餐次） =================
    面板从餐单页实际的 天×餐 动态生成：默认三餐；已取消/默认隐藏的餐次不出现，
@@ -3693,7 +3441,7 @@ document.getElementById('pickClose').addEventListener('click',
 pickModal.addEventListener('click',
   e => { if (e.target === pickModal) pickModal.classList.remove('open'); });
 
-renderDishGrid();
+/* Real dish rows are rendered after the read-only bootstrap resolves. */
 </script>
 
 <!-- PHASE1_REAL_DATA_BRIDGE_START -->
@@ -3991,6 +3739,7 @@ renderDishGrid();
     updateHero(data.next_meal || null);
     const progress = document.getElementById('confirmProgress');
     if (progress) progress.innerHTML = '只读预览<small>READ ONLY</small>';
+    if (typeof window.hydratePhase2Tabs === 'function') window.hydratePhase2Tabs(data);
   }
 
   async function load(location) {
@@ -4041,6 +3790,164 @@ renderDishGrid();
 })();
 </script>
 <!-- PHASE1_REAL_DATA_BRIDGE_END -->
+
+<!-- PHASE2_REAL_TABS_BRIDGE_START -->
+<script>
+(function () {
+  'use strict';
+
+  const readonlyMessage = '当前为真实数据只读预览，写操作暂未开放';
+  const historyList = document.getElementById('historyList');
+  const historyStats = document.querySelectorAll('#page-history .stats strong');
+  const pantrySearch = document.querySelector('#page-pantry .search-in');
+  const phase2WriteSelector = [
+    '#page-pantry .big-add', '#page-pantry #commonChips .chip',
+    '#page-pantry #stockList .mini-btn', '#page-pantry #recentList .mini-btn',
+    '#page-dishes .quick-add', '#page-dishes #favChip', '#page-dishes .d-card',
+    '#dishModal button', '#dishEditModal button', '#pickModal button'
+  ].join(',');
+
+  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[char]));
+
+  function readOnlyToast() {
+    if (typeof toast === 'function') toast(readonlyMessage);
+  }
+
+  function stopPhase2Write(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+    const enterWrite = event.type === 'keydown' && event.key === 'Enter' &&
+      target.matches('#page-pantry .search-in, #page-dishes .quick-add input');
+    const clickWrite = event.type === 'click' && target.closest(phase2WriteSelector);
+    if (!enterWrite && !clickWrite) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    readOnlyToast();
+  }
+
+  function categoryOf(dish) {
+    const raw = String(dish.category_id || dish.carb_type || '').toLowerCase();
+    if (/sea|fish|shrimp|prawn/.test(raw)) return 'sea';
+    if (/meat|protein|pork|beef|chicken/.test(raw)) return 'meat';
+    if (/veg|mushroom/.test(raw)) return 'veg';
+    if (/soup/.test(raw)) return 'soup';
+    if (/egg|tofu|bean/.test(raw)) return 'egg';
+    if (/cold|salad/.test(raw)) return 'cold';
+    if (/one.?pot|combo/.test(raw)) return 'onepot';
+    if (/fruit/.test(raw)) return 'fruit';
+    return 'staple';
+  }
+
+  function availabilityOf(dish) {
+    const status = dish.availability?.status;
+    if (status === 'available') return 'ok';
+    if (status === 'almost_available') return 'low';
+    return 'miss';
+  }
+
+  function pantryRow(item, recent = false) {
+    const expiring = item.status === 'expiring';
+    const meta = recent ? `已用完 Used up · ${safe(String(item.updated_at || '').slice(0, 10))}` : safe(item.name_en || '');
+    return `<div class="ing-row ${expiring ? 'is-expiring' : ''}" data-ingredient-id="${safe(item.ingredient_id)}" data-source="sqlite">
+      <span class="tile tile-lg tile-staple"><span>🧺</span></span>
+      <div class="info"><h4>${safe(item.name_cn || item.ingredient_id)}${expiring ? '<span class="exp-badge">⏱ 快过期 EXP</span>' : ''}</h4><small>${meta}</small></div>
+      <div class="ops">${recent
+        ? '<button class="mini-btn restock" type="button" disabled aria-disabled="true">补货 Restock</button>'
+        : `<button class="mini-btn warn ${expiring ? 'marked' : ''}" type="button" disabled aria-disabled="true">${expiring ? '⏱ 快过期 Expiring' : '标记快过期 Expiring'}</button><button class="mini-btn used-up" type="button" disabled aria-disabled="true">已用完 Used up</button>`}
+      </div></div>`;
+  }
+
+  function renderPantry(pantry) {
+    const items = Array.isArray(pantry?.items) ? pantry.items : [];
+    const common = Array.isArray(pantry?.common) ? pantry.common : [];
+    const recent = Array.isArray(pantry?.recent) ? pantry.recent : [];
+    stockList.dataset.source = 'sqlite';
+    stockList.innerHTML = items.length ? items.map(item => pantryRow(item)).join('') :
+      '<div class="mo-empty">当前厨房暂无库存<small>NO PANTRY DATA</small></div>';
+    recentList.dataset.source = 'sqlite';
+    recentList.innerHTML = recent.length ? recent.map(item => pantryRow(item, true)).join('') :
+      '<div class="mo-empty">暂无消耗记录<small>NO RECENT</small></div>';
+    document.getElementById('commonChips').innerHTML = common.map(item =>
+      `<button class="chip ${item.in_pantry ? 'on' : ''}" type="button" disabled aria-disabled="true" data-source="sqlite">${safe(item.name_cn)} <small>${safe(item.name_en || '')}</small><span class="tick">${item.in_pantry ? '✓' : '+'}</span></button>`
+    ).join('');
+    const tabs = document.querySelectorAll('#page-pantry .tabs button');
+    if (tabs[0]) tabs[0].querySelector('small').textContent = `All ${items.length}`;
+    if (tabs[1]) tabs[1].querySelector('.cnt').textContent = String(items.filter(item => item.status === 'expiring').length);
+    if (tabs[2]) tabs[2].querySelector('small').textContent = `Recent · ${recent.length}`;
+    showPantryTab([...tabs].findIndex(tab => tab.classList.contains('on')) || 0);
+  }
+
+  function renderDishes(dishes) {
+    const emoji = {meat:'🥩', sea:'🐟', veg:'🥬', soup:'🍲', staple:'🍚', egg:'🥚', cold:'🥗', onepot:'🍛', fruit:'🍎'};
+    const rows = (Array.isArray(dishes) ? dishes : []).map(dish => {
+      const cat = categoryOf(dish);
+      return {
+        id: dish.id, zh: dish.name_cn, en: dish.name_en || '', cat,
+        emoji: emoji[cat] || '🍽️', avail: availabilityOf(dish),
+        banquet: Boolean(dish.banquet), photo: dish.image || null, readonly: true
+      };
+    });
+    DISH_DB.splice(0, DISH_DB.length, ...rows);
+    dGrid.dataset.source = 'sqlite';
+    renderDishGrid();
+  }
+
+  const mealMeta = {
+    breakfast: ['早餐', 'Breakfast', 'var(--c-breakfast)', '🥣'],
+    lunch: ['午餐', 'Lunch', 'var(--c-lunch)', '🍲'],
+    afternoon_snack: ['下午茶', 'Tea Time', 'var(--c-tea)', '🍎'],
+    dinner: ['晚餐', 'Dinner', 'var(--c-dinner)', '🍽️']
+  };
+
+  function historyMeal(type, items) {
+    if (!items?.length) return '';
+    const meta = mealMeta[type];
+    const tiles = items.map(item => item.image
+      ? `<span class="tile tile-sm"><img src="${safe(item.image)}" alt="${safe(item.name_cn)}" loading="lazy" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span hidden>${meta[3]}</span></span>`
+      : `<span class="tile tile-sm tile-staple"><span>${meta[3]}</span></span>`).join('');
+    const namesCn = items.map(item => safe(item.name_cn)).join(' · ');
+    const namesEn = items.map(item => safe(item.name_en || '')).filter(Boolean).join(' · ');
+    return `<div class="h-meal"><div class="hm-head" style="color:${meta[2]};"><span>${meta[0]}</span><small>${meta[1]}</small></div><div class="hm-tiles">${tiles}</div><div class="hm-names">${namesCn}${namesEn ? `<i>${namesEn}</i>` : ''}</div></div>`;
+  }
+
+  function renderHistory(menus, stats, locationLabel) {
+    const rows = Array.isArray(menus) ? menus : [];
+    const values = [stats?.days || 0, stats?.meals || 0, stats?.dishes || 0];
+    historyStats.forEach((node, index) => { node.textContent = String(values[index]); });
+    historyList.hidden = false;
+    historyList.dataset.source = 'sqlite';
+    historyList.innerHTML = rows.length ? rows.map(menu => {
+      const meals = Object.entries(mealMeta).map(([type]) => historyMeal(type, menu.meals?.[type] || [])).join('');
+      return `<article class="card h-card" data-source="sqlite"><div class="h-top"><div><h3>${safe(menu.date)}</h3><span class="loc">${safe(locationLabel)}</span></div><span class="confirm-badge">${safe(menu.status)}</span></div><div class="h-meals">${meals}</div></article>`;
+    }).join('') : '<div class="mo-empty">当前厨房暂无历史菜单<small>NO HISTORY</small></div>';
+  }
+
+  window.hydratePhase2Tabs = data => {
+    renderPantry(data.pantry || {});
+    renderDishes(data.dishes || []);
+    renderHistory(data.history || [], data.history_stats || {}, data.location_label || data.location || '');
+  };
+
+  pantrySearch.addEventListener('input', () => {
+    const query = pantrySearch.value.trim().toLowerCase();
+    stockList.querySelectorAll('.ing-row').forEach(row => {
+      row.hidden = Boolean(query) && !row.textContent.toLowerCase().includes(query);
+    });
+  });
+  document.addEventListener('click', stopPhase2Write, true);
+  document.addEventListener('keydown', stopPhase2Write, true);
+
+  historyList.replaceChildren();
+  historyList.hidden = false;
+  historyList.innerHTML = '<div class="mo-empty">加载真实历史<small>LOADING HISTORY</small></div>';
+  const initialPage = ({'/pantry':'pantry', '/dishes':'dishes', '/history':'history'})[location.pathname];
+  if (initialPage) document.querySelector(`.n-tab[data-page="${initialPage}"]`)?.click();
+})();
+</script>
+<!-- PHASE2_REAL_TABS_BRIDGE_END -->
 
 </body>
 </html>
