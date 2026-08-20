@@ -4628,10 +4628,19 @@ def main():
     # The four visible planning days must have real editable menu rows.
     today = datetime.now(FAMILY_TIMEZONE).date()
     for offset in range(4):
-        ensure_menu_for_date(
-            (today + timedelta(days=offset)).isoformat(),
-            "shenzhen", seed=42 + offset,
-        )
+        try:
+            ensure_menu_for_date(
+                (today + timedelta(days=offset)).isoformat(),
+                "shenzhen", seed=42 + offset,
+            )
+        except sqlite3.OperationalError as exc:
+            # Older production databases may not yet have the composite unique
+            # constraint required by SQLite UPSERT. Serving existing menus is
+            # safe; do not mutate production schema during application startup.
+            if "ON CONFLICT clause" not in str(exc):
+                raise
+            print("[WARN] legacy menus schema: skipped automatic four-day creation")
+            break
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)
     print(f"[OK] H5 应用已启动: http://{HOST}:{PORT}")
     try:
