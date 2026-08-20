@@ -8,6 +8,10 @@ import app
 import db
 import inventory
 import menu_service
+from rule_engine import (
+    GapFiller, MealState, NutritionAnalyzer, analyze_meal_slots,
+    is_breakfast_tofu_candidate,
+)
 
 
 class InventoryNameTests(unittest.TestCase):
@@ -58,7 +62,8 @@ class DatabaseFeatureTests(unittest.TestCase):
         )
 
     def _insert_switch_dish(self, conn, dish_id, category_id, roles, *, meal="breakfast",
-                            carb_type=None, vegetables=(), quick_soup=0, slow_soup=0):
+                            carb_type=None, vegetables=(), proteins=(),
+                            quick_soup=0, slow_soup=0):
         conn.execute(
             "INSERT OR IGNORE INTO categories (id,label_cn,label_en) VALUES (?,?,?)",
             (category_id, category_id, category_id),
@@ -69,7 +74,8 @@ class DatabaseFeatureTests(unittest.TestCase):
             "carb_type,quick_soup,slow_soup,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,1)",
             (
                 dish_id, dish_id, dish_id, category_id, json.dumps([meal]), json.dumps(roles),
-                "[]", json.dumps(list(vegetables)), carb_type, quick_soup, slow_soup,
+                json.dumps(list(proteins)), json.dumps(list(vegetables)),
+                carb_type, quick_soup, slow_soup,
             ),
         )
         conn.execute(
@@ -369,7 +375,10 @@ class DatabaseFeatureTests(unittest.TestCase):
         conn.close()
         menu_service.invalidate_catalog_cache()
 
-        self.assertEqual(set(self._cycle_ids(1, 1, 6)), {"dish_tofu_a", "dish_tofu_b"})
+        self.assertEqual(
+            set(self._cycle_ids(1, 1, 6)),
+            {"dish_tofu_a", "dish_tofu_b", "dish_tofu_missing"},
+        )
         self.assertEqual(set(self._cycle_ids(2, 2, 6)), {"dish_egg_a", "dish_egg_b"})
 
     def test_direct_switch_keeps_coarse_grain_slot(self):
@@ -465,6 +474,144 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertGreaterEqual(len(set(seen)), 3)
         self.assertEqual(seen[0], seen[3])
 
+    def test_cycle_reports_full_ring_size_and_wrap(self):
+        conn = db.get_db()
+        self._prepare_switch_inventory(conn)
+        for index in range(5):
+            self._insert_switch_dish(
+                conn, f"dish_rice_{index}", "staple_carb", ["staple"],
+                meal="lunch", carb_type="rice",
+            )
+        self._insert_switch_menu(conn, 1, 1, "dish_rice_0", "lunch")
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        sequence = []
+        wraps = []
+        for _ in range(5):
+            chosen = app.get_next_available_same_class_dish(1, 1, "shenzhen")
+            sequence.append(chosen["id"])
+            wraps.append(chosen["_cycle_wrapped"])
+            self.assertEqual(chosen["_pool_size"], 5)
+            conn = db.get_db()
+            conn.execute("UPDATE menu_items SET dish_id=? WHERE id=1", (chosen["id"],))
+            conn.commit()
+            conn.close()
+
+        self.assertEqual(sequence, [
+            "dish_rice_1", "dish_rice_2", "dish_rice_3", "dish_rice_4", "dish_rice_0"
+        ])
+        self.assertEqual(wraps, [False, False, False, False, True])
+
+    def test_rice_cycle_keeps_same_day_rice_but_excludes_missing_variant(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO categories (id,label_cn,label_en) VALUES ('staple_carb','主食','Staple')"
+        )
+        for ingredient_id in ("rice", "special_grain"):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+        for index in range(5):
+            dish_id = f"dish_rice_{index}"
+            conn.execute(
+                "INSERT INTO dishes "
+                "(id,name_cn,name_en,category_id,meal_tags,meal_roles,carb_type,is_active) "
+                "VALUES (?,?,?,'staple_carb','[\"lunch\",\"dinner\"]',"
+                "'[\"staple\"]',?,1)",
+                (dish_id, f"测试米饭{index}", dish_id,
+                 "rice" if index == 4 else "coarse_grain"),
+            )
+            ingredient_id = "special_grain" if index == 0 else "rice"
+            conn.execute(
+                "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                (dish_id, ingredient_id),
+            )
+        conn.execute(
+            "INSERT INTO menus (id,date,location,status) VALUES (1,'2099-01-01','shenzhen','draft')"
+        )
+        conn.execute(
+            "INSERT INTO menu_items (id,menu_id,dish_id,meal_type,sort_order) VALUES "
+            "(1,1,'dish_rice_1','lunch',1),(2,1,'dish_rice_2','dinner',1)"
+        )
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        seen = []
+        for _ in range(4):
+            chosen = app.get_next_available_same_class_dish(1, 1, "shenzhen")
+            self.assertEqual(chosen["_pool_size"], 4)
+            seen.append(chosen["id"])
+            conn = db.get_db()
+            conn.execute("UPDATE menu_items SET dish_id=? WHERE id=1", (chosen["id"],))
+            conn.commit()
+            conn.close()
+        self.assertEqual(set(seen), {f"dish_rice_{index}" for index in range(1, 5)})
+        self.assertNotIn("dish_rice_0", seen)
+        conn = db.get_db()
+        self.assertFalse(menu_service._dish_blocked_for_menu(conn, 1, "dish_rice_2", 1))
+        conn.close()
+
+    def test_breakfast_dim_sum_names_join_companion_rotation_pool(self):
+        for name, expected in (
+            ("包子", "bao"), ("花卷", "huajuan"),
+            ("日式饺子 煎饺", "jiaozi"), ("水饺", "jiaozi"),
+        ):
+            analysis = NutritionAnalyzer.analyze({
+                "id": name, "name_cn": name, "category_id": "staple_carb",
+                "meal_tags": ["breakfast"], "meal_roles": ["staple"],
+                "carb_type": "dim_sum", "ingredient_ids": ["flour"],
+            })
+            self.assertEqual(analysis["breakfast_staple_type"], expected)
+
+    def test_meat_slot_cycle_excludes_egg_and_tofu_protein_mains(self):
+        conn = db.get_db()
+        self._prepare_switch_inventory(conn)
+        self._insert_switch_dish(
+            conn, "dish_beef", "protein_main", ["protein_main"],
+            meal="lunch", proteins=("beef",),
+        )
+        self._insert_switch_dish(
+            conn, "dish_chicken", "protein_main", ["protein_main"],
+            meal="lunch", proteins=("chicken",),
+        )
+        self._insert_switch_dish(
+            conn, "dish_egg", "protein_main", ["protein_main", "egg_dish"],
+            meal="lunch", proteins=("egg",),
+        )
+        self._insert_switch_dish(
+            conn, "dish_tofu", "protein_main", ["protein_main", "tofu_dish"],
+            meal="lunch", proteins=("tofu",),
+        )
+        self._insert_switch_menu(conn, 1, 1, "dish_beef", "lunch")
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        chosen = app.get_next_available_same_class_dish(1, 1, "shenzhen")
+        self.assertEqual(chosen["id"], "dish_chicken")
+        self.assertEqual(chosen["_pool_size"], 2)
+
+    def test_breakfast_tofu_uses_canonical_ingredient_without_cold_role(self):
+        dish = {
+            "id": "tofu_breakfast", "name_cn": "早餐豆腐", "category_id": "protein_main",
+            "meal_tags": ["breakfast"], "meal_roles": ["protein_main"],
+            "protein_types": ["tofu"], "ingredient_ids": ["tofu"],
+            "cooking_methods": ["steam"],
+        }
+        analysis = NutritionAnalyzer.analyze(dish)
+        self.assertTrue(is_breakfast_tofu_candidate(analysis))
+
+    def test_breakfast_meat_target_depends_on_diners(self):
+        state = MealState()
+        self.assertEqual(analyze_meal_slots("breakfast", state, 1)["breakfast_meat"]["target_min"], 1)
+        self.assertEqual(analyze_meal_slots("breakfast", state, 2)["breakfast_meat"]["target_min"], 1)
+        self.assertEqual(analyze_meal_slots("breakfast", state, 3)["breakfast_meat"]["target_min"], 2)
+        self.assertEqual(analyze_meal_slots("breakfast", state, 4)["breakfast_meat"]["target_min"], 2)
+
     def test_cycle_replaces_unavailable_current_with_only_available_alternative(self):
         conn = db.get_db()
         conn.execute("INSERT INTO categories (id,label_cn,label_en) VALUES ('vegetable','蔬菜','Vegetable')")
@@ -550,15 +697,91 @@ class DatabaseFeatureTests(unittest.TestCase):
         )
         conn.commit()
 
-        self.assertTrue(menu_service._dish_blocked_for_menu(conn, 2, "dish_0091"))
+        self.assertFalse(menu_service._dish_blocked_for_menu(conn, 2, "dish_0091"))
         self.assertFalse(menu_service._dish_blocked_for_menu(conn, 2, "dish_0094"))
         conn.close()
         menu_service.invalidate_catalog_cache()
 
         chosen = app.get_next_available_same_class_dish(2, 20, "shenzhen")
-        self.assertEqual(chosen["id"], "dish_0094")
-        self.assertFalse(menu_service.add_dish_to_menu(2, "dish_0091", "dinner"))
+        self.assertEqual(chosen["id"], "dish_0091")
+        self.assertTrue(menu_service.add_dish_to_menu(2, "dish_0091", "dinner"))
         self.assertTrue(menu_service.add_dish_to_menu(2, "dish_0094", "dinner"))
+
+    def test_direct_switch_ignores_cross_day_lock_context(self):
+        conn = db.get_db()
+        self._prepare_switch_inventory(conn)
+        for dish_id in ("dish_current", "dish_locked_alternative"):
+            self._insert_switch_dish(
+                conn, dish_id, "protein_main", ["protein_main"], meal="lunch"
+            )
+        self._insert_switch_menu(conn, 1, 1, "dish_locked_alternative", "lunch")
+        conn.execute("UPDATE menus SET date='2099-01-01',status='confirmed' WHERE id=1")
+        self._insert_switch_menu(conn, 2, 2, "dish_current", "lunch")
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        chosen = app.get_next_available_same_class_dish(2, 2, "shenzhen")
+        self.assertEqual(chosen["id"], "dish_locked_alternative")
+
+    def test_cross_day_lock_context_does_not_block_available_candidate(self):
+        dishes = []
+        availability = {}
+        for index in range(24):
+            dish_id = f"dish_veg_{index:02d}"
+            dishes.append({
+                "id": dish_id,
+                "name_cn": dish_id,
+                "category_id": "vegetable_mushroom",
+                "meal_tags": ["dinner"],
+                "meal_roles": ["vegetable_dish"],
+                "vegetables": [f"蔬菜{index}"],
+                "protein_types": [],
+                "ingredient_ids": [f"ingredient_{index}"],
+            })
+            availability[dish_id] = "available" if index == 0 else "missing"
+
+        filler = GapFiller({"dishes": dishes}, seed=1)
+        candidates, warning = filler.get_slot_candidates(
+            "dinner", "vegetable_dish", MealState(),
+            context={
+                "dish_availability": availability,
+                "hard_locked_dish_ids": {"dish_veg_00"},
+            },
+        )
+
+        self.assertEqual([dish["id"] for dish in candidates], ["dish_veg_00"])
+
+    def test_cross_day_locks_are_ignored_even_when_entire_pool_was_locked(self):
+        dishes = []
+        availability = {}
+        locked = set()
+        for index in range(4):
+            dish_id = f"dish_breakfast_meat_{index}"
+            dishes.append({
+                "id": dish_id,
+                "name_cn": dish_id,
+                "category_id": "protein_main",
+                "meal_tags": ["breakfast"],
+                "meal_roles": ["protein_main"],
+                "protein_types": ["chicken"],
+                "vegetables": [],
+                "ingredient_ids": [f"ingredient_{index}"],
+            })
+            availability[dish_id] = "available"
+            locked.add(dish_id)
+
+        filler = GapFiller({"dishes": dishes}, seed=1)
+        candidates, warning = filler.get_slot_candidates(
+            "breakfast", "breakfast_meat", MealState(),
+            context={
+                "dish_availability": availability,
+                "hard_locked_dish_ids": locked,
+            },
+        )
+
+        self.assertEqual(len(candidates), 4)
+        self.assertIsNone(warning)
 
 
 if __name__ == "__main__":

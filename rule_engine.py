@@ -98,7 +98,7 @@ COOKING_METHOD_NORMALIZE = {
 WEAK_CARB_TYPES = {"other", "dim_sum"}
 
 # 早餐搭配主食四选一
-BREAKFAST_COMPANION_STAPLES = {"mantou", "jiaozi", "bao", "sourdough", "huajuan"}
+BREAKFAST_COMPANION_STAPLES = {"mantou", "jiaozi", "bao", "huajuan"}
 
 MEAT_PROTEINS = {"fish", "shrimp", "other_seafood", "beef", "pork", "猪肉", "chicken"}
 BREAKFAST_MEAT_PROTEINS = {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"}
@@ -111,8 +111,7 @@ MANUAL_SOURCES = {"manual", "owner"}
 TANG_JIAO_NAME = "汤饺"
 NO_CANDIDATE_MESSAGE = "暂无符合条件菜品，请手动选择或补录"
 
-# REQUIREMENTS_V2 §4.6: a four-day window needs at least daily demand × 4.
-# These thresholds are used only to decide whether the four-day lock may degrade.
+# Historical catalog-size thresholds retained for review metadata compatibility.
 AUTO_POOL_MINIMUMS = {
     "porridge": 4,
     "companion_staple": 4,
@@ -241,8 +240,17 @@ class NutritionAnalyzer:
         resolved_vegetable = dish.get("resolved_vegetable")
         primary_vegetable_canonical = primary_vegetable_canonical_id(dish)
         carb_type = dish.get("carb_type")
-        breakfast_staple_type = dish.get("breakfast_staple_type")
         name_cn = dish.get("name_cn", "")
+        breakfast_staple_type = dish.get("breakfast_staple_type")
+        if not breakfast_staple_type and carb_type == "dim_sum":
+            if "花卷" in name_cn:
+                breakfast_staple_type = "huajuan"
+            elif "馒头" in name_cn:
+                breakfast_staple_type = "mantou"
+            elif "饺" in name_cn:
+                breakfast_staple_type = "jiaozi"
+            elif "包" in name_cn:
+                breakfast_staple_type = "bao"
         is_soup = (cat == "soup")
         is_fruit = (cat == "fruit_snack")
         cooking_methods = NutritionAnalyzer.normalize_cooking_methods(
@@ -361,11 +369,9 @@ def _item_is_soup(item):
 
 
 def is_breakfast_tofu_candidate(item):
-    """Frozen §2 breakfast tofu: tagged breakfast, cold, visible tofu dish."""
+    """Breakfast tofu is a non-soup breakfast dish with canonical tofu ingredients."""
     return (
         "breakfast" in _item_meal_tags(item)
-        and "tofu_dish" in _item_roles(item)
-        and "cold_mix" in _item_cooking_methods(item)
         and not _item_is_soup(item)
         and has_tofu_ingredient(item)
     )
@@ -683,7 +689,7 @@ class RuleEngine:
     """
 
     @staticmethod
-    def check_breakfast_rules(state):
+    def check_breakfast_rules(state, diners_count=4):
         """
         最终锁死早餐规则（全部为 Warning，不阻断 Confirm）：
           1. porridge_slot == 1
@@ -700,7 +706,7 @@ class RuleEngine:
 
         if state.has_manual_one_pot_meal:
             return True, [], []
-        slots = analyze_meal_slots("breakfast", state)
+        slots = analyze_meal_slots("breakfast", state, diners_count)
         if slots["porridge"]["current"] < 1:
             warnings.append("早餐缺粥 / No porridge")
         if slots["companion_staple"]["current"] < 1:
@@ -713,9 +719,14 @@ class RuleEngine:
         if slots["egg"]["current"] < 1:
             warnings.append("早餐还没有鸡蛋 / No egg for breakfast")
         if slots["tofu"]["current"] < 1:
-            warnings.append("早餐还没有独立凉拌豆腐 / No independent cold tofu for breakfast")
-        if slots["breakfast_meat"]["current"] < 1:
-            warnings.append("早餐还没有独立肉类蛋白菜 / No independent meat protein dish for breakfast")
+            warnings.append("早餐还没有独立豆腐菜 / No independent tofu dish for breakfast")
+        meat_target = 1 if diners_count <= 2 else 2
+        if slots["breakfast_meat"]["current"] < meat_target:
+            current_meat = slots["breakfast_meat"]["current"]
+            warnings.append(
+                f"早餐独立肉类蛋白菜不足: {current_meat}/{meat_target} / "
+                f"Insufficient independent meat protein dishes ({current_meat}/{meat_target})"
+            )
         if state.auto_egg_dish_count > 1:
             warnings.append(f"早餐自动蛋类过多: {state.auto_egg_dish_count}/1 / Too many automatic egg dishes")
 
@@ -810,7 +821,7 @@ class RuleEngine:
     def check_meal(meal_type, state, diners_count=4):
         """检查单餐是否合格。返回: (passed, hard_errors, warnings)"""
         if meal_type == "breakfast":
-            return RuleEngine.check_breakfast_rules(state)
+            return RuleEngine.check_breakfast_rules(state, diners_count)
         elif meal_type == "lunch":
             return RuleEngine.check_lunch_rules(state, diners_count)
         elif meal_type == "dinner":
@@ -985,7 +996,7 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
         target = {
             "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
             "vegetable": 2, "egg": 1, "tofu": 1,
-            "breakfast_meat": 1,
+            "breakfast_meat": 1 if diners_count <= 2 else 2,
         }
         _, _, assignment = assign_breakfast_slots(state.dishes)
         current = {
@@ -997,7 +1008,9 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
             ),
             "egg": int("egg" in assignment),
             "tofu": int("tofu" in assignment),
-            "breakfast_meat": int("breakfast_meat" in assignment),
+            "breakfast_meat": sum(
+                is_breakfast_meat_candidate(dish) for dish in state.dishes
+            ),
         }
     else:
         return {}
@@ -1050,7 +1063,6 @@ SLOT_ROLE_MAP = {
         "roles": ["egg_dish"],
     },
     "tofu": {
-        "roles": ["tofu_dish"],
         "require_breakfast_tofu": True,
     },
     "breakfast_meat": {
@@ -1114,7 +1126,8 @@ def filter_candidates_for_slot(candidates, slot_name):
             continue
 
         if (role_match or spec.get("require_carb_type")
-                or spec.get("require_breakfast_staple")):
+                or spec.get("require_breakfast_staple")
+                or spec.get("require_breakfast_tofu")):
             filtered.append(c)
 
     return filtered
@@ -1387,12 +1400,10 @@ class GapFiller:
     def get_candidates(self, meal_type, exclude_ids=None, context=None):
         ctx = context or {}
         explicit_exclude = set(exclude_ids or set())
-        hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
         availability = ctx.get("dish_availability", {})
         return [
             a for a in self.analyzed.values()
             if a["id"] not in explicit_exclude
-            and (a["id"] not in hard_locked or is_pantry_exempt_dish(a))
             and meal_type in a["meal_tags"]
             and is_auto_candidate(a, meal_type)
             and (not availability or availability.get(a["id"]) == "available")
@@ -1461,12 +1472,7 @@ class GapFiller:
 
     def get_slot_candidates(self, meal_type, slot_name, state, context=None,
                             exclude_ids=None, day_auto_egg_count=0):
-        """Apply the frozen pool-size, inventory, lock, and degradation rules.
-
-        REQUIREMENTS_V2 §4.6 defines pool size at the automatic classification
-        pool entrance. Dynamic meal/day caps, inventory and the four-day lock are
-        legal-candidate filters; they must never make a healthy pool look small.
-        """
+        """Apply classification, inventory, same-day exclusion, and meal caps."""
         ctx = context or {}
         cap_ctx = dict(ctx)
         cap_ctx["section14_meal_type"] = meal_type
@@ -1490,13 +1496,7 @@ class GapFiller:
             if not availability or availability.get(candidate["id"]) == "available"
         ]
         explicit_exclude = set(exclude_ids or set())
-        hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
-        four_day_blocked = {
-            candidate["id"] for candidate in available_slot
-            if candidate["id"] in hard_locked
-            and not is_pantry_exempt_dish(candidate)
-        }
-        blocked = explicit_exclude | four_day_blocked
+        blocked = explicit_exclude
         unlocked = [candidate for candidate in available_slot if candidate["id"] not in blocked]
         trace_rows = []
         for candidate in classification_pool:
@@ -1508,10 +1508,7 @@ class GapFiller:
             status = availability.get(candidate["id"])
             if not reasons and availability and status != "available":
                 reasons.append(f"inventory:{status or 'unknown'}")
-            if (not reasons and candidate["id"] in hard_locked
-                    and not is_pantry_exempt_dish(candidate)):
-                reasons.append("four_day_dish_lock")
-            elif not reasons and candidate["id"] in explicit_exclude:
+            if not reasons and candidate["id"] in explicit_exclude:
                 reasons.append("same_day_or_explicit_dish_lock")
             trace_rows.append({
                 "dish_id": candidate["id"],
@@ -1530,35 +1527,6 @@ class GapFiller:
         }
         if unlocked:
             return unlocked, None
-
-        minimum = AUTO_POOL_MINIMUMS.get(slot_name)
-        degraded = minimum is not None and pool_size < minimum
-        degradation_message = None
-        frozen_hard_blocked_all = bool(classification_pool) and all(
-            any(reason.startswith(("section14_", "section15_"))
-                for reason in row["reasons"])
-            for row in trace_rows
-        )
-        if degraded and not frozen_hard_blocked_all:
-            message = (
-                f"{meal_type}.{slot_name} 该分类菜品不足，建议补录 "
-                f"({pool_size}/{minimum})；允许4天窗口内同菜重复"
-            )
-            if message not in self.degradation_warnings:
-                self.degradation_warnings.append(message)
-            degradation_message = message
-            if available_slot and slot_name != "staple":
-                # Only the four-day/day-history exclusion is relaxed. Same-meal
-                # dish IDs, egg/tofu caps and §14 were already enforced above.
-                degraded_ids = {candidate["id"] for candidate in available_slot}
-                for row in trace_rows:
-                    if (row["dish_id"] in degraded_ids
-                            and row["reasons"] in (
-                                ["four_day_dish_lock"],
-                                ["same_day_or_explicit_dish_lock"],
-                            )):
-                        row["qualification"] = "DEGRADED_LEGAL"
-                return available_slot, degradation_message
 
         if slot_name in {"protein_main", "meat_main", "breakfast_meat"}:
             detail = "蛋白质/肉类必需槽位缺失"
@@ -1807,8 +1775,6 @@ class GapFiller:
         all_logs = {}
         day_history = set()
         day_proteins = set()
-        day_primary_vegetables = set()
-        day_primary_proteins = set()
 
         result = {}
         self.degradation_warnings = []
@@ -1828,8 +1794,6 @@ class GapFiller:
             meal_ctx["day_proteins"] = set(day_proteins)
             meal_ctx["day_history"] = set(day_history)  # 跨餐排除
             meal_ctx["day_auto_egg_count"] = day_auto_egg_count
-            meal_ctx["day_primary_vegetables"] = set(day_primary_vegetables)
-            meal_ctx["day_primary_proteins"] = set(day_primary_proteins)
 
             dishes, state, log = self.generate_meal(
                 meal_type,
@@ -1841,12 +1805,6 @@ class GapFiller:
             for d in dishes:
                 day_history.add(d["id"])
                 day_proteins.update(d["proteins"])
-                vegetable = primary_vegetable_subject(d)
-                protein = counted_primary_protein_source(d, meal_type)
-                if vegetable:
-                    day_primary_vegetables.add(vegetable)
-                if protein:
-                    day_primary_proteins.add(protein)
             day_auto_egg_count += state.auto_egg_dish_count
 
             result[meal_type] = {"dishes": dishes, "state": state}
@@ -1877,7 +1835,7 @@ class GapFiller:
 # ============================================================
 
 def get_rotation_context(target_date, location, exclude_menu_id=None):
-    """Return historical LRU data and the global four-day hard lock for one kitchen."""
+    """Return historical LRU data; cross-day hard locking is disabled."""
     target = date.fromisoformat(target_date)
     conn = get_db()
     try:
@@ -1892,48 +1850,17 @@ def get_rotation_context(target_date, location, exclude_menu_id=None):
             row["dish_id"]: row["last_used"] for row in historical_rows if row["dish_id"]
         }
 
-        params = [
-            location,
-            (target - timedelta(days=3)).isoformat(),
-            (target + timedelta(days=3)).isoformat(),
-        ]
-        exclude_sql = ""
-        if exclude_menu_id is not None:
-            exclude_sql = " AND m.id<>?"
-            params.append(exclude_menu_id)
-        reservation_rows = conn.execute(
-            "SELECT m.id AS menu_id, m.date, mi.dish_id "
-            "FROM menu_items mi JOIN menus m ON mi.menu_id=m.id "
-            "LEFT JOIN menu_meal_settings mms "
-            "ON mms.menu_id=mi.menu_id AND mms.meal_type=mi.meal_type "
-            "WHERE m.location=? AND m.date BETWEEN ? AND ? "
-            "AND COALESCE(m.status,'draft')<>'cancelled' "
-            "AND COALESCE(mms.is_skipped,0)=0" + exclude_sql,
-            tuple(params),
-        ).fetchall()
     finally:
         conn.close()
 
-    hard_locked = set()
-    for dish_id, used_text in historical_last_used.items():
-        delta = (target - date.fromisoformat(used_text)).days
-        if 1 <= delta <= 3:
-            hard_locked.add(dish_id)
-    for row in reservation_rows:
-        if not row["dish_id"]:
-            continue
-        delta = abs((target - date.fromisoformat(row["date"])).days)
-        if delta <= 3:
-            hard_locked.add(row["dish_id"])
-
     return {
         "historical_last_used": historical_last_used,
-        "hard_locked_dish_ids": hard_locked,
+        "hard_locked_dish_ids": set(),
     }
 
 
 def get_history_3day(location="shenzhen"):
-    """Compatibility helper for the frozen four-day hard-lock window."""
+    """Compatibility helper; cross-day hard locking is intentionally disabled."""
     return get_rotation_context(date.today().isoformat(), location)["hard_locked_dish_ids"]
 
 
@@ -2014,18 +1941,15 @@ def format_meal_en(dishes):
 # ============================================================
 
 def generate_afternoon_snack(pool, rng=None, context=None, exclude_ids=None):
-    """Select up to two available snacks with the same hard lock and LRU policy."""
+    """Select up to two available snacks with same-day exclusion and LRU ordering."""
     ctx = context or {}
     explicit_exclude = set(exclude_ids or set())
-    hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
     availability = ctx.get("dish_availability", {})
     snacks = []
     for dish in pool["dishes"]:
         analysis = NutritionAnalyzer.analyze(dish)
         if (dish["category_id"] == "fruit_snack"
                 and dish["id"] not in explicit_exclude
-                and (dish["id"] not in hard_locked
-                     or is_pantry_exempt_dish(analysis))
                 and is_auto_candidate(analysis, "afternoon_snack")
                 and (not availability or availability.get(dish["id"]) == "available")):
             snacks.append(dish)

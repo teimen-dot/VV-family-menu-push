@@ -11,6 +11,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import sqlite3
 import threading
 import time
 from difflib import SequenceMatcher
@@ -40,12 +41,12 @@ from menu_service import (
     replace_dish_in_menu, lock_dish, ai_fill_menu, repair_menu,
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
     get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
+    ensure_menu_for_date,
     update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
     get_rotation_context, is_auto_candidate, NO_CANDIDATE_MESSAGE,
-    is_pantry_exempt_dish,
 )
 from photo_security import PhotoValidationError, resolve_photo_path
 from runtime_config import (
@@ -70,6 +71,8 @@ _AUTH_LOCK = threading.Lock()
 
 OWNER_ONLY_POST_PATHS = {
     "/api/ingredients/add",
+    "/api/ingredients/update-english",
+    "/api/pantry/add-by-name",
     "/api/tomorrow/add",
     "/api/tomorrow/remove",
     "/api/tomorrow/replace",
@@ -97,7 +100,6 @@ PANTRY_POST_PATHS = {
     "/api/pantry/update_status",
     "/api/pantry/remove",
     "/api/pantry/consume",
-    "/api/pantry/add-by-name",
 }
 MENU_DRAFT_WRITE_PATHS = {
     "/api/tomorrow/add", "/api/tomorrow/remove", "/api/tomorrow/replace",
@@ -187,15 +189,24 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
         analyzed = {dish["id"]: NutritionAnalyzer.analyze(dish) for dish in pool}
         current_analysis = analyzed.get(current["dish_id"])
         slot_name = None
+        rice_rotation = bool(
+            current_analysis
+            and current["meal_type"] in {"lunch", "dinner"}
+            and current_analysis.get("category_id") == "staple_carb"
+            and "饭" in current_analysis.get("name_cn", "")
+        )
         if current_analysis:
-            slot_candidates = [
-                "tofu", "egg", "coarse_grain", "porridge", "companion_staple",
-                "quick_soup", "slow_soup", "protein_main",
-            ]
-            slot_candidates.append(
-                "vegetable" if current["meal_type"] == "breakfast" else "vegetable_dish"
-            )
-            slot_candidates.append("staple")
+            if current["meal_type"] == "breakfast":
+                slot_candidates = [
+                    "tofu", "egg", "porridge", "companion_staple", "coarse_grain",
+                    "quick_soup", "slow_soup", "meat_main", "protein_main",
+                    "vegetable", "staple",
+                ]
+            else:
+                slot_candidates = [
+                    "quick_soup", "slow_soup", "meat_main", "protein_main",
+                    "vegetable_dish", "staple",
+                ]
             for candidate_slot in slot_candidates:
                 if filter_candidates_for_slot([current_analysis], candidate_slot):
                     slot_name = candidate_slot
@@ -208,16 +219,20 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
         rotation = get_rotation_context(
             current["date"], current["location"] or location, exclude_menu_id=menu_id
         )
-        hard_locked = rotation["hard_locked_dish_ids"]
         candidates = []
         for dish in pool:
             analysis = analyzed[dish["id"]]
-            if (dish["id"] == current["dish_id"]
-                    or dish["id"] in occupied
-                    or (dish["id"] in hard_locked
-                        and not is_pantry_exempt_dish(analysis))
-                    or current["meal_type"] not in analysis["meal_tags"]
-                    or not is_auto_candidate(analysis, current["meal_type"])):
+            if dish["id"] in occupied and not rice_rotation:
+                continue
+            if current["meal_type"] == "supper":
+                if analysis.get("category_id") != "one_pot_meal":
+                    continue
+            elif current["meal_type"] not in analysis["meal_tags"]:
+                continue
+            if rice_rotation and not (
+                analysis.get("category_id") == "staple_carb"
+                and "饭" in analysis.get("name_cn", "")
+            ):
                 continue
             if slot_name:
                 if not filter_candidates_for_slot([analysis], slot_name):
@@ -232,26 +247,35 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
         if not candidates:
             return None
         availability = check_dishes_availability_batch([row["id"] for row in candidates], location)
-        available = [row for row in candidates if availability.get(row["id"], {}).get("status") == "available"]
-        if not available:
+        # Quick cycling is narrower than manual search: use every inventory-ready
+        # dish first, then dishes missing only a small amount. Missing/incomplete
+        # records remain searchable but never enter this ring.
+        eligible = [dish for dish in candidates if availability.get(dish["id"], {}).get("status")
+                    in {"available", "almost_available"}]
+        if not eligible:
             return None
         last_used = rotation["historical_last_used"]
         def rotation_group(dish_id):
             used = last_used.get(dish_id)
             return (1 if used else 0, used or "")
 
-        best_group = min(rotation_group(dish["id"]) for dish in available)
-        best = sorted(
-            (dish for dish in available if rotation_group(dish["id"]) == best_group),
-            key=lambda dish: dish["id"],
+        availability_rank = {"available": 0, "almost_available": 1}
+        ring = sorted(eligible, key=lambda dish: (
+            availability_rank.get(availability.get(dish["id"], {}).get("status"), 4),
+            rotation_group(dish["id"]), dish["id"],
+        ))
+        current_index = next(
+            (index for index, dish in enumerate(ring) if dish["id"] == current["dish_id"]),
+            None,
         )
-        # Within the same LRU group, continue after the current dish.  This keeps
-        # repeated direct-switch clicks useful without adding separate round state.
-        if rotation_group(current["dish_id"]) == best_group:
-            later = [dish for dish in best if dish["id"] > current["dish_id"]]
-            if later:
-                return later[0]
-        return best[0]
+        if current_index is None:
+            chosen, wrapped = ring[0], False
+        else:
+            next_index = (current_index + 1) % len(ring)
+            chosen, wrapped = ring[next_index], next_index == 0
+        if chosen["id"] == current["dish_id"]:
+            return None
+        return {**chosen, "_pool_size": len(ring), "_cycle_wrapped": wrapped}
     finally:
         conn.close()
 
@@ -485,6 +509,57 @@ def get_all_dishes(category=None, search=""):
         conn.close()
 
 
+BREAKFAST_DRINK_SEEDS = (
+    ("dish_drink_001", "经典原味豆浆", "Classic Soy Milk"),
+    ("dish_drink_002", "红豆花生燕麦豆浆", "Red Bean Peanut Oat Soy Milk"),
+    ("dish_drink_003", "红豆黑米豆浆", "Red Bean Black Rice Soy Milk"),
+    ("dish_drink_004", "红豆花生红枣豆浆", "Red Bean Peanut Jujube Soy Milk"),
+    ("dish_drink_005", "红豆燕麦豆浆", "Red Bean Oat Soy Milk"),
+    ("dish_drink_006", "三色豆浆", "Three-bean Soy Milk"),
+)
+
+
+def ensure_breakfast_drink_catalog():
+    """Idempotently install the manual-only breakfast drink category and seeds."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO categories (id,label_cn,label_en,sort_order,active) "
+            "VALUES ('breakfast_drink','早餐饮品','Breakfast Drinks',95,1)"
+        )
+        for dish_id, name_cn, name_en in BREAKFAST_DRINK_SEEDS:
+            conn.execute(
+                "INSERT OR IGNORE INTO dishes "
+                "(id,name_cn,name_en,category_id,meal_tags,protein_types,vegetables,vegetable_count,"
+                "meal_components,taste,cooking_methods,custom_tags,needs_review,image_uploaded,"
+                "quick_soup,slow_soup,manual_only_for_breakfast,drink,ingredients_pending,is_active,"
+                "created_at,updated_at) VALUES (?,?,?,'breakfast_drink','[\"breakfast\"]','[]','[]',0,"
+                "'[]','normal','[]','[\"manual\"]',0,0,0,0,1,'{\"type\":\"breakfast_drink\"}',0,1,"
+                "datetime('now'),datetime('now'))",
+                (dish_id, name_cn, name_en),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_breakfast_drinks():
+    conn = get_db()
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT id,name_cn,name_en FROM dishes WHERE category_id='breakfast_drink' "
+                "AND (is_active=1 OR is_active IS NULL) ORDER BY id"
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such table" not in str(exc).lower():
+                raise
+            rows = []
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def get_dish_recommendations(meal_type, current_dish_id, category_id, location):
     """V7: 智能换菜推荐。返回 {available: [...], almost_available: [...]}"""
     conn = get_db()
@@ -508,7 +583,10 @@ def get_dish_recommendations(meal_type, current_dish_id, category_id, location):
                     meal_tags = json.loads(d["meal_tags"])
                 except (json.JSONDecodeError, TypeError):
                     meal_tags = []
-            if meal_type in meal_tags:
+            if meal_type == "supper":
+                if d["category_id"] == "one_pot_meal":
+                    candidates.append(dict(d))
+            elif meal_type in meal_tags:
                 candidates.append(dict(d))
 
         if not candidates:
@@ -770,6 +848,8 @@ def save_family_dish(payload, dish_id=None):
     ingredient_names = _dish_json_list(payload.get("ingredients"))
     drink = payload.get("drink")
     drink_json = json.dumps(drink, ensure_ascii=False) if drink else None
+    is_breakfast_drink = category_id == "breakfast_drink" or bool(drink)
+    ingredients_pending = 0 if is_breakfast_drink or ingredient_names else 1
 
     conn = get_db()
     try:
@@ -807,7 +887,7 @@ def save_family_dish(payload, dish_id=None):
                     1 if payload.get("quick_soup") else 0,
                     1 if payload.get("slow_soup") else 0,
                     1 if payload.get("manual_only_for_breakfast") else 0,
-                    drink_json, 0 if ingredient_names else 1, 0 if ingredient_names else 1,
+                    drink_json, ingredients_pending, ingredients_pending,
                     dish_id,
                 ),
             )
@@ -829,11 +909,11 @@ def save_family_dish(payload, dish_id=None):
                     json.dumps(vegetables, ensure_ascii=False), len(vegetables), payload.get("carb_type"),
                     str(payload.get("taste", "normal")),
                     json.dumps(cooking_methods, ensure_ascii=False),
-                    json.dumps(custom_tags, ensure_ascii=False), 0 if ingredient_names else 1,
+                    json.dumps(custom_tags, ensure_ascii=False), ingredients_pending,
                     1 if payload.get("quick_soup") else 0,
                     1 if payload.get("slow_soup") else 0,
                     1 if payload.get("manual_only_for_breakfast") else 0,
-                    drink_json, 0 if ingredient_names else 1,
+                    drink_json, ingredients_pending,
                 ),
             )
             event_type = "dish_added"
@@ -1165,6 +1245,7 @@ def get_history_menus(days=30, location=None, as_of=None):
 # ============================================================
 
 READONLY_MEAL_TYPES = ("breakfast", "lunch", "dinner")
+DISPLAY_MEAL_TYPES = ("breakfast", "lunch", "afternoon_snack", "dinner", "supper")
 READONLY_MEAL_CUTOFFS = (
     ("breakfast", (10, 30)),
     ("lunch", (15, 0)),
@@ -1205,7 +1286,7 @@ def _empty_readonly_menu(date_str, location):
         "meal_notes": {},
         "availability": {},
         "shortages": {},
-        "meals": {meal_type: [] for meal_type in READONLY_MEAL_TYPES},
+        "meals": {meal_type: [] for meal_type in DISPLAY_MEAL_TYPES},
     }
 
 
@@ -1400,7 +1481,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
                             {**dish, "image": _bootstrap_image_url(dish.get("image"))}
                             for dish in menu.get("meals", {}).get(meal_type, [])
                         ]
-                        for meal_type in READONLY_MEAL_TYPES
+                        for meal_type in DISPLAY_MEAL_TYPES
                     },
                 }
             weekday_cn, weekday_en = WEEKDAY_LABELS[day_date.weekday()]
@@ -1476,6 +1557,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
         "server_now": now.isoformat(timespec="seconds"),
         "days": days,
         "next_meal": next_meal,
+        "breakfast_drinks": get_breakfast_drinks(),
         **tabs,
     }
 
@@ -3795,6 +3877,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": "not found"}, 404)
         elif path == "/api/ingredients":
             self.send_json(get_all_ingredients())
+        elif path == "/api/breakfast-drinks":
+            self.send_json(get_breakfast_drinks())
         elif path == "/api/tomorrow":
             tomorrow = get_tomorrow_date()
             self.send_json(get_menu_with_dishes(tomorrow, location))
@@ -3895,11 +3979,7 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(result)
 
         elif path == "/api/pantry/add-by-name":
-            # Local Preview: freely create an exact user-entered ingredient name
-            # and add it to the pantry in one database transaction.
-            if os.environ.get("LOCAL_PREVIEW_UI", "").lower() != "true":
-                self.send_json({"ok": False, "error": "preview only"}, 404)
-                return
+            # Owner-only exact-name creation and pantry add in one transaction.
             raw_name = body.get("ingredient_name", "")
             requested_name = _normalize_ingredient_name(raw_name)
             if not requested_name:
@@ -3985,12 +4065,43 @@ class AppHandler(BaseHTTPRequestHandler):
                     "ok": True, "already_in_pantry": False, "created": created,
                     "ingredient_id": ingredient_id, "name_cn": display_name,
                     "name_en": display_name_en,
+                    "english_pending": not bool(display_name_en),
                     "corrected_from": corrected_from, "quantity_level": quantity_level,
                     "pantry_count": pantry_count,
                 })
             except Exception:
                 conn.rollback()
                 raise
+            finally:
+                conn.close()
+
+        elif path == "/api/ingredients/update-english":
+            ingredient_id = str(body.get("ingredient_id") or "").strip()
+            name_en = " ".join(str(body.get("name_en") or "").strip().split())
+            if not ingredient_id or not name_en:
+                self.send_json({"ok": False, "error": "ingredient_id and name_en required"}, 400)
+                return
+            if len(name_en) > 120:
+                self.send_json({"ok": False, "error": "name_en too long"}, 400)
+                return
+            conn = get_db()
+            try:
+                row = conn.execute(
+                    "SELECT name_cn FROM ingredients WHERE ingredient_id=?", (ingredient_id,)
+                ).fetchone()
+                if not row:
+                    self.send_json({"ok": False, "error": "ingredient not found"}, 404)
+                    return
+                conn.execute(
+                    "UPDATE ingredients SET name_en=? WHERE ingredient_id=?",
+                    (name_en, ingredient_id),
+                )
+                conn.commit()
+                log_event("ingredient_english_updated", "ingredient", ingredient_id, {
+                    "name_cn": row["name_cn"], "name_en": name_en,
+                })
+                self.send_json({"ok": True, "ingredient_id": ingredient_id,
+                                "name_cn": row["name_cn"], "name_en": name_en})
             finally:
                 conn.close()
 
@@ -4128,7 +4239,7 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/tomorrow/add":
             ok = add_dish_to_menu(body["menu_id"], body["dish_id"], body["meal_type"])
             self.send_json(
-                {"ok": ok, "error": None if ok else "菜品不可添加或处于当前厨房的全局4天锁定中"},
+                {"ok": ok, "error": None if ok else "菜品不可添加或已在当前菜单中"},
                 200 if ok else 409,
             )
 
@@ -4148,8 +4259,11 @@ class AppHandler(BaseHTTPRequestHandler):
                     "ok": True, "replaced": False, "message": NO_CANDIDATE_MESSAGE,
                 })
                 return
+            pool_size = chosen.pop("_pool_size", 0)
+            cycle_wrapped = chosen.pop("_cycle_wrapped", False)
             ok, msg = replace_dish_in_menu(body["menu_id"], body["menu_item_id"], chosen["id"])
             self.send_json({"ok": ok, "replaced": ok, "dish": chosen if ok else None,
+                            "pool_size": pool_size, "cycle_wrapped": cycle_wrapped,
                             "error": msg if not ok else None})
 
         elif path == "/api/menu/diners-count":
@@ -4189,6 +4303,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 return
             conn = get_db()
             try:
+                active_rows = conn.execute(
+                    "SELECT id,name_cn FROM dishes WHERE category_id='breakfast_drink' "
+                    "AND (is_active=1 OR is_active IS NULL)"
+                ).fetchall()
+                active = {row["id"]: row["id"] for row in active_rows}
+                active.update({row["name_cn"]: row["id"] for row in active_rows})
+                invalid = [value for value in drinks if value not in active]
+                if invalid:
+                    self.send_json({"ok": False, "error": "饮品不存在或已停用"}, 400)
+                    return
+                drinks = [active[value] for value in drinks]
                 row = conn.execute(
                     "SELECT meal_notes FROM menus WHERE id=?", (body["menu_id"],)
                 ).fetchone()
@@ -4499,8 +4624,14 @@ class AppHandler(BaseHTTPRequestHandler):
 def main():
     validate_app_startup()
     init_db()
-    # 确保明天菜单存在
-    ensure_tomorrow_menu("shenzhen")
+    ensure_breakfast_drink_catalog()
+    # The four visible planning days must have real editable menu rows.
+    today = datetime.now(FAMILY_TIMEZONE).date()
+    for offset in range(4):
+        ensure_menu_for_date(
+            (today + timedelta(days=offset)).isoformat(),
+            "shenzhen", seed=42 + offset,
+        )
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)
     print(f"[OK] H5 应用已启动: http://{HOST}:{PORT}")
     try:

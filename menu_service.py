@@ -291,7 +291,7 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
         ).fetchall()
 
         dish_ingredient_ids = get_dish_ingredients_map()
-        meals = {"breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": []}
+        meals = {"breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": [], "supper": []}
         for item in items:
             mt = item["meal_type"]
             if mt not in meals:
@@ -423,7 +423,7 @@ def update_menu_diners_count(menu_id, diners_count, location=None):
 
 def set_menu_meal_skipped(menu_id, meal_type, skipped):
     """Persist cancel/restore state for one meal without inventing menu items."""
-    if meal_type not in ("breakfast", "lunch", "afternoon_snack", "dinner"):
+    if meal_type not in ("breakfast", "lunch", "afternoon_snack", "dinner", "supper"):
         return False, "invalid meal_type"
     conn = get_db()
     try:
@@ -449,10 +449,7 @@ def set_menu_meal_skipped(menu_id, meal_type, skipped):
 
 
 def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None):
-    menu = conn.execute(
-        "SELECT date, location FROM menus WHERE id=?", (menu_id,)
-    ).fetchone()
-    if not menu:
+    if not conn.execute("SELECT 1 FROM menus WHERE id=?", (menu_id,)).fetchone():
         return True
     params = [menu_id, dish_id]
     ignore_sql = ""
@@ -464,19 +461,17 @@ def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None):
         tuple(params),
     ).fetchone()
     if duplicate:
-        return True
-    rotation = get_rotation_context(menu["date"], menu["location"], exclude_menu_id=menu_id)
-    required_ingredients = {
-        row["ingredient_id"] for row in conn.execute(
-            "SELECT ingredient_id FROM dish_ingredients "
-            "WHERE dish_id=? AND required=1",
+        rice = conn.execute(
+            "SELECT 1 FROM dishes WHERE id=? AND category_id='staple_carb' "
+            "AND name_cn LIKE '%饭%'",
             (dish_id,),
-        ).fetchall()
-    }
-    return (
-        dish_id in rotation["hard_locked_dish_ids"]
-        and not is_pantry_exempt_dish({"ingredient_ids": required_ingredients})
-    )
+        ).fetchone()
+        if rice:
+            return False
+    # Cross-day locking is disabled. Only a duplicate inside the same menu is
+    # blocked for owner add/search-replace/cycle actions. Rice is the explicit
+    # household exception: lunch and dinner may use the same rice dish.
+    return bool(duplicate)
 
 
 def add_dish_to_menu(menu_id, dish_id, meal_type):
@@ -484,9 +479,11 @@ def add_dish_to_menu(menu_id, dish_id, meal_type):
     conn = get_db()
     try:
         active = conn.execute(
-            "SELECT 1 FROM dishes WHERE id=? AND is_active=1", (dish_id,)
+            "SELECT category_id FROM dishes WHERE id=? AND is_active=1", (dish_id,)
         ).fetchone()
         if not active:
+            return False
+        if meal_type == "supper" and active["category_id"] != "one_pot_meal":
             return False
         if _dish_blocked_for_menu(conn, menu_id, dish_id):
             return False
@@ -540,7 +537,7 @@ def replace_dish_in_menu(menu_id, menu_item_id, new_dish_id):
     conn = get_db()
     try:
         active = conn.execute(
-            "SELECT 1 FROM dishes WHERE id=? AND is_active=1", (new_dish_id,)
+            "SELECT category_id FROM dishes WHERE id=? AND is_active=1", (new_dish_id,)
         ).fetchone()
         if not active:
             return False, "目标菜品不存在或已下架"
@@ -550,8 +547,10 @@ def replace_dish_in_menu(menu_id, menu_item_id, new_dish_id):
         ).fetchone()
         if not item:
             return False, "菜品不存在"
+        if item["meal_type"] == "supper" and active["category_id"] != "one_pot_meal":
+            return False, "宵夜只能选择一餐型菜品"
         if _dish_blocked_for_menu(conn, menu_id, new_dish_id, ignore_item_id=menu_item_id):
-            return False, "该菜品处于当前厨房的全局4天锁定中"
+            return False, "该菜品已在当前菜单中"
 
         # 替换菜品，新菜自动锁定为 owner 选择
         conn.execute(
@@ -650,6 +649,45 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
             (menu_id,)
         ).fetchall()
 
+        # Supper is an optional one-pot slot. When restored or AI-filled, add
+        # exactly one active one-pot dish that the current pantry can make.
+        if meal_type == "supper":
+            existing_supper = [item for item in all_items if item["meal_type"] == "supper"]
+            if existing_supper:
+                return True, "宵夜已有菜品", {
+                    "added": [], "removed": [], "unmet_slots": [],
+                    "slot_analysis_before": {}, "slot_analysis_after": {},
+                }
+            occupied = {item["dish_id"] for item in all_items}
+            candidates = [dish for dish in pool["dishes"]
+                          if dish.get("category_id") == "one_pot_meal"
+                          and dish["id"] not in occupied
+                          and dish_availability.get(dish["id"], {}).get("status") == "available"]
+            candidates.sort(key=lambda dish: (-vv_prefs.get(dish["id"], 0), dish["id"]))
+            if not candidates:
+                return True, "没有库存可做的一餐型料理", {
+                    "added": [], "removed": [],
+                    "unmet_slots": [{"meal_type": "supper", "slot": "one_pot_meal",
+                                     "reason": "no_available_candidate"}],
+                    "slot_analysis_before": {}, "slot_analysis_after": {},
+                }
+            chosen = candidates[0]
+            conn.execute(
+                "INSERT INTO menu_items (menu_id,dish_id,meal_type,is_locked,sort_order,source) "
+                "VALUES (?,?, 'supper',0,1,'ai')",
+                (menu_id, chosen["id"]),
+            )
+            conn.commit()
+            log_event("supper_auto_filled", "menu", str(menu_id), {
+                "dish_id": chosen["id"], "location": loc,
+            })
+            return True, "已加入库存可做的一餐型料理", {
+                "added": [{"meal_type": "supper", "slot": "one_pot_meal",
+                           "dish_id": chosen["id"], "name_cn": chosen.get("name_cn", "")}],
+                "removed": [], "unmet_slots": [],
+                "slot_analysis_before": {}, "slot_analysis_after": {},
+            }
+
         # 按餐次分组
         meals_existing = {"breakfast": [], "lunch": [], "dinner": []}
         item_sources = {}
@@ -669,8 +707,6 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
 
         day_history = set()
         day_proteins = set()
-        day_primary_vegetables = set()
-        day_primary_proteins = set()
         added_dishes = []  # V11: track mutations
         unmet_slots = []
         seen_unmet = set()
@@ -681,15 +717,6 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                     day_history.add(did)
                     day_proteins.update(dish_map[did].get("protein_types", []))
                     analysis = gf.analyzed[did]
-                    vegetable = primary_vegetable_subject(analysis)
-                    protein = counted_primary_protein_source(analysis, mt)
-                    if vegetable:
-                        day_primary_vegetables.add(vegetable)
-                    if protein:
-                        day_primary_proteins.add(protein)
-
-        context["day_primary_vegetables"] = day_primary_vegetables
-        context["day_primary_proteins"] = day_primary_proteins
 
         for mt in target_meals:
             if mt not in meals_existing:
@@ -901,17 +928,6 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 items_added += 1
                 day_history.add(chosen["id"])
                 day_proteins.update(chosen.get("proteins", []))
-                vegetable = primary_vegetable_subject(chosen)
-                protein = counted_primary_protein_source(chosen, meal_type)
-                if vegetable:
-                    context.setdefault("day_primary_vegetables", set()).add(
-                        vegetable
-                    )
-                if protein:
-                    context.setdefault("day_primary_proteins", set()).add(
-                        protein
-                    )
-
                 # V11: 记录 mutation
                 added_dishes.append({
                     "dish_id": chosen["id"],
@@ -1040,7 +1056,8 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
             elif mt == "breakfast":
                 target = {
                     "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
-                    "breakfast_meat": 1, "vegetable": 2, "egg": 1, "tofu": 1
+                    "breakfast_meat": 1 if diners_count <= 2 else 2,
+                    "vegetable": 2, "egg": 1, "tofu": 1
                 }
             else:
                 continue
@@ -1352,3 +1369,18 @@ def ensure_tomorrow_menu(location="shenzhen", seed=None):
         return menu_id, review, True  # newly generated
     else:
         return menu["id"], None, False  # already exists
+
+
+def ensure_menu_for_date(date_str, location="shenzhen", seed=None):
+    """Ensure one visible planning date has a real editable menu row."""
+    conn = get_db()
+    try:
+        menu = conn.execute(
+            "SELECT id FROM menus WHERE date=? AND location=?", (date_str, location)
+        ).fetchone()
+    finally:
+        conn.close()
+    if menu:
+        return menu["id"], None, False
+    menu_id, review = generate_and_store_menu(date_str, location, seed=seed or 42)
+    return menu_id, review, True

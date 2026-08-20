@@ -2118,6 +2118,9 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
 
 def main():
     ensure_dirs()
+    # Manager and family UI share one SQLite catalog, including manual drinks.
+    from app import ensure_breakfast_drink_catalog
+    ensure_breakfast_drink_catalog()
 
     dishes = get_all_dishes()
     photo_count = sum(1 for dish in dishes if dish.get("has_photo"))
