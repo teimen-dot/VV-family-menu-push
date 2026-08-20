@@ -4122,10 +4122,7 @@ class AppHandler(BaseHTTPRequestHandler):
             ))
 
         elif path == "/api/pantry/consume":
-            # Preview Pantry: consumption is an event, not a persistent stock status.
-            if os.environ.get("LOCAL_PREVIEW_UI", "").lower() != "true":
-                self.send_json({"ok": False, "error": "preview only"}, 404)
-                return
+            # Consumption removes the active pantry row and preserves an audit event.
             _ensure_preview_consumed_history()
             loc = body.get("location", location)
             ingredient_id = body["ingredient_id"]

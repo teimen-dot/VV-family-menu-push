@@ -3841,8 +3841,7 @@ pickModal.addEventListener('click',
       if (index > 0) updateFutureDay(day, DAY_SECTIONS[index]);
     });
     updateHero(data.next_meal || null);
-    const progress = document.getElementById('confirmProgress');
-    if (progress) progress.innerHTML = '可操作测试版<small>LIVE TEST DATA</small>';
+    updateConfirmProgress();
     if (typeof window.hydratePhase2Tabs === 'function') window.hydratePhase2Tabs(data);
   }
 

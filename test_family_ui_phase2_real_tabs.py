@@ -172,6 +172,17 @@ class Phase2RealTabsStaticTests(unittest.TestCase):
         self.assertNotIn("只读预览", self.html)
         self.assertNotIn("当前为只读", self.html)
 
+    def test_production_pantry_consume_has_no_preview_gate(self):
+        self.assertNotIn("preview only", app.AppHandler.do_POST.__code__.co_consts)
+
+    def test_hydration_keeps_real_confirmed_meal_progress(self):
+        hydrate = self.html.split("function hydrate(data)", 1)[1].split(
+            "async function load(location)", 1
+        )[0]
+        self.assertIn("updateConfirmProgress();", hydrate)
+        self.assertNotIn("可操作测试版", hydrate)
+        self.assertNotIn("LIVE TEST DATA", hydrate)
+
     def test_pantry_rows_have_no_ingredient_image_surface(self):
         pantry_row = self.html.split("function pantryRow(item, recent = false)", 1)[1].split(
             "function renderPantry", 1
