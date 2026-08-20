@@ -13,7 +13,9 @@ from rule_engine import (
     GapFiller,
     MealState,
     analyze_meal_slots,
+    generate_afternoon_snack,
     get_rotation_context,
+    is_pantry_exempt_dish,
 )
 from test_t002_blackbox import complete_pool, dish
 
@@ -64,6 +66,69 @@ class ProteinSlotDegradationTests(unittest.TestCase):
         self.assertNotIn("meat_00", {row["id"] for row in candidates})
         self.assertIsNone(warning)
         self.assertEqual(fresh_filler.degradation_warnings, [])
+
+    def test_pantry_exempt_lock_bypass_keeps_mixed_rice_locked(self):
+        pure_rice = dish(
+            "dish_0094", ["staple"], ["lunch", "dinner"],
+            category="staple_carb", carb_type="rice",
+        )
+        pure_rice["ingredient_ids"] = ["rice"]
+        mixed_rice = dish(
+            "dish_0091", ["staple"], ["lunch", "dinner"],
+            category="staple_carb", carb_type="rice",
+        )
+        mixed_rice["ingredient_ids"] = ["rice", "16谷米"]
+        filler = GapFiller({"dishes": [pure_rice, mixed_rice]}, seed=1)
+        context = {
+            "hard_locked_dish_ids": {"dish_0091", "dish_0094"},
+            "dish_availability": {
+                "dish_0091": "available", "dish_0094": "available",
+            },
+        }
+
+        candidates, warning = filler.get_slot_candidates(
+            "lunch", "staple", MealState(), context=context,
+        )
+
+        self.assertTrue(is_pantry_exempt_dish(pure_rice))
+        self.assertFalse(is_pantry_exempt_dish(mixed_rice))
+        self.assertEqual([item["id"] for item in candidates], ["dish_0094"])
+        self.assertIsNone(warning)
+
+        candidates, warning = filler.get_slot_candidates(
+            "dinner", "staple", MealState(), context=context,
+            exclude_ids={"dish_0094"},
+        )
+        self.assertEqual(candidates, [])
+        self.assertIsNone(warning)
+        self.assertIn(
+            "dinner.staple 无任何合法候选",
+            filler.hard_slot_warnings[("dinner", "staple")],
+        )
+
+    def test_afternoon_snack_uses_same_pantry_exempt_lock_boundary(self):
+        exempt = dish(
+            "exempt_snack", [], ["afternoon_snack"],
+            category="fruit_snack",
+        )
+        exempt["ingredient_ids"] = ["糖"]
+        ordinary = dish(
+            "ordinary_snack", [], ["afternoon_snack"],
+            category="fruit_snack",
+        )
+        ordinary["ingredient_ids"] = ["banana"]
+
+        snacks = generate_afternoon_snack(
+            {"dishes": [exempt, ordinary]},
+            context={
+                "hard_locked_dish_ids": {"exempt_snack", "ordinary_snack"},
+                "dish_availability": {
+                    "exempt_snack": "available", "ordinary_snack": "available",
+                },
+            },
+        )
+
+        self.assertEqual([item["id"] for item in snacks], ["exempt_snack"])
 
     def test_low_protein_pool_relaxes_only_window_lock_and_fills_matrix(self):
         rows = [

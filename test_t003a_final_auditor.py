@@ -76,6 +76,24 @@ class FinalMenuAuditorContractTests(unittest.TestCase):
         self.assertEqual(audit["status"], "PASS")
         self.assertTrue(audit["passed"])
 
+    def test_pantry_exempt_repeat_is_not_a07_violation(self):
+        first = valid_record("2099-01-01")
+        repeated = next(
+            item for item in first["menu"]["meals"]["lunch"]
+            if "staple" in item["meal_roles"]
+        )
+        repeated["ingredient_ids"] = ["rice"]
+        second = renamed_day(first, "2099-01-02", repeated["dish_id"])
+
+        audit = audit_menu_sequence([first, second])
+        a07 = next(
+            check for check in audit["days"][1]["checks"]
+            if check["id"] == "A07"
+        )
+
+        self.assertEqual(a07["status"], "PASS")
+        self.assertTrue(a07["details"]["repeats"][0]["legal_pantry_exemption"])
+
     def test_egg_tofu_combo_cannot_cover_two_breakfast_slots(self):
         record = valid_record()
         breakfast = record["menu"]["meals"]["breakfast"]

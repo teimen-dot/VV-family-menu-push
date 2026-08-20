@@ -498,6 +498,68 @@ class DatabaseFeatureTests(unittest.TestCase):
         chosen = app.get_next_available_same_class_dish(1, 1, "shenzhen")
         self.assertEqual(chosen["id"], "dish_alternative")
 
+    def test_locked_rice_cycle_and_manual_paths_honor_pantry_exemption(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO categories (id,label_cn,label_en) "
+            "VALUES ('staple_carb','主食','Staple')"
+        )
+        for ingredient_id in ("rice", "16谷米"):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+        dishes = (
+            ("dish_current", ["rice"]),
+            ("dish_0091", ["rice", "16谷米"]),
+            ("dish_0094", ["rice"]),
+        )
+        for dish_id, ingredient_ids in dishes:
+            conn.execute(
+                "INSERT INTO dishes "
+                "(id,name_cn,name_en,category_id,meal_tags,meal_roles,carb_type,is_active) "
+                "VALUES (?,?,?,'staple_carb','[\"lunch\",\"dinner\"]',"
+                "'[\"staple\"]','rice',1)",
+                (dish_id, dish_id, dish_id),
+            )
+            for ingredient_id in ingredient_ids:
+                conn.execute(
+                    "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) "
+                    "VALUES (?,?,1)",
+                    (dish_id, ingredient_id),
+                )
+        conn.execute(
+            "INSERT INTO current_pantry (location,ingredient_id,status,is_active) "
+            "VALUES ('shenzhen','16谷米','available',1)"
+        )
+        conn.execute(
+            "INSERT INTO menus (id,date,location,status) "
+            "VALUES (1,'2099-01-01','shenzhen','confirmed')"
+        )
+        conn.execute(
+            "INSERT INTO menu_items (menu_id,dish_id,meal_type,sort_order) "
+            "VALUES (1,'dish_0091','lunch',1),(1,'dish_0094','dinner',2)"
+        )
+        conn.execute(
+            "INSERT INTO menus (id,date,location,status) "
+            "VALUES (2,'2099-01-02','shenzhen','draft')"
+        )
+        conn.execute(
+            "INSERT INTO menu_items (id,menu_id,dish_id,meal_type,sort_order) "
+            "VALUES (20,2,'dish_current','lunch',1)"
+        )
+        conn.commit()
+
+        self.assertTrue(menu_service._dish_blocked_for_menu(conn, 2, "dish_0091"))
+        self.assertFalse(menu_service._dish_blocked_for_menu(conn, 2, "dish_0094"))
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        chosen = app.get_next_available_same_class_dish(2, 20, "shenzhen")
+        self.assertEqual(chosen["id"], "dish_0094")
+        self.assertFalse(menu_service.add_dish_to_menu(2, "dish_0091", "dinner"))
+        self.assertTrue(menu_service.add_dish_to_menu(2, "dish_0094", "dinner"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -20,6 +20,7 @@ from rule_engine import (
     assign_breakfast_slots,
     has_egg_ingredient,
     has_tofu_ingredient,
+    is_pantry_exempt_dish,
 )
 
 
@@ -57,7 +58,7 @@ AUDIT_RULES = (
     {
         "id": "A07",
         "clause": "§7 / §11.10 / §13.3",
-        "rule": "同厨房 4 天窗口默认不重复 dish_id；仅合法低池降级事件可破锁。",
+        "rule": "同厨房 4 天窗口默认不重复 dish_id；常备豁免菜及合法低池降级事件可破锁。",
     },
     {
         "id": "A08",
@@ -382,14 +383,20 @@ def _audit_rotation(menu, evidence, previous_records):
                  if value.get("meal") == meal and value.get("dish_id") == dish_id),
                 None,
             )
+            pantry_exempt = is_pantry_exempt_dish(item)
             repeats.append({
                 "meal": meal,
                 "dish_id": dish_id,
+                "legal_pantry_exemption": pantry_exempt,
                 "legal_low_pool_degradation": bool(
                     event and _valid_degradation_event(event, evidence)
                 ),
             })
-    illegal = [item for item in repeats if not item["legal_low_pool_degradation"]]
+    illegal = [
+        item for item in repeats
+        if not item["legal_pantry_exemption"]
+        and not item["legal_low_pool_degradation"]
+    ]
     return _check(
         "A07", "FAIL" if illegal else "PASS",
         {"repeats": repeats, "illegal_repeats": illegal},

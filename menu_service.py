@@ -19,6 +19,7 @@ from rule_engine import (
     BREAKFAST_COMPANION_STAPLES, NO_CANDIDATE_MESSAGE,
     counted_primary_protein_source, primary_vegetable_subject,
     is_breakfast_meat_candidate, is_breakfast_tofu_candidate,
+    is_pantry_exempt_dish,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -465,7 +466,17 @@ def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None):
     if duplicate:
         return True
     rotation = get_rotation_context(menu["date"], menu["location"], exclude_menu_id=menu_id)
-    return dish_id in rotation["hard_locked_dish_ids"]
+    required_ingredients = {
+        row["ingredient_id"] for row in conn.execute(
+            "SELECT ingredient_id FROM dish_ingredients "
+            "WHERE dish_id=? AND required=1",
+            (dish_id,),
+        ).fetchall()
+    }
+    return (
+        dish_id in rotation["hard_locked_dish_ids"]
+        and not is_pantry_exempt_dish({"ingredient_ids": required_ingredients})
+    )
 
 
 def add_dish_to_menu(menu_id, dish_id, meal_type):

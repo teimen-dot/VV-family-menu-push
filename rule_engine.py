@@ -22,7 +22,7 @@ import random
 from datetime import date, datetime, timedelta
 from collections import Counter
 from db import get_db
-from inventory import normalize_ingredient_id
+from inventory import PANTRY_EXEMPT_CANONICAL_IDS, normalize_ingredient_id
 
 # ============================================================
 # 常量
@@ -148,6 +148,19 @@ PROTECTED_PENDING_DISH_IDS = {
 
 def is_manual_source(source):
     return (source or "").lower() in MANUAL_SOURCES
+
+
+def is_pantry_exempt_dish(dish):
+    """Return whether every declared required ingredient is pantry-exempt."""
+    required = dish.get("required_ingredient_ids")
+    if required is None:
+        required = dish.get("ingredient_ids") or []
+    canonical = {
+        normalize_ingredient_id(ingredient_id)
+        for ingredient_id in required
+        if ingredient_id
+    }
+    return bool(canonical) and canonical <= PANTRY_EXEMPT_CANONICAL_IDS
 
 
 def is_auto_candidate(analysis, meal_type):
@@ -1373,11 +1386,14 @@ class GapFiller:
 
     def get_candidates(self, meal_type, exclude_ids=None, context=None):
         ctx = context or {}
-        exclude = set(exclude_ids or set()) | set(ctx.get("hard_locked_dish_ids", set()))
+        explicit_exclude = set(exclude_ids or set())
+        hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
         availability = ctx.get("dish_availability", {})
         return [
             a for a in self.analyzed.values()
-            if a["id"] not in exclude and meal_type in a["meal_tags"]
+            if a["id"] not in explicit_exclude
+            and (a["id"] not in hard_locked or is_pantry_exempt_dish(a))
+            and meal_type in a["meal_tags"]
             and is_auto_candidate(a, meal_type)
             and (not availability or availability.get(a["id"]) == "available")
         ]
@@ -1475,7 +1491,12 @@ class GapFiller:
         ]
         explicit_exclude = set(exclude_ids or set())
         hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
-        blocked = explicit_exclude | hard_locked
+        four_day_blocked = {
+            candidate["id"] for candidate in available_slot
+            if candidate["id"] in hard_locked
+            and not is_pantry_exempt_dish(candidate)
+        }
+        blocked = explicit_exclude | four_day_blocked
         unlocked = [candidate for candidate in available_slot if candidate["id"] not in blocked]
         trace_rows = []
         for candidate in classification_pool:
@@ -1487,7 +1508,8 @@ class GapFiller:
             status = availability.get(candidate["id"])
             if not reasons and availability and status != "available":
                 reasons.append(f"inventory:{status or 'unknown'}")
-            if not reasons and candidate["id"] in hard_locked:
+            if (not reasons and candidate["id"] in hard_locked
+                    and not is_pantry_exempt_dish(candidate)):
                 reasons.append("four_day_dish_lock")
             elif not reasons and candidate["id"] in explicit_exclude:
                 reasons.append("same_day_or_explicit_dish_lock")
@@ -1525,7 +1547,7 @@ class GapFiller:
             if message not in self.degradation_warnings:
                 self.degradation_warnings.append(message)
             degradation_message = message
-            if available_slot:
+            if available_slot and slot_name != "staple":
                 # Only the four-day/day-history exclusion is relaxed. Same-meal
                 # dish IDs, egg/tofu caps and §14 were already enforced above.
                 degraded_ids = {candidate["id"] for candidate in available_slot}
@@ -1994,13 +2016,16 @@ def format_meal_en(dishes):
 def generate_afternoon_snack(pool, rng=None, context=None, exclude_ids=None):
     """Select up to two available snacks with the same hard lock and LRU policy."""
     ctx = context or {}
-    excluded = set(exclude_ids or set()) | set(ctx.get("hard_locked_dish_ids", set()))
+    explicit_exclude = set(exclude_ids or set())
+    hard_locked = set(ctx.get("hard_locked_dish_ids", set()))
     availability = ctx.get("dish_availability", {})
     snacks = []
     for dish in pool["dishes"]:
         analysis = NutritionAnalyzer.analyze(dish)
         if (dish["category_id"] == "fruit_snack"
-                and dish["id"] not in excluded
+                and dish["id"] not in explicit_exclude
+                and (dish["id"] not in hard_locked
+                     or is_pantry_exempt_dish(analysis))
                 and is_auto_candidate(analysis, "afternoon_snack")
                 and (not availability or availability.get(dish["id"]) == "available")):
             snacks.append(dish)

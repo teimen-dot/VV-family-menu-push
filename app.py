@@ -45,6 +45,7 @@ from menu_service import (
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
     get_rotation_context, is_auto_candidate, NO_CANDIDATE_MESSAGE,
+    is_pantry_exempt_dish,
 )
 from photo_security import PhotoValidationError, resolve_photo_path
 from runtime_config import (
@@ -213,7 +214,8 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
             analysis = analyzed[dish["id"]]
             if (dish["id"] == current["dish_id"]
                     or dish["id"] in occupied
-                    or dish["id"] in hard_locked
+                    or (dish["id"] in hard_locked
+                        and not is_pantry_exempt_dish(analysis))
                     or current["meal_type"] not in analysis["meal_tags"]
                     or not is_auto_candidate(analysis, current["meal_type"])):
                 continue
