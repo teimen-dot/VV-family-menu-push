@@ -30,6 +30,22 @@ The independent workstation copy of the production snapshot is stored outside
 Git at `/Users/heymen/Documents/family-menu-backups/production-20260820-stable/`.
 Use its `SHA256SUMS` file to verify every restored archive before extraction.
 
+## Last verified recovery drill
+
+PASS on 2026-08-20 HKT using a new empty directory:
+
+- GitHub tag resolved to production commit `ab170a2`.
+- All 304 Git-tracked files matched the deployed application snapshot; no
+  required production code was missing from GitHub.
+- SQLite `PRAGMA integrity_check` returned `ok`; restored data contained 229
+  dish rows (218 active), 90 pantry rows, 25 menus, and 290 menu items.
+- All 218 uploaded photo files were restored.
+- The isolated application started with push disabled; `/health` returned
+  application/database OK, `/tomorrow` returned HTTP 200 after simulated trusted
+  proxy authentication, and the real bootstrap payload loaded successfully.
+- Independent snapshot SHA-256:
+  `7b6e9552a0add52dbae464e067ad247bbceb919a51de00c7bf7036d5b3a7ab3e`.
+
 ## Required secrets and configuration
 
 Recreate these values from the owner's password manager or protected server
