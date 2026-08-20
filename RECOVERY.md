@@ -1,0 +1,110 @@
+# Family Menu Production Recovery
+
+## Stable release
+
+- Repository: `https://github.com/teimen-dot/VV-family-menu-push.git`
+- Branch: `codex/family-ui-phase2-writable`
+- Production code commit: `ab170a227f733357f00e7ac4bae1dbcda444b219`
+- Stable tag: `production-2026-08-20-stable`
+- Production host: `43.129.246.80` (Ubuntu)
+
+The Git repository contains source code, migrations, deployment examples, and
+versioned dish photos. It intentionally does not contain the production SQLite
+database, real environment file, passwords, API tokens, htpasswd files, or SSH
+private keys.
+
+## Production layout
+
+| Item | Location |
+| --- | --- |
+| Application | `/opt/family-menu/app/` |
+| SQLite database | `/opt/family-menu/data/family_menu.db` |
+| Uploaded photos | `/opt/family-menu/photos/` |
+| Server backups | `/opt/family-menu/backups/` |
+| Environment file | `/etc/family-menu.env` (`root:root`, mode `0600`) |
+| Family service | `family-menu-app.service` |
+| Admin service | `family-menu-admin.service` |
+| Reverse proxy | `nginx.service` |
+
+The independent workstation copy of the production snapshot is stored outside
+Git at `/Users/heymen/Documents/family-menu-backups/production-20260820-stable/`.
+Use its `SHA256SUMS` file to verify every restored archive before extraction.
+
+## Required secrets and configuration
+
+Recreate these values from the owner's password manager or protected server
+backup; never commit their real values:
+
+- `APP_ENV`, `FAMILY_MENU_DB_PATH`, `PHOTO_DIR`, `HOST`, `PORT`
+- `H5_BASE_URL`, `SESSION_SECRET`
+- `OWNER_AUTH_USERNAME`, `WORKER_AUTH_USERNAME`
+- `PUSH_ENABLED`, `PUSH_SCHEDULE_ENABLED`, `PUSH_ON_CONFIRM`
+- Push provider token/topic variables, if push is enabled later
+- Family/Admin htpasswd files and TLS certificate material
+- SSH deployment private key
+
+The known safe production defaults at this release are `APP_ENV=production`,
+`PUSH_ENABLED=false`, and `PUSH_SCHEDULE_ENABLED=false`.
+
+## Restore to a new machine
+
+```bash
+git clone https://github.com/teimen-dot/VV-family-menu-push.git family-menu
+cd family-menu
+git checkout production-2026-08-20-stable
+git rev-parse HEAD
+```
+
+The last command must print
+`ab170a227f733357f00e7ac4bae1dbcda444b219`.
+
+Verify and unpack the independent snapshot, then place its contents using the
+production layout above. Before starting the application, ensure the database
+and photo directory are readable by the service account and the environment
+file remains root-only. Do not run a destructive migration against the only
+copy of the database.
+
+For a local recovery smoke test, use an extracted database and photo directory:
+
+```bash
+export APP_ENV=development
+export FAMILY_MENU_DB_PATH=/absolute/path/to/restored/family_menu.db
+export PHOTO_DIR=/absolute/path/to/restored/photos
+export HOST=127.0.0.1
+export PORT=18766
+python3 app.py
+```
+
+In another terminal verify:
+
+```bash
+curl -fsS http://127.0.0.1:18766/health
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18766/tomorrow
+```
+
+For production recovery, install the backed-up systemd and Nginx configuration,
+then run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart family-menu-app family-menu-admin nginx
+sudo systemctl is-active family-menu-app family-menu-admin nginx
+curl -fsS https://menu.ourmenu.site/health
+```
+
+Acceptance requires: health reports both application and database OK;
+`/tomorrow` opens after authentication; current menus, diners counts, pantry,
+dishes, and uploaded photos are present; and service logs contain no new startup
+errors.
+
+## Backup rules
+
+- Keep code history in GitHub and runtime snapshots outside GitHub.
+- A runtime snapshot must include code, SQLite (including a consistent WAL
+  checkpoint/copy), uploaded photos, migrations, environment/configuration,
+  systemd units, and Nginx configuration.
+- Record SHA-256 for every archive and verify after copying off the server.
+- Never put passwords, tokens, htpasswd contents, environment secrets, TLS
+  private keys, or SSH private keys in GitHub.
+- A backup is accepted only after the empty-directory clone and restored-data
+  startup drill passes.
