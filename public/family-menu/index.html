@@ -2442,20 +2442,15 @@ function renderMoList(q) {
   const hit = d => !query || d.zh.includes(q.trim()) || d.en.toLowerCase().includes(query);
 
   const supperOnly = addTarget?.card?.dataset.mtype === '宵夜' || swapRow?.closest('.meal-card')?.dataset.mtype === '宵夜';
-  const visible = DISH_DB.filter(d => d.id !== curId && hit(d) && (!supperOnly || d.categoryId === 'one_pot_meal'));
-  const eggPenalty = d => d.cat === 'egg_soy' || d.cat === 'egg' ? 1 : 0;
-  const stableDishSort = (a, b) => eggPenalty(a) - eggPenalty(b) ||
+  const visible = DISH_DB.filter(d => d.id !== curId && hit(d) &&
+    (!supperOnly || d.categoryId === 'one_pot_meal'));
+  const stableDishSort = (a, b) => (b.vvConfirmCount || 0) - (a.vvConfirmCount || 0) ||
+    String(b.createdAt || '').localeCompare(String(a.createdAt || '')) ||
     a.zh.localeCompare(b.zh, 'zh-CN');
-  const same = (addTarget
-    ? visible.filter(d => d.avail === 'ok')
-    : visible.filter(d => d.cat === curCat && d.avail === 'ok'))
-    .sort(stableDishSort);
-  const sameIds = new Set(same.map(d => d.id));
-  const more = visible.filter(d => !sameIds.has(d.id)).sort((a, b) => {
-    const availabilityRank = { ok:0, low:1, miss:2 };
-    return (availabilityRank[a.avail] ?? 3) - (availabilityRank[b.avail] ?? 3) ||
-      stableDishSort(a, b);
-  });
+  const scoped = addTarget ? visible : visible.filter(d => d.cat === curCat);
+  const availableFav = scoped.filter(d => d.avail === 'ok' && d.fav).sort(stableDishSort);
+  const available = scoped.filter(d => d.avail === 'ok' && !d.fav).sort(stableDishSort);
+  const almost = scoped.filter(d => d.avail === 'low').sort(stableDishSort);
 
   const fragment = document.createDocumentFragment();
   const addSection = (label, english, rows, plain = false) => {
@@ -2468,14 +2463,12 @@ function renderMoList(q) {
     fragment.appendChild(section);
     rows.forEach(dish => fragment.appendChild(moItem(dish)));
   };
-  if (same.length) {
-    addSection(addTarget ? '✅ 当前食材可做' : '✅ 库存可做 · 同类菜',
-      addTarget ? 'AVAILABLE NOW' : 'AVAILABLE · SAME CATEGORY', same);
-  }
-  if (more.length) {
-    addSection('更多菜品', 'MORE DISHES', more, true);
-  }
-  if (!same.length && !more.length) {
+  if (availableFav.length) addSection('♥ 库存可做 · 收藏同类菜',
+    'AVAILABLE · FAVORITE · SAME CATEGORY', availableFav);
+  if (available.length) addSection(addTarget ? '✅ 当前食材可做' : '✅ 库存可做 · 同类菜',
+    addTarget ? 'AVAILABLE NOW' : 'AVAILABLE · SAME CATEGORY', available);
+  if (almost.length) addSection('差少量 · 同类菜', 'ALMOST · SAME CATEGORY', almost, true);
+  if (!availableFav.length && !available.length && !almost.length) {
     const empty = document.createElement('div');
     empty.className = 'mo-empty';
     empty.innerHTML = '没有匹配的菜品<small>NO MATCHING DISH</small>';
@@ -3328,7 +3321,15 @@ function renderDishGrid() {
     (catKey === 'banquet' ? d.banquet : (!cats || cats.includes(d.cat))) &&
     (avKey === 'all' || d.avail === avKey) &&
     (!favOnly || d.fav) &&
-    (!q || d.zh.includes(qRaw) || d.en.toLowerCase().includes(q)));
+    (!q || d.zh.includes(qRaw) || d.en.toLowerCase().includes(q))).sort((a, b) => {
+      const group = d => d.avail === 'ok' && d.fav ? 0 :
+        d.avail === 'ok' && (d.vvConfirmCount || 0) > 0 ? 1 :
+        d.avail === 'ok' ? 2 : d.avail === 'low' ? 3 : 4;
+      return group(a) - group(b) ||
+        (b.vvConfirmCount || 0) - (a.vvConfirmCount || 0) ||
+        String(b.createdAt || '').localeCompare(String(a.createdAt || '')) ||
+        a.zh.localeCompare(b.zh, 'zh-CN');
+    });
   if (list.length) {
     dGrid.replaceChildren(...list.map(dishCardNode));
   } else {
@@ -3786,6 +3787,35 @@ pickModal.addEventListener('click',
     });
   }
 
+  function updateTodayRestoredMeals(day, activeMealType) {
+    const section = document.getElementById('day-today');
+    const menu = day?.menu;
+    if (!section || !menu?.exists) return;
+    Object.entries(MEALS).forEach(([mealType, labels]) => {
+      if (mealType === activeMealType) return;
+      const setting = menu.meal_settings?.[mealType];
+      let card = [...section.querySelectorAll('.meal-card')]
+        .find(item => item.id !== 'heroCard' && item.dataset.mtype === labels.zh);
+      if (!setting || setting.is_skipped) {
+        if (card) card.remove();
+        return;
+      }
+      if (!card) {
+        const source = document.querySelector(`#day-tomorrow .meal-card[data-mtype="${labels.zh}"]`) ||
+          document.querySelector('#day-tomorrow .meal-card[data-mtype="下午茶"]');
+        if (!source) return;
+        card = source.cloneNode(true);
+        card.removeAttribute('id');
+        card.dataset.mtype = labels.zh;
+        const title = card.querySelector('.meal-row h3');
+        if (title) title.innerHTML = labels.zh + ' <small>' + labels.en + '</small>';
+        card.querySelector('[data-meal]')?.addEventListener('click', () => card.classList.toggle('open'));
+        section.querySelector('.add-meal-btn')?.parentElement?.before(card);
+      }
+      updateMealCard(card, menu, mealType, day.slot_gaps || {});
+    });
+  }
+
   function updateHero(nextMeal) {
     const hero = document.getElementById('heroCard');
     if (!hero) return;
@@ -3841,6 +3871,7 @@ pickModal.addEventListener('click',
       if (index > 0) updateFutureDay(day, DAY_SECTIONS[index]);
     });
     updateHero(data.next_meal || null);
+    if (days[0]) updateTodayRestoredMeals(days[0], data.next_meal?.meal_type || null);
     updateConfirmProgress();
     if (typeof window.hydratePhase2Tabs === 'function') window.hydratePhase2Tabs(data);
   }
@@ -3962,6 +3993,7 @@ pickModal.addEventListener('click',
         ingredients: dish.ingredients || [], stapleType: dish.carb_type || null,
         soupType: dish.quick_soup ? 'quick' : dish.slow_soup ? 'slow' : null,
         manualOnly: (dish.custom_tags || []).includes('manual') || Boolean(dish.manual_only_for_breakfast),
+        vvConfirmCount: Number(dish.vv_confirm_count || 0), createdAt: dish.created_at || '',
         taste: dish.taste || 'normal', drink: dish.drink || null, customTags: dish.custom_tags || []
       };
     });

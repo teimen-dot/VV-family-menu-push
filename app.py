@@ -1147,7 +1147,7 @@ def _lookup_english_name(cn_name, name_map):
     return ""
 
 
-def get_history_menus(days=30, location=None, as_of=None):
+def get_history_menus(days=14, location=None, as_of=None):
     conn = get_db()
     try:
         history_day = as_of or date.today()
@@ -1178,7 +1178,7 @@ def get_history_menus(days=30, location=None, as_of=None):
                 (m["id"],)
             ).fetchall()
 
-            meals = {"breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": []}
+            meals = {"breakfast": [], "lunch": [], "afternoon_snack": [], "dinner": [], "supper": []}
             for item in items:
                 mt = item["meal_type"]
                 if mt not in meals:
@@ -1211,7 +1211,7 @@ def get_history_menus(days=30, location=None, as_of=None):
                     meals[mt].append({
                         "name_cn": name_cn,
                         "name_en": name_en,
-                        "image": item["image"] or "",
+                        "image": _bootstrap_image_url(item["image"] or ""),
                         "is_locked": bool(item["is_locked"]),
                     })
 
@@ -1352,7 +1352,7 @@ def build_family_ui_readonly_tabs(location, as_of=None):
         pantry = get_current_pantry(location)
         common = get_common_ingredients()
         recent = _get_recent_pantry_rows(location)
-        history = get_history_menus(30, location, as_of=as_of)
+        history = get_history_menus(14, location, as_of=as_of)
         conn = get_db()
         try:
             ingredient_rows = conn.execute(
@@ -1360,12 +1360,19 @@ def build_family_ui_readonly_tabs(location, as_of=None):
                 "JOIN ingredients i ON i.ingredient_id = di.ingredient_id "
                 "WHERE di.required = 1 ORDER BY di.dish_id, di.id"
             ).fetchall()
+            preference_rows = conn.execute(
+                "SELECT dish_id, vv_confirm_count FROM dish_preference_stats"
+            ).fetchall()
         finally:
             conn.close()
 
     dish_ingredients = {}
     for row in ingredient_rows:
         dish_ingredients.setdefault(row["dish_id"], []).append(row["name_cn"])
+    preference_counts = {
+        row["dish_id"]: int(row["vv_confirm_count"] or 0)
+        for row in preference_rows
+    }
 
     def decoded_list(value):
         if isinstance(value, list):
@@ -1391,6 +1398,8 @@ def build_family_ui_readonly_tabs(location, as_of=None):
             "carb_type": dish.get("carb_type"),
             "banquet": bool(dish.get("banquet")),
             "favorite": "favorite" in custom_tags,
+            "vv_confirm_count": preference_counts.get(dish["id"], 0),
+            "created_at": dish.get("created_at") or "",
             "meal_tags": decoded_list(dish.get("meal_tags")),
             "protein_types": decoded_list(dish.get("protein_types")),
             "vegetables": decoded_list(dish.get("vegetables")),
@@ -3694,7 +3703,7 @@ init();
 # ============================================================
 
 def render_history(role="owner", location="shenzhen"):
-    menus = get_history_menus(30, location)
+    menus = get_history_menus(14, location)
 
     if not menus:
         body = '<div class="empty"><h2>暂无历史记录 No History</h2></div>'
@@ -3885,7 +3894,7 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/family-menu/bootstrap":
             self.send_json(build_family_menu_bootstrap(location, role))
         elif path == "/api/history":
-            days = int(qs.get("days", ["30"])[0])
+            days = max(1, min(int(qs.get("days", ["14"])[0]), 14))
             self.send_json(get_history_menus(days, location))
         elif path == "/api/pantry":
             # V4: 从 current_pantry 读取
@@ -3950,7 +3959,10 @@ class AppHandler(BaseHTTPRequestHandler):
                 menu_row = conn.execute("SELECT status, location FROM menus WHERE id=?", (menu_id,)).fetchone()
             finally:
                 conn.close()
-            if not menu_row or menu_row["status"] != "draft":
+            if not menu_row:
+                self.send_json({"ok": False, "error": "菜单不存在，请刷新页面后重试"}, 404)
+                return
+            if menu_row["status"] != "draft":
                 self.send_json({"ok": False, "error": "已确认菜单不可直接修改，请先回退到草稿"}, 409)
                 return
             if menu_row["location"] != location:

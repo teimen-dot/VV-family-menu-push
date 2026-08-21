@@ -2,6 +2,7 @@
 """Phase 2 real-data regressions for Pantry, Dishes, and History."""
 
 import os
+import inspect
 import sqlite3
 import tempfile
 import unittest
@@ -10,6 +11,7 @@ from unittest.mock import patch
 
 import app
 import db
+import menu_service
 
 
 class Phase2RealTabsTests(unittest.TestCase):
@@ -65,6 +67,10 @@ class Phase2RealTabsTests(unittest.TestCase):
                 "VALUES('dish_fallback','hk_stock',1)"
             )
             conn.execute(
+                "INSERT INTO dish_preference_stats(dish_id,vv_confirm_count,vv_confirm_count_30d) "
+                "VALUES('dish_real',7,2)"
+            )
+            conn.execute(
                 "INSERT INTO current_pantry(location,ingredient_id,status,is_active,updated_at) "
                 "VALUES('shenzhen','sz_stock','available',1,'2026-08-18 09:00:00')"
             )
@@ -115,6 +121,7 @@ class Phase2RealTabsTests(unittest.TestCase):
         self.assertEqual(shenzhen["history_stats"], {"days": 1, "meals": 1, "dishes": 1})
         self.assertEqual(hongkong["history_stats"], {"days": 1, "meals": 1, "dishes": 1})
         self.assertEqual(shenzhen["history"][0]["location"], "shenzhen")
+        self.assertEqual(shenzhen["history"][0]["meals"]["dinner"][0]["image"], "/photos/real.jpg")
         self.assertEqual(hongkong["history"][0]["location"], "hongkong")
         self.assertEqual(before, self._row_counts())
 
@@ -126,6 +133,26 @@ class Phase2RealTabsTests(unittest.TestCase):
         self.assertTrue(rows["dish_real"]["banquet"])
         self.assertFalse(rows["dish_fallback"]["banquet"])
         self.assertEqual(rows["dish_real"]["availability"]["status"], "available")
+        self.assertEqual(rows["dish_real"]["vv_confirm_count"], 7)
+        self.assertTrue(rows["dish_real"]["created_at"])
+
+    def test_history_is_limited_to_previous_fourteen_days(self):
+        conn = db.get_db()
+        try:
+            old_menu_id = conn.execute(
+                "INSERT INTO menus(date,location,status,diners_count) "
+                "VALUES('2026-08-04','shenzhen','confirmed',4)"
+            ).lastrowid
+            conn.execute(
+                "INSERT INTO menu_items(menu_id,dish_id,meal_type,source) "
+                "VALUES(?,'dish_real','dinner','manual')", (old_menu_id,)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        payload = self._bootstrap("shenzhen")
+        self.assertEqual([row["date"] for row in payload["history"]], ["2026-08-18"])
 
     def test_legacy_schema_safe_still_covers_real_tab_availability(self):
         conn = db.get_db()
@@ -182,6 +209,23 @@ class Phase2RealTabsStaticTests(unittest.TestCase):
         self.assertIn("updateConfirmProgress();", hydrate)
         self.assertNotIn("可操作测试版", hydrate)
         self.assertNotIn("LIVE TEST DATA", hydrate)
+
+    def test_today_restored_meals_are_hydrated_as_real_cards(self):
+        self.assertIn("function updateTodayRestoredMeals", self.html)
+        self.assertIn("updateTodayRestoredMeals(days[0]", self.html)
+        self.assertIn("menu.meal_settings?.[mealType]", self.html)
+
+    def test_dish_and_same_category_picker_sort_contracts_are_present(self):
+        self.assertIn("d.avail === 'ok' && d.fav ? 0", self.html)
+        self.assertIn("b.vvConfirmCount", self.html)
+        self.assertIn("availableFav", self.html)
+        self.assertIn("差少量 · 同类菜", self.html)
+        self.assertNotIn("const eggPenalty", self.html)
+
+    def test_menu_creation_does_not_require_legacy_unique_constraint(self):
+        source = inspect.getsource(menu_service.generate_and_store_menu)
+        self.assertNotIn("ON CONFLICT(date, location)", source)
+        self.assertIn('conn.execute("BEGIN IMMEDIATE")', source)
 
     def test_pantry_rows_have_no_ingredient_image_surface(self):
         pantry_row = self.html.split("function pantryRow(item, recent = false)", 1)[1].split(

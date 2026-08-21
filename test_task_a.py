@@ -227,7 +227,7 @@ class TaskATests(unittest.TestCase):
         history = self.app.get_history_menus(30)
         archived = [d for menu in history for d in menu["meals"]["breakfast"] if d["name_cn"] == "SQLite 早餐"]
         self.assertEqual(len(archived), 1)
-        self.assertEqual(archived[0]["image"], "breakfast.jpg")
+        self.assertEqual(archived[0]["image"], "/photos/breakfast.jpg")
 
     def test_12_push_disabled_blocks_client_and_persists_disabled(self):
         self._set_confirmed()

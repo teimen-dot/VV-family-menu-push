@@ -213,17 +213,27 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     # 存入数据库
     conn = get_db()
     try:
-        # UPSERT menu
-        conn.execute(
-            "INSERT INTO menus (date, location, status, notes_zh, notes_en) "
-            "VALUES (?, ?, 'draft', ?, ?) "
-            "ON CONFLICT(date, location) DO UPDATE SET "
-            "status='draft', "
-            "notes_zh=excluded.notes_zh, notes_en=excluded.notes_en",
-            (date_str, location,
-             "；".join(review.get("issues", [])) if not review["passed"] else "",
-             "; ".join(review.get("issues", [])) if not review["passed"] else "")
-        )
+        # Legacy production databases do not all have UNIQUE(date, location),
+        # so SQLite UPSERT cannot be used here. Serialize an explicit
+        # update-or-insert path to keep menu creation compatible and idempotent.
+        conn.execute("BEGIN IMMEDIATE")
+        notes_zh = "；".join(review.get("issues", [])) if not review["passed"] else ""
+        notes_en = "; ".join(review.get("issues", [])) if not review["passed"] else ""
+        existing = conn.execute(
+            "SELECT id FROM menus WHERE date=? AND location=? ORDER BY id LIMIT 1",
+            (date_str, location),
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE menus SET status='draft', notes_zh=?, notes_en=? WHERE id=?",
+                (notes_zh, notes_en, existing["id"]),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO menus (date, location, status, notes_zh, notes_en) "
+                "VALUES (?, ?, 'draft', ?, ?)",
+                (date_str, location, notes_zh, notes_en),
+            )
         conn.commit()
 
         row = conn.execute(
