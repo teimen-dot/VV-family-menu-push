@@ -4,8 +4,8 @@
 
 - Repository: `https://github.com/teimen-dot/VV-family-menu-push.git`
 - Branch: `codex/family-ui-phase2-writable`
-- Production code commit: `deedf8e`
-- Stable tag: `production-2026-08-21-menu-fix`
+- Production code commit: `93bcedf2917a1c0bf06ac65af9c1896dd04f7f0e`
+- Stable tag: `production-2026-08-21-smart-fill`
 - Production host: `43.129.246.80` (Ubuntu)
 
 The Git repository contains source code, migrations, deployment examples, and
@@ -29,6 +29,12 @@ private keys.
 The independent workstation copy of the production snapshot is stored outside
 Git at `/Users/heymen/Documents/family-menu-backups/production-20260820-stable/`.
 Use its `SHA256SUMS` file to verify every restored archive before extraction.
+
+The pre-deployment server snapshot for this release is stored at
+`/opt/family-menu/backups/predeploy-20260821-smart-fill/`. It contains the
+SQLite database plus a runtime archive of application code, uploaded photos,
+systemd units, and Nginx configuration. Both files are covered by the adjacent
+`SHA256SUMS` file and were verified before deployment.
 
 ## Last verified recovery drill
 
@@ -67,11 +73,11 @@ The known safe production defaults at this release are `APP_ENV=production`,
 ```bash
 git clone https://github.com/teimen-dot/VV-family-menu-push.git family-menu
 cd family-menu
-git checkout production-2026-08-21-menu-fix
+git checkout production-2026-08-21-smart-fill
 git rev-parse HEAD
 ```
 
-The stable tag contains this recovery document and has `deedf8e` as its
+The stable tag contains this recovery document and has `93bcedf` as its
 production application parent commit.
 
 Verify and unpack the independent snapshot, then place its contents using the
