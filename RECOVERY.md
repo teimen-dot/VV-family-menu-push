@@ -4,8 +4,8 @@
 
 - Repository: `https://github.com/teimen-dot/VV-family-menu-push.git`
 - Branch: `codex/family-ui-phase2-writable`
-- Production code commit: `df5f6de`
-- Stable tag: `production-2026-08-21-diners-matrix`
+- Production code commit: `0051ffa`
+- Stable tag: `production-2026-08-21-strict-convergence`
 - Production host: `43.129.246.80` (Ubuntu)
 
 The Git repository contains source code, migrations, deployment examples, and
@@ -30,11 +30,11 @@ The independent workstation copy of the production snapshot is stored outside
 Git at `/Users/heymen/Documents/family-menu-backups/production-20260820-stable/`.
 Use its `SHA256SUMS` file to verify every restored archive before extraction.
 
-The pre-deployment server snapshot for this release is stored at
-`/opt/family-menu/backups/predeploy-20260821-diners-matrix/`. It contains the
-SQLite database plus a runtime archive of application code, uploaded photos,
-systemd units, and Nginx configuration. Both files are covered by the adjacent
-`SHA256SUMS` file and were verified before deployment.
+The immediate pre-deployment rollback snapshot is stored at
+`/opt/family-menu/backups/predeploy-20260821-strict-convergence/`. It contains
+the consistent SQLite database and the complete previous application tree.
+Both are covered by the adjacent `SHA256SUMS` file; the database copy passed
+`PRAGMA quick_check` before deployment.
 
 ## Last verified recovery drill
 
@@ -73,11 +73,11 @@ The known safe production defaults at this release are `APP_ENV=production`,
 ```bash
 git clone https://github.com/teimen-dot/VV-family-menu-push.git family-menu
 cd family-menu
-git checkout production-2026-08-21-diners-matrix
+git checkout production-2026-08-21-strict-convergence
 git rev-parse HEAD
 ```
 
-The stable tag contains this recovery document and has `df5f6de` as its
+The stable tag contains this recovery document and has `0051ffa` as its
 production application parent commit.
 
 Verify and unpack the independent snapshot, then place its contents using the
