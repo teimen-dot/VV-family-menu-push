@@ -259,6 +259,10 @@ button { font-family: inherit; }
   background: radial-gradient(120% 90% at 20% 10%, rgba(255,255,255,.55), transparent 55%);
 }
 .tile span { font-size: 1.55em; filter: drop-shadow(0 2px 3px rgba(0,0,0,.18)); z-index: 1; }
+.h-meal .hm-tiles .tile img {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: center; display: block;
+}
 .tile-meat  { background: linear-gradient(140deg, #f6d9c8, #eab28f); }
 .tile-veg   { background: linear-gradient(140deg, #dcebd2, #a9cf9a); }
 .tile-soup  { background: linear-gradient(140deg, #f8e7c3, #ecc984); }
@@ -3047,11 +3051,19 @@ document.addEventListener('click', async e => {
           meal_type:card.dataset.mealType
         });
         const review = result.review || {};
-        const added = Array.isArray(review.added) ? review.added.length : 0;
+        const addedDetails = Array.isArray(review.added_details) ? review.added_details : [];
+        const added = Array.isArray(review.added) ? review.added.length : addedDetails.length;
         const unmet = Array.isArray(review.unmet_slots) ? review.unmet_slots : [];
         let message;
         if (added > 0) {
-          message = '已按缺失分类补齐 ' + added + ' 道' +
+          const almost = addedDetails.filter(item => item.availability_status === 'almost_available');
+          const missing = [...new Set(almost.flatMap(item =>
+            (item.missing_required || []).map(ingredient => ingredient.name_cn).filter(Boolean)))];
+          message = almost.length
+            ? '已补充 ' + almost.map(item => item.name_cn).join('、') +
+              '（差少量：缺 ' + missing.join('、') + '）'
+            : '已按缺失分类补齐 ' + added + ' 道';
+          message +=
             (unmet.length ? '（仍有 ' + unmet.length + ' 个槽位无可补菜）' : '');
         } else if (unmet.length) {
           const slots = unmet.map(u => u.slot || '菜品').slice(0, 3).join('、');
@@ -3459,7 +3471,9 @@ function openDishEdit(d) {
   chipsSet('#defProtein', d.proteins);
   chipsSet('#defCook', d.cookMethods);
   document.getElementById('defIng').value = (d.ingredients || []).join('、');
-  document.getElementById('defVeg').value = (d.veg || []).join('、');
+  document.getElementById('defVeg').value = (d.veg || []).map(value =>
+    value === 'any_available_leafy_vegetable' ? '任意可用绿叶菜' : value
+  ).join('、');
   syncDefConditional();
   renderDefPreview();
   editModal.classList.add('open');

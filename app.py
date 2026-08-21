@@ -35,6 +35,8 @@ from inventory import (
     _invalidate_availability_cache, _increment_inventory_version,
     get_inventory_version, normalize_ingredient_id,
     legacy_schema_safe_availability,
+    is_pantry_exempt_ingredient,
+    ensure_ingredient_classification, ensure_inventory_taxonomy,
 )
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
@@ -43,6 +45,7 @@ from menu_service import (
     get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
     ensure_menu_for_date,
     update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
+    normalize_dish_slot_roles, ensure_dish_slot_metadata,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
@@ -815,6 +818,7 @@ def _sync_dish_ingredients(conn, dish_id, ingredient_names):
                 "VALUES (?, ?, '', '[]', '', 'other', 0)",
                 (ingredient_id, normalized_name),
             )
+            ensure_ingredient_classification(conn, ingredient_id, normalized_name)
             ingredient_rows.append({
                 "ingredient_id": ingredient_id,
                 "name_cn": normalized_name,
@@ -867,14 +871,24 @@ def save_family_dish(payload, dish_id=None):
         from photo_manager import _increment_catalog_version
 
         if dish_id:
-            old = conn.execute("SELECT name_cn FROM dishes WHERE id = ?", (dish_id,)).fetchone()
+            old = conn.execute(
+                "SELECT name_cn,meal_roles FROM dishes WHERE id = ?", (dish_id,)
+            ).fetchone()
             if not old:
                 return False, {"error": "dish not found"}
+            try:
+                existing_roles = json.loads(old["meal_roles"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                existing_roles = []
+            meal_roles = normalize_dish_slot_roles(
+                category_id, protein_types, bool(payload.get("quick_soup")),
+                bool(payload.get("slow_soup")), existing_roles,
+            )
             conn.execute(
                 "UPDATE dishes SET name_cn=?, name_en=?, category_id=?, meal_tags=?, banquet=?, "
                 "protein_types=?, vegetables=?, vegetable_count=?, carb_type=?, taste=?, "
                 "cooking_methods=?, custom_tags=?, quick_soup=?, slow_soup=?, "
-                "manual_only_for_breakfast=?, drink=?, ingredients_pending=?, needs_review=?, "
+                "meal_roles=?, manual_only_for_breakfast=?, drink=?, ingredients_pending=?, needs_review=?, "
                 "updated_at=datetime('now') WHERE id=?",
                 (
                     name_cn, name_en, category_id, json.dumps(meal_tags, ensure_ascii=False),
@@ -886,6 +900,7 @@ def save_family_dish(payload, dish_id=None):
                     json.dumps(custom_tags, ensure_ascii=False),
                     1 if payload.get("quick_soup") else 0,
                     1 if payload.get("slow_soup") else 0,
+                    json.dumps(meal_roles, ensure_ascii=False),
                     1 if payload.get("manual_only_for_breakfast") else 0,
                     drink_json, ingredients_pending, ingredients_pending,
                     dish_id,
@@ -915,6 +930,14 @@ def save_family_dish(payload, dish_id=None):
                     1 if payload.get("manual_only_for_breakfast") else 0,
                     drink_json, ingredients_pending,
                 ),
+            )
+            meal_roles = normalize_dish_slot_roles(
+                category_id, protein_types, bool(payload.get("quick_soup")),
+                bool(payload.get("slow_soup")), [],
+            )
+            conn.execute(
+                "UPDATE dishes SET meal_roles=? WHERE id=?",
+                (json.dumps(meal_roles, ensure_ascii=False), dish_id),
             )
             event_type = "dish_added"
             event_details = {"name_cn": name_cn, "name_en": name_en, "via": "family_ui"}
@@ -1325,7 +1348,10 @@ def _get_recent_pantry_rows(location, limit=20):
             "ORDER BY datetime(cp.updated_at) DESC, i.name_cn LIMIT ?",
             (location, limit),
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [
+            dict(row) for row in rows
+            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+        ]
     finally:
         conn.close()
 
@@ -3372,7 +3398,10 @@ def render_pantry(role="nanny", location="shenzhen"):
         return render_pantry_reference_preview(role, location)
     pantry = get_current_pantry(location)
     common = get_common_ingredients()
-    all_ings = get_all_ingredients()
+    all_ings = [
+        item for item in get_all_ingredients()
+        if not is_pantry_exempt_ingredient(item["ingredient_id"], item["name_cn"])
+    ]
 
     sections = []
 
@@ -4033,6 +4062,19 @@ class AppHandler(BaseHTTPRequestHandler):
                     display_name = normalized_name
                     created = True
 
+                if is_pantry_exempt_ingredient(ingredient_id, display_name):
+                    conn.commit()
+                    self.send_json({
+                        "ok": True, "pantry_exempt": True,
+                        "already_in_pantry": False, "created": created,
+                        "ingredient_id": ingredient_id, "name_cn": display_name,
+                        "name_en": display_name_en,
+                        "message": "家庭常备，默认有货",
+                    })
+                    return
+
+                ensure_ingredient_classification(conn, ingredient_id, display_name)
+
                 active = conn.execute(
                     "SELECT 1 FROM current_pantry "
                     "WHERE location = ? AND ingredient_id = ? AND is_active = 1",
@@ -4190,6 +4232,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 ).fetchall()
                 matched, resolved_name, corrected_from = resolve_ingredient_name(name_cn, ingredient_rows)
                 if matched:
+                    if is_pantry_exempt_ingredient(matched["ingredient_id"], matched["name_cn"]):
+                        self.send_json({
+                            "ok": True, "ingredient_id": matched["ingredient_id"],
+                            "exists": True, "pantry_exempt": True,
+                            "name_cn": matched["name_cn"],
+                            "message": "家庭常备，默认有货",
+                        })
+                        return
                     self.send_json({"ok": True, "ingredient_id": matched["ingredient_id"],
                                     "exists": True, "name_cn": matched["name_cn"],
                                     "corrected_from": corrected_from})
@@ -4211,6 +4261,7 @@ class AppHandler(BaseHTTPRequestHandler):
                     "VALUES (?, ?, '', '[]', '', 'vegetable_mushroom')",
                     (ing_id, name_cn)
                 )
+                ensure_ingredient_classification(conn, ing_id, name_cn)
                 conn.commit()
                 log_event("ingredient_added", "ingredient", ing_id, {"name_cn": name_cn, "needs_review": True})
                 self.send_json({"ok": True, "ingredient_id": ing_id, "name_cn": name_cn,
@@ -4633,6 +4684,8 @@ class AppHandler(BaseHTTPRequestHandler):
 def main():
     validate_app_startup()
     init_db()
+    ensure_inventory_taxonomy()
+    ensure_dish_slot_metadata()
     ensure_breakfast_drink_catalog()
     # The four visible planning days must have real editable menu rows.
     today = datetime.now(FAMILY_TIMEZONE).date()

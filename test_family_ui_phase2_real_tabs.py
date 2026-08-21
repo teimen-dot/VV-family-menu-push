@@ -222,6 +222,12 @@ class Phase2RealTabsStaticTests(unittest.TestCase):
         self.assertIn("差少量 · 同类菜", self.html)
         self.assertNotIn("const eggPenalty", self.html)
 
+    def test_history_photos_are_center_cropped_and_almost_fill_is_explained(self):
+        self.assertIn(".h-meal .hm-tiles .tile img", self.html)
+        self.assertIn("object-fit: cover", self.html)
+        self.assertIn("availability_status === 'almost_available'", self.html)
+        self.assertIn("差少量：缺", self.html)
+
     def test_menu_creation_does_not_require_legacy_unique_constraint(self):
         source = inspect.getsource(menu_service.generate_and_store_menu)
         self.assertNotIn("ON CONFLICT(date, location)", source)

@@ -51,7 +51,10 @@ VEGETABLE_SYNONYMS = {
 
 # §14: an unresolved inventory placeholder is not itself a vegetable subject.
 # If a caller resolves it, the concrete value is carried in resolved_vegetable(s).
-VEGETABLE_PLACEHOLDERS = {"any_available_vegetable", "任意可用蔬菜"}
+VEGETABLE_PLACEHOLDERS = {
+    "any_available_vegetable", "任意可用蔬菜",
+    "any_available_leafy_vegetable", "任意可用绿叶菜",
+}
 
 PROTEIN_SOURCE_NORMALIZE = {
     "鸡": "chicken", "鸡肉": "chicken", "chicken": "chicken",
@@ -1491,9 +1494,12 @@ class GapFiller:
                 cap_ctx,
             )
         ]
+        allowed_statuses = {"available"}
+        if ctx.get("allow_almost_available"):
+            allowed_statuses.add("almost_available")
         available_slot = [
             candidate for candidate in legal_slot
-            if not availability or availability.get(candidate["id"]) == "available"
+            if not availability or availability.get(candidate["id"]) in allowed_statuses
         ]
         explicit_exclude = set(exclude_ids or set())
         blocked = explicit_exclude
@@ -1506,7 +1512,7 @@ class GapFiller:
                 cap_ctx,
             )
             status = availability.get(candidate["id"])
-            if not reasons and availability and status != "available":
+            if not reasons and availability and status not in allowed_statuses:
                 reasons.append(f"inventory:{status or 'unknown'}")
             if not reasons and candidate["id"] in explicit_exclude:
                 reasons.append("same_day_or_explicit_dish_lock")

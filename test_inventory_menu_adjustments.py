@@ -153,6 +153,171 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertEqual(result["dish_almost"]["status"], "almost_available")
         self.assertEqual(result["dish_missing"]["status"], "missing")
 
+    def test_leafy_placeholder_accepts_only_controlled_leafy_inventory(self):
+        conn = db.get_db()
+        for ingredient_id, name_cn in (
+            ("any_available_leafy_vegetable", "任意可用绿叶菜"),
+            ("bok_choy", "上海青"), ("broccoli", "西兰花"),
+        ):
+            conn.execute(
+                "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, name_cn, name_cn),
+            )
+        conn.execute(
+            "INSERT INTO ingredient_classifications(ingredient_id,class_id) "
+            "VALUES('bok_choy','leafy_vegetable')"
+        )
+        conn.execute(
+            "INSERT INTO dishes(id,name_cn,meal_tags,is_active) "
+            "VALUES('dish_leafy','青菜面','[\"lunch\"]',1)"
+        )
+        conn.execute(
+            "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) "
+            "VALUES('dish_leafy','any_available_leafy_vegetable',1)"
+        )
+        conn.execute(
+            "INSERT INTO current_pantry(location,ingredient_id,status,is_active) "
+            "VALUES('shenzhen','broccoli','available',1)"
+        )
+        conn.commit()
+        conn.close()
+
+        self.assertEqual(
+            inventory.check_dish_availability("dish_leafy", "shenzhen")["status"],
+            "missing",
+        )
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO current_pantry(location,ingredient_id,status,is_active) "
+            "VALUES('shenzhen','bok_choy','available',1)"
+        )
+        conn.commit()
+        conn.close()
+        inventory._invalidate_availability_cache("shenzhen")
+        self.assertEqual(
+            inventory.check_dish_availability("dish_leafy", "shenzhen")["status"],
+            "available",
+        )
+
+    def test_household_staples_are_hidden_and_not_added_to_pantry(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en,is_common) "
+            "VALUES('ginger','姜','Ginger',1)"
+        )
+        conn.execute(
+            "INSERT INTO current_pantry(location,ingredient_id,status,is_active) "
+            "VALUES('shenzhen','ginger','available',1)"
+        )
+        conn.commit()
+        conn.close()
+        self.assertEqual(inventory.get_current_pantry("shenzhen")["items"], [])
+        self.assertEqual(inventory.get_common_ingredients_static(), [])
+        result = inventory.add_ingredient_to_pantry("shenzhen", "ginger")
+        self.assertTrue(result["pantry_exempt"])
+
+    def test_ai_fill_falls_back_to_exactly_one_missing_ingredient(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO categories(id,label_cn,label_en) VALUES('protein_main','蛋白质','Protein')"
+        )
+        for ingredient_id in ("stocked", "missing_one"):
+            conn.execute(
+                "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, ingredient_id, ingredient_id),
+            )
+        conn.execute(
+            "INSERT INTO current_pantry(location,ingredient_id,status,is_active) "
+            "VALUES('shenzhen','stocked','available',1)"
+        )
+        for dish_id, required in (
+            ("dish_used", ("stocked",)),
+            ("dish_available", ("stocked",)),
+            ("dish_almost", ("stocked", "missing_one")),
+        ):
+            conn.execute(
+                "INSERT INTO dishes(id,name_cn,category_id,meal_tags,meal_roles,protein_types,is_active) "
+                "VALUES (?,?, 'protein_main','[\"breakfast\",\"lunch\"]',"
+                "'[\"protein_main\"]','[\"beef\"]',1)",
+                (dish_id, dish_id),
+            )
+            for ingredient_id in required:
+                conn.execute(
+                    "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES (?,?,1)",
+                    (dish_id, ingredient_id),
+                )
+        conn.execute(
+            "INSERT INTO menus(id,date,location,status,diners_count) "
+            "VALUES(1,'2099-01-02','shenzhen','draft',2)"
+        )
+        conn.execute(
+            "INSERT INTO menu_items(menu_id,dish_id,meal_type,source) "
+            "VALUES(1,'dish_used','breakfast','ai')"
+        )
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        ok, _, review = menu_service.ai_fill_menu(1, "shenzhen", seed=7, meal_type="lunch")
+        self.assertTrue(ok)
+        self.assertTrue(any(
+            item["dish_id"] == "dish_available"
+            and item["availability_status"] == "available"
+            for item in review["added_details"]
+        ))
+
+        conn = db.get_db()
+        conn.execute(
+            "DELETE FROM menu_items WHERE menu_id=1 AND meal_type='lunch'"
+        )
+        conn.execute(
+            "INSERT INTO menu_items(menu_id,dish_id,meal_type,source) "
+            "VALUES(1,'dish_available','breakfast','ai')"
+        )
+        conn.commit()
+        conn.close()
+
+        ok, _, review = menu_service.ai_fill_menu(1, "shenzhen", seed=7, meal_type="lunch")
+        self.assertTrue(ok)
+        detail = next(item for item in review["added_details"] if item["dish_id"] == "dish_almost")
+        self.assertEqual(detail["availability_status"], "almost_available")
+        self.assertEqual([row["name_cn"] for row in detail["missing_required"]], ["missing_one"])
+
+    def test_idempotent_catalog_repairs_add_roles_and_generic_leafy_placeholder(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO categories(id,label_cn,label_en) VALUES('soup','汤','Soup')"
+        )
+        conn.execute(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES('蔬菜','蔬菜','Vegetable')"
+        )
+        conn.execute(
+            "INSERT INTO dishes(id,name_cn,category_id,meal_tags,meal_roles,vegetables,slow_soup,is_active) "
+            "VALUES('dish_soup','松茸鸡汤','soup','[\"dinner\"]','[]','[\"蔬菜\"]',1,1)"
+        )
+        conn.execute(
+            "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES('dish_soup','蔬菜',1)"
+        )
+        conn.commit()
+        conn.close()
+
+        inventory.ensure_inventory_taxonomy()
+        inventory.ensure_inventory_taxonomy()
+        menu_service.ensure_dish_slot_metadata()
+        menu_service.ensure_dish_slot_metadata()
+        conn = db.get_db()
+        row = conn.execute(
+            "SELECT meal_roles,vegetables FROM dishes WHERE id='dish_soup'"
+        ).fetchone()
+        required = conn.execute(
+            "SELECT ingredient_id FROM dish_ingredients WHERE dish_id='dish_soup'"
+        ).fetchall()
+        conn.close()
+        self.assertIn("slow_soup", json.loads(row["meal_roles"]))
+        self.assertEqual(json.loads(row["vegetables"]), ["any_available_leafy_vegetable"])
+        self.assertEqual([item["ingredient_id"] for item in required],
+                         ["any_available_leafy_vegetable"])
+
     def test_all_21_canonical_household_staples_are_pantry_exempt(self):
         expected = {
             "大米", "米", "米饭", "面粉", "水", "油", "食用油", "盐", "糖",

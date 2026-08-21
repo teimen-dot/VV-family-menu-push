@@ -110,6 +110,7 @@ PANTRY_EXEMPT_SOURCE_NAMES = (
 
 PLACEHOLDER_CLASS = {
     "any_available_vegetable": "vegetable",
+    "any_available_leafy_vegetable": "leafy_vegetable",
     "any_available_fish": "fish",
     "any_available_grouper": "grouper",
     "any_available_mushroom": "mushroom",
@@ -142,6 +143,83 @@ def normalize_ingredient_id(raw_id):
 PANTRY_EXEMPT_CANONICAL_IDS = frozenset(
     normalize_ingredient_id(name) for name in PANTRY_EXEMPT_SOURCE_NAMES
 )
+
+LEAFY_VEGETABLE_NAMES = frozenset({
+    "菜心", "上海青", "空心菜", "鸡毛菜", "小白菜", "菠菜", "生菜", "油麦菜",
+})
+LEAFY_VEGETABLE_PLACEHOLDER_ID = "any_available_leafy_vegetable"
+
+
+def is_pantry_exempt_ingredient(ingredient_id, name_cn=""):
+    """Household staples are always available and never belong in Pantry UI."""
+    return (normalize_ingredient_id(ingredient_id) in PANTRY_EXEMPT_CANONICAL_IDS
+            or normalize_ingredient_id(name_cn) in PANTRY_EXEMPT_CANONICAL_IDS)
+
+
+def ensure_ingredient_classification(conn, ingredient_id, name_cn=""):
+    """Idempotently attach controlled classes for newly created ingredients."""
+    if name_cn in LEAFY_VEGETABLE_NAMES:
+        conn.execute(
+            "INSERT OR IGNORE INTO ingredient_classifications (ingredient_id,class_id) "
+            "VALUES (?, 'leafy_vegetable')",
+            (ingredient_id,),
+        )
+
+
+def ensure_inventory_taxonomy():
+    """Backfill the controlled leafy class and migrate generic leafy recipes."""
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT OR IGNORE INTO ingredients "
+            "(ingredient_id,name_cn,name_en,aliases,category,ingredient_group,is_common) "
+            "VALUES (?, '任意可用绿叶菜', 'Any Available Leafy Vegetable', '[]', "
+            "'vegetable', 'vegetable_mushroom', 0)",
+            (LEAFY_VEGETABLE_PLACEHOLDER_ID,),
+        )
+        rows = conn.execute("SELECT ingredient_id,name_cn FROM ingredients").fetchall()
+        for row in rows:
+            ensure_ingredient_classification(conn, row["ingredient_id"], row["name_cn"])
+        conn.execute(
+            "INSERT OR IGNORE INTO ingredient_classifications (ingredient_id,class_id) "
+            "VALUES (?, 'leafy_vegetable')",
+            (LEAFY_VEGETABLE_PLACEHOLDER_ID,),
+        )
+        generic_rows = conn.execute(
+            "SELECT dish_id FROM dish_ingredients WHERE required=1 AND ingredient_id='蔬菜'"
+        ).fetchall()
+        for row in generic_rows:
+            conn.execute(
+                "INSERT OR IGNORE INTO dish_ingredients (dish_id,ingredient_id,required) "
+                "VALUES (?, ?, 1)",
+                (row["dish_id"], LEAFY_VEGETABLE_PLACEHOLDER_ID),
+            )
+            conn.execute(
+                "DELETE FROM dish_ingredients WHERE dish_id=? AND ingredient_id='蔬菜'",
+                (row["dish_id"],),
+            )
+            dish = conn.execute(
+                "SELECT vegetables FROM dishes WHERE id=?", (row["dish_id"],)
+            ).fetchone()
+            try:
+                vegetables = json.loads(dish["vegetables"] or "[]") if dish else []
+            except (TypeError, json.JSONDecodeError):
+                vegetables = []
+            vegetables = [
+                LEAFY_VEGETABLE_PLACEHOLDER_ID if value == "蔬菜" else value
+                for value in vegetables
+            ]
+            if LEAFY_VEGETABLE_PLACEHOLDER_ID not in vegetables:
+                vegetables.append(LEAFY_VEGETABLE_PLACEHOLDER_ID)
+            conn.execute(
+                "UPDATE dishes SET vegetables=?, vegetable_count=?, updated_at=datetime('now') "
+                "WHERE id=?",
+                (json.dumps(list(dict.fromkeys(vegetables)), ensure_ascii=False),
+                 len(set(vegetables)), row["dish_id"]),
+            )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _ingredient_classes(conn, ingredient_ids):
@@ -229,6 +307,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
         current_map = {
             r["ingredient_id"]: (r["status"], r["quantity_level"] or "enough")
             for r in current_rows
+            if not is_pantry_exempt_ingredient(r["ingredient_id"])
         }
 
         added = 0
@@ -236,6 +315,8 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
 
         for item in items:
             ing_id = item["ingredient_id"]
+            if is_pantry_exempt_ingredient(ing_id):
+                continue
             status = item.get("status", "available")
             quantity_level = item.get("quantity_level", "enough")
             if quantity_level not in ("enough", "low"):
@@ -296,10 +377,15 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
         # V5 Section 7: 清除 availability 缓存（库存已变化，旧结果失效）
         _invalidate_availability_cache(location)
 
-        pantry_count = conn.execute(
-            "SELECT COUNT(*) as cnt FROM current_pantry WHERE location = ? AND is_active = 1",
-            (location,)
-        ).fetchone()["cnt"]
+        pantry_rows = conn.execute(
+            "SELECT cp.ingredient_id,i.name_cn FROM current_pantry cp "
+            "JOIN ingredients i ON i.ingredient_id=cp.ingredient_id "
+            "WHERE cp.location=? AND cp.is_active=1", (location,)
+        ).fetchall()
+        pantry_count = sum(
+            not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+            for row in pantry_rows
+        )
 
         log_event("pantry_changes_saved", "current_pantry", None, {
             "location": location, "added": added, "updated": updated,
@@ -376,10 +462,14 @@ def get_current_pantry(location):
             "ORDER BY i.name_cn",
             (location,)
         ).fetchall()
+        visible_rows = [
+            dict(row) for row in rows
+            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+        ]
         return {
             "location": location,
-            "items": [dict(r) for r in rows],
-            "count": len(rows),
+            "items": visible_rows,
+            "count": len(visible_rows),
         }
     finally:
         conn.close()
@@ -421,6 +511,16 @@ def add_ingredient_to_pantry(location, ingredient_id, status="available", quanti
     """
     conn = get_db()
     try:
+        ingredient = conn.execute(
+            "SELECT name_cn FROM ingredients WHERE ingredient_id=?", (ingredient_id,)
+        ).fetchone()
+        if is_pantry_exempt_ingredient(
+                ingredient_id, ingredient["name_cn"] if ingredient else ""):
+            return {
+                "ok": True, "pantry_exempt": True,
+                "ingredient_id": ingredient_id,
+                "message": "家庭常备，默认有货",
+            }
         if quantity_level not in ("enough", "low"):
             quantity_level = "enough"
         now = datetime.now().isoformat()
@@ -734,7 +834,10 @@ def get_common_ingredients_static():
             "SELECT ingredient_id, name_cn, name_en FROM ingredients "
             "WHERE is_common = 1 ORDER BY name_cn"
         ).fetchall()
-        return [dict(r) for r in rows]
+        return [
+            dict(row) for row in rows
+            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+        ]
     finally:
         conn.close()
 

@@ -28,6 +28,69 @@ from preference_service import get_preference_scores, record_vv_confirm
 # V11: Catalog cache — invalidates when catalog_version changes
 _catalog_cache = {"version": None, "pool": None}
 
+AUTO_PROTEIN_TYPES = frozenset({
+    "fish", "shrimp", "beef", "pork", "猪肉", "chicken", "other_seafood",
+})
+
+
+def normalize_dish_slot_roles(category_id, protein_types, quick_soup, slow_soup,
+                              existing_roles=None):
+    """Add deterministic slot roles without removing owner-maintained roles."""
+    roles = list(dict.fromkeys(existing_roles or []))
+    if quick_soup and "quick_soup" not in roles:
+        roles.append("quick_soup")
+    if slow_soup and "slow_soup" not in roles:
+        roles.append("slow_soup")
+    if (category_id == "protein_main"
+            and set(protein_types or []) & AUTO_PROTEIN_TYPES
+            and "protein_main" not in roles):
+        roles.append("protein_main")
+    return roles
+
+
+def ensure_dish_slot_metadata():
+    """Idempotently repair deterministic soup/protein roles in the catalog."""
+    conn = get_db()
+    changed = 0
+    try:
+        rows = conn.execute(
+            "SELECT id,category_id,protein_types,meal_roles,quick_soup,slow_soup "
+            "FROM dishes WHERE is_active=1 OR is_active IS NULL"
+        ).fetchall()
+        for row in rows:
+            try:
+                proteins = json.loads(row["protein_types"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                proteins = []
+            try:
+                existing = json.loads(row["meal_roles"] or "[]")
+            except (TypeError, json.JSONDecodeError):
+                existing = []
+            roles = normalize_dish_slot_roles(
+                row["category_id"], proteins, bool(row["quick_soup"]),
+                bool(row["slow_soup"]), existing,
+            )
+            if roles != existing:
+                conn.execute(
+                    "UPDATE dishes SET meal_roles=?,updated_at=datetime('now') WHERE id=?",
+                    (json.dumps(roles, ensure_ascii=False), row["id"]),
+                )
+                changed += 1
+        if changed:
+            old_version = get_config("catalog_version") or "1"
+            new_version = str(int(old_version) + 1)
+            conn.execute(
+                "INSERT INTO config(key,value) VALUES('catalog_version',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (new_version,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    if changed:
+        invalidate_catalog_cache()
+    return changed
+
 
 def _get_effective_diners_count(menu_id=None, menu_row=None):
     """获取有效用餐人数：只使用 diners_count，无效时回退 4。"""
@@ -645,6 +708,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 dish_id: value["status"]
                 for dish_id, value in dish_availability.items()
             },
+            "allow_almost_available": True,
         }
 
         gf = GapFiller(pool, seed=seed or 42, dish_ingredients=dish_ings)
@@ -908,16 +972,24 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                 c for c in slot_candidates
                 if avail_batch.get(c["id"], {}).get("status") == "available"
             ]
+            almost_candidates = [
+                c for c in slot_candidates
+                if avail_batch.get(c["id"], {}).get("status") == "almost_available"
+                and len(avail_batch.get(c["id"], {}).get("missing_required", [])) == 1
+                and avail_batch.get(c["id"], {}).get("data_complete", False)
+            ]
 
-            if available_candidates:
+            eligible_candidates = available_candidates or almost_candidates
+            if eligible_candidates:
                 # 有 Available 候选 → 从未出现/最久未出现优先，软分仅作同日平局。
                 meal_ctx = dict(context)
                 meal_ctx["day_proteins"] = set(day_proteins)
                 meal_ctx["day_history"] = set(day_history)
 
                 chosen = choose_rotation_candidate(
-                    available_candidates, gf.scorer, state, meal_type, meal_ctx
+                    eligible_candidates, gf.scorer, state, meal_type, meal_ctx
                 )
+                chosen_availability = avail_batch.get(chosen["id"], {})
 
                 # V11: 最终 is_active 验证（防止旧 cache）
                 if active_dish_ids and chosen["id"] not in active_dish_ids:
@@ -944,6 +1016,13 @@ def _fill_missing_slots_v8(conn, menu_id, meal_type, state, gf, dish_map, contex
                     "name_cn": chosen.get("name_cn", ""),
                     "meal_type": meal_type,
                     "slot_role": slot_name,
+                    "availability_status": chosen_availability.get("status", "available"),
+                    "missing_required": [
+                        {"ingredient_id": item.get("ingredient_id"),
+                         "name_cn": item.get("name_cn", ""),
+                         "name_en": item.get("name_en", "")}
+                        for item in chosen_availability.get("missing_required", [])
+                    ],
                 })
 
                 # 更新 state
