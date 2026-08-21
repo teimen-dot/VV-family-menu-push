@@ -4,8 +4,8 @@
 
 - Repository: `https://github.com/teimen-dot/VV-family-menu-push.git`
 - Branch: `codex/family-ui-phase2-writable`
-- Production code commit: `ab170a227f733357f00e7ac4bae1dbcda444b219`
-- Stable tag: `production-2026-08-20-stable`
+- Production code commit: `deedf8e`
+- Stable tag: `production-2026-08-21-menu-fix`
 - Production host: `43.129.246.80` (Ubuntu)
 
 The Git repository contains source code, migrations, deployment examples, and
@@ -67,12 +67,12 @@ The known safe production defaults at this release are `APP_ENV=production`,
 ```bash
 git clone https://github.com/teimen-dot/VV-family-menu-push.git family-menu
 cd family-menu
-git checkout production-2026-08-20-stable
+git checkout production-2026-08-21-menu-fix
 git rev-parse HEAD
 ```
 
-The last command must print
-`ab170a227f733357f00e7ac4bae1dbcda444b219`.
+The stable tag contains this recovery document and has `deedf8e` as its
+production application parent commit.
 
 Verify and unpack the independent snapshot, then place its contents using the
 production layout above. Before starting the application, ensure the database
