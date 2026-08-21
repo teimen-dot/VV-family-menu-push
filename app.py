@@ -46,7 +46,7 @@ from menu_service import (
     ensure_menu_for_date,
     update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
     normalize_dish_slot_roles, ensure_dish_slot_metadata,
-    ensure_breakfast_rotation_metadata,
+    ensure_breakfast_rotation_metadata, ensure_draft_menu_structure_cleanup,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
@@ -4713,6 +4713,9 @@ def main():
                 raise
             print("[WARN] legacy menus schema: skipped automatic four-day creation")
             break
+    cleanup = ensure_draft_menu_structure_cleanup()
+    if not cleanup.get("skipped"):
+        print(f"[OK] draft menu structure cleanup removed {cleanup['removed']} AI dishes")
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)
     print(f"[OK] H5 应用已启动: http://{HOST}:{PORT}")
     try:

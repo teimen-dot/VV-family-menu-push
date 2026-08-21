@@ -21,7 +21,7 @@ from rule_engine import (
     is_breakfast_meat_candidate, is_breakfast_tofu_candidate,
     is_breakfast_egg_candidate, qualifies_breakfast_tofu_rotation,
     is_one_pot_candidate, BREAKFAST_TOFU_ROTATION_TAG,
-    is_pantry_exempt_dish,
+    is_pantry_exempt_dish, assign_meal_structure,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
 from preference_service import get_preference_scores, record_vv_confirm
@@ -488,6 +488,27 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
                 raise
             meal_settings = {}
 
+        diners_count = _get_effective_diners_count(menu_row=menu)
+        meal_structure = {}
+        for meal_type in ("breakfast", "lunch", "dinner"):
+            meal_items = meals.get(meal_type, [])
+            analyses = [NutritionAnalyzer.analyze(item) for item in meal_items]
+            owner_indices = {
+                idx for idx, item in enumerate(meal_items)
+                if item.get("is_locked") or is_manual_source(item.get("source"))
+            }
+            structure = assign_meal_structure(
+                meal_type, analyses, diners_count, owner_indices=owner_indices,
+            )
+            for idx, item in enumerate(meal_items):
+                item["structure_slot"] = structure["assignments"].get(idx)
+                item["is_structure_extra"] = idx in structure["extra_indices"]
+            meal_structure[meal_type] = {
+                "target_dish_count": structure["target_dish_count"],
+                "structure_dish_count": structure["structure_dish_count"],
+                "manual_extra_count": structure["manual_extra_count"],
+            }
+
         return {
             "date": date_str,
             "exists": True,
@@ -500,12 +521,13 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
             "location": location,
             "meals": meals,
             "diners": diners,
-            "diners_count": _get_effective_diners_count(menu_row=menu),
+            "diners_count": diners_count,
             "availability": avail_batch,
             "shortages": shortage_map,
             "review_issues": menu["notes_zh"] or "",
             "meal_notes": meal_notes,
             "meal_settings": meal_settings,
+            "meal_structure": meal_structure,
         }
     finally:
         conn.close()
@@ -1113,217 +1135,184 @@ _RECONCILE_SLOT_ROLES = {
 
 
 def reconcile_meal_for_diners(menu_id, location="shenzhen"):
-    """
-    V10: Diners 变化后重新调整菜单。
-    
-    流程:
-      1. 读取 diners_count（V11: 通过 _get_effective_diners_count）
-      2. 获取精确 target（晚餐按人数）
-      3. 分析 Owner Selected（source=owner / is_locked=1）
-      4. 分析 AI items（source=ai / is_locked=0）
-      5. 计算各 slot 当前数量
-      6. 删除 excess AI items（保留 owner）
-      7. 对不足 slot 调用 ai_fill_menu 补齐
-    
-    Owner Selected 永远保留。超额时优先删除 AI items。
-    返回: (ok, msg, review)
-    """
+    """Strictly converge AI dishes while preserving every owner dish."""
     conn = get_db()
     try:
         menu = conn.execute(
-            "SELECT date, location, diners, diners_count "
+            "SELECT date, location, status, diners, diners_count "
             "FROM menus WHERE id = ?",
             (menu_id,)
         ).fetchone()
         if not menu:
             return False, "菜单不存在", None
+        if menu["status"] != "draft":
+            return False, "已确认菜单不自动收敛", None
 
-        date_str = menu["date"]
         loc = menu["location"] or location
-
-        # 使用统一的正常人数语义。
         diners_count = _get_effective_diners_count(menu_row=menu)
-
         pool = _load_pool()
         dish_map = {d["id"]: d for d in pool["dishes"]}
+        removed_details = []
+        manual_extras = []
 
-        removed_count = 0
-
-        # 对每个餐次执行 reconcile（晚餐最关键，但也处理午餐）
         for mt in ["breakfast", "lunch", "dinner"]:
-            # 获取该餐次所有 items，区分 owner 和 AI
             items = conn.execute(
-                "SELECT id, dish_id, is_locked, source FROM menu_items "
-                "WHERE menu_id = ? AND meal_type = ? ORDER BY sort_order",
+                "SELECT id,dish_id,is_locked,source,sort_order FROM menu_items "
+                "WHERE menu_id=? AND meal_type=? ORDER BY sort_order,id",
                 (menu_id, mt)
             ).fetchall()
-
-            if mt == "lunch":
-                kept_items = []
-                for item in items:
-                    analysis = dish_map.get(item["dish_id"])
-                    is_owner = item["is_locked"] or item["source"] == "owner"
-                    is_one_pot = bool(analysis and is_one_pot_candidate(analysis))
-                    remove_for_mode = (
-                        not is_owner
-                        and ((diners_count == 1 and not is_one_pot)
-                             or (diners_count > 1 and is_one_pot))
-                    )
-                    if remove_for_mode:
-                        conn.execute("DELETE FROM menu_items WHERE id=?", (item["id"],))
-                        removed_count += 1
-                    else:
-                        kept_items.append(item)
-                items = kept_items
-
-            # 分析所有菜品的槽位贡献
-            state = MealState()
-            owner_items = []  # (menu_item_id, dish_id, analysis)
-            ai_items = []     # (menu_item_id, dish_id, analysis)
-
+            analyses = []
+            valid_items = []
             for item in items:
-                did = item["dish_id"]
-                if did not in dish_map:
-                    continue
-                analysis = NutritionAnalyzer.analyze(dish_map[did])
-                is_owner = item["is_locked"] or item["source"] == "owner"
-                # V10 FIX: state 必须包含所有菜品（owner + AI），否则
-                # 当没有 owner 菜时 current=0，无法检测超额。
-                state.add_dish(
-                    analysis, is_locked=is_owner, source=item["source"] or ("owner" if is_owner else "ai")
-                )
-                if is_owner:
-                    owner_items.append((item["id"], did, analysis))
-                else:
-                    ai_items.append((item["id"], did, analysis))
+                dish = dish_map.get(item["dish_id"])
+                if dish:
+                    valid_items.append(item)
+                    analyses.append(NutritionAnalyzer.analyze(dish))
 
-            if mt not in {"breakfast", "lunch", "dinner"}:
-                continue
+            owner_indices = {
+                idx for idx, item in enumerate(valid_items)
+                if item["is_locked"] or is_manual_source(item["source"])
+            }
+            ai_ids = [item["dish_id"] for idx, item in enumerate(valid_items) if idx not in owner_indices]
+            availability = check_dishes_availability_batch(ai_ids, loc) if ai_ids else {}
+            status_rank = {"available": 0, "almost_available": 1, "missing": 2, "incomplete": 3}
+            ai_priority = sorted(
+                (idx for idx in range(len(valid_items)) if idx not in owner_indices),
+                key=lambda idx: (
+                    status_rank.get(availability.get(valid_items[idx]["dish_id"], {}).get("status"), 4),
+                    valid_items[idx]["sort_order"], valid_items[idx]["id"],
+                ),
+            )
+            priority = sorted(owner_indices) + ai_priority
+            structure = assign_meal_structure(
+                mt, analyses, diners_count,
+                owner_indices=owner_indices, priority_indices=priority,
+            )
 
-            # 计算每个 slot 的 owner-only 数量（用于限制删除：只删 AI，不删 owner）
-            owner_state = MealState()
-            for _, _, analysis in owner_items:
-                owner_state.add_dish(analysis, is_locked=True, source="owner")
-            owner_slots = analyze_meal_slots(mt, owner_state, diners_count)
-
-            # 对每个 slot，如果总数（owner + AI）超过 target，删除多余的 AI items
-            slots = analyze_meal_slots(mt, state, diners_count)
-            excess_slots = {k: v for k, v in slots.items() if v["current"] > v["target_min"]}
-            # protein_main and meat_main are two public names for the same strict
-            # animal-protein count. Reconcile it once to avoid double deletion.
-            if "meat_main" in excess_slots:
-                excess_slots.pop("protein_main", None)
-
-            if not excess_slots:
-                continue
-
-            # 按 slot 删除 excess AI items
-            # 优先删除：缺食材的 → almost available → 普通 AI → 最近重复度高的
-            from inventory import check_dishes_availability_batch
-            ai_dish_ids = [aid for _, aid, _ in ai_items]
-            avail_batch = check_dishes_availability_batch(ai_dish_ids, loc) if ai_dish_ids else {}
-
-            # 对每个超额 slot，计算需要删除多少 AI items
-            for slot_name, slot_info in excess_slots.items():
-                total_current = slot_info["current"]
-                target_min = slot_info["target_min"]
-                # owner 菜占用的槽位数 — 不能删 owner 菜
-                owner_current = owner_slots.get(slot_name, {}).get("current", 0)
-                # 可删除的 AI 菜数量 = min(超额数, AI 贡献数)
-                excess = total_current - target_min
-                ai_contributable = total_current - owner_current
-                excess = min(excess, max(0, ai_contributable))
-                if excess <= 0:
-                    continue
-
-                # 找出贡献该 slot 的 AI items
-                slot_roles = _RECONCILE_SLOT_ROLES.get(slot_name, [])
-                contributing_ai = []
-
-                for mi_id, did, analysis in ai_items:
-                    roles = analysis.get("meal_roles", [])
-                    cat = analysis.get("category_id", "")
-                    # 判断这道 AI 菜是否贡献该 slot
-                    contributes = False
-                    if slot_name == "protein_main":
-                        contributes = "protein_main" in roles
-                    elif slot_name == "meat_main":
-                        contributes = (
-                            "protein_main" in roles
-                            and "tofu_dish" not in roles
-                            and bool(set(analysis.get("proteins", [])) & {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"})
-                        )
-                    elif slot_name == "vegetable_dish":
-                        contributes = "vegetable_dish" in roles
-                    elif slot_name == "staple":
-                        contributes = "staple" in roles
-                    elif slot_name == "slow_soup":
-                        contributes = "slow_soup" in roles
-                    elif slot_name == "quick_soup":
-                        contributes = "quick_soup" in roles
-                    elif slot_name == "egg":
-                        contributes = is_breakfast_egg_candidate(analysis)
-                    elif slot_name == "egg_tofu":
-                        contributes = bool(set(roles) & {"egg_dish", "tofu_dish"})
-                    elif slot_name == "one_pot_meal":
-                        contributes = is_one_pot_candidate(analysis)
-                    elif slot_name == "tofu":
-                        contributes = is_breakfast_tofu_candidate(analysis)
-                    elif slot_name == "breakfast_meat":
-                        contributes = is_breakfast_meat_candidate(analysis)
-                    elif slot_name == "porridge":
-                        contributes = analysis.get("carb_type") == "porridge"
-                    elif slot_name == "companion_staple":
-                        contributes = analysis.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
-                    elif slot_name == "coarse_grain":
-                        contributes = analysis.get("carb_type") == "coarse_grain"
-                    elif slot_name == "vegetable":
-                        contributes = bool(filter_candidates_for_slot([analysis], "vegetable"))
-
-                    if contributes:
-                        avail_status = avail_batch.get(did, {}).get("status", "available")
-                        contributing_ai.append((mi_id, did, avail_status))
-
-                if not contributing_ai:
-                    continue
-
-                # 按优先级排序：缺食材的先删 (missing > almost > available)
-                # priority: 0=missing, 1=almost, 2=available (V12: incomplete 已废弃)
-                def del_priority(item_tuple):
-                    _, _, status = item_tuple
-                    return {"missing": 0, "almost_available": 1, "available": 2}.get(status, 3)
-
-                contributing_ai.sort(key=del_priority)
-
-                # 删除前 excess 个
-                to_remove = contributing_ai[:excess]
-                for mi_id, did, _ in to_remove:
-                    conn.execute("DELETE FROM menu_items WHERE id = ?", (mi_id,))
-                    removed_count += 1
-                    # 从 state 移除（重新构建更简单）
-                    ai_items = [(m, d, a) for m, d, a in ai_items if m != mi_id]
+            for idx in structure["extra_indices"]:
+                item = valid_items[idx]
+                manual_extras.append({
+                    "meal_type": mt, "menu_item_id": item["id"],
+                    "dish_id": item["dish_id"],
+                    "name_cn": dish_map[item["dish_id"]].get("name_cn", ""),
+                })
+            for idx in structure["unmatched_ai_indices"]:
+                item = valid_items[idx]
+                removed_details.append({
+                    "meal_type": mt, "menu_item_id": item["id"],
+                    "dish_id": item["dish_id"],
+                    "name_cn": dish_map[item["dish_id"]].get("name_cn", ""),
+                })
+                conn.execute("DELETE FROM menu_items WHERE id=?", (item["id"],))
 
         conn.commit()
 
-        # 删除完成后，调用 ai_fill_menu 补齐可能新增的缺口
-        if removed_count > 0:
+        if removed_details:
             log_event("reconcile_removed_excess", "menu", str(menu_id), {
                 "diners_count": diners_count,
-                "removed_ai_items": removed_count,
+                "removed_ai_items": len(removed_details),
+                "removed_details": removed_details,
             })
-
-        # 调用 ai_fill 补齐
         ok, msg, review = ai_fill_menu(menu_id, location=loc, seed=42)
 
-        # 附加 reconcile 信息
-        if review:
-            review["reconciled"] = True
-            review["reconcile_diners"] = diners_count
-            review["reconcile_removed"] = removed_count
+        # The legacy gap filler exposes duplicate public aliases for the same
+        # meat slot. Always perform one final structural trim after filling so
+        # a filled meal cannot retain an orphan or a duplicate AI dish.
+        manual_extras = []
+        for mt in ["breakfast", "lunch", "dinner"]:
+            items = conn.execute(
+                "SELECT id,dish_id,is_locked,source,sort_order FROM menu_items "
+                "WHERE menu_id=? AND meal_type=? ORDER BY sort_order,id",
+                (menu_id, mt),
+            ).fetchall()
+            valid_items = [item for item in items if item["dish_id"] in dish_map]
+            analyses = [NutritionAnalyzer.analyze(dish_map[item["dish_id"]]) for item in valid_items]
+            owner_indices = {
+                idx for idx, item in enumerate(valid_items)
+                if item["is_locked"] or is_manual_source(item["source"])
+            }
+            ai_ids = [item["dish_id"] for idx, item in enumerate(valid_items) if idx not in owner_indices]
+            availability = check_dishes_availability_batch(ai_ids, loc) if ai_ids else {}
+            status_rank = {"available": 0, "almost_available": 1, "missing": 2, "incomplete": 3}
+            ai_priority = sorted(
+                (idx for idx in range(len(valid_items)) if idx not in owner_indices),
+                key=lambda idx: (
+                    status_rank.get(availability.get(valid_items[idx]["dish_id"], {}).get("status"), 4),
+                    valid_items[idx]["sort_order"], valid_items[idx]["id"],
+                ),
+            )
+            structure = assign_meal_structure(
+                mt, analyses, diners_count, owner_indices=owner_indices,
+                priority_indices=sorted(owner_indices) + ai_priority,
+            )
+            for idx in structure["extra_indices"]:
+                item = valid_items[idx]
+                manual_extras.append({
+                    "meal_type": mt, "menu_item_id": item["id"], "dish_id": item["dish_id"],
+                    "name_cn": dish_map[item["dish_id"]].get("name_cn", ""),
+                })
+            for idx in structure["unmatched_ai_indices"]:
+                item = valid_items[idx]
+                if not any(row["menu_item_id"] == item["id"] for row in removed_details):
+                    removed_details.append({
+                        "meal_type": mt, "menu_item_id": item["id"], "dish_id": item["dish_id"],
+                        "name_cn": dish_map[item["dish_id"]].get("name_cn", ""),
+                    })
+                conn.execute("DELETE FROM menu_items WHERE id=?", (item["id"],))
+        conn.commit()
 
-        return True, f"已根据 {diners_count} 人用餐重新调整 AI 推荐（删除 {removed_count} 道多余 AI 菜）", review
+        review = review or {}
+        review.update({
+            "reconciled": True,
+            "reconcile_diners": diners_count,
+            "reconcile_removed": len(removed_details),
+            "removed_ai_dishes": removed_details,
+            "retained_manual_extras": manual_extras,
+        })
+        return True, (
+            f"已根据 {diners_count} 人用餐收敛菜单"
+            f"（删除 {len(removed_details)} 道多余 AI 菜）"
+        ), review
     finally:
         conn.close()
+
+
+STRICT_STRUCTURE_CLEANUP_VERSION = "2026-08-21-strict-convergence-v1"
+
+
+def ensure_draft_menu_structure_cleanup():
+    """Run the approved one-time, idempotent cleanup for draft menus only."""
+    marker = "draft_structure_cleanup_version"
+    if get_config(marker) == STRICT_STRUCTURE_CLEANUP_VERSION:
+        return {"skipped": True, "menus": [], "removed": 0}
+    conn = get_db()
+    try:
+        drafts = conn.execute(
+            "SELECT id,location FROM menus WHERE status='draft' ORDER BY id"
+        ).fetchall()
+    finally:
+        conn.close()
+    reports = []
+    removed = 0
+    for row in drafts:
+        ok, message, review = reconcile_meal_for_diners(row["id"], row["location"])
+        if not ok:
+            raise RuntimeError(f"draft menu {row['id']} cleanup failed: {message}")
+        count = int((review or {}).get("reconcile_removed", 0))
+        removed += count
+        reports.append({"menu_id": row["id"], "removed": count})
+    conn = get_db()
+    try:
+        conn.execute(
+            "INSERT INTO config(key,value,notes) VALUES(?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value,notes=excluded.notes",
+            (marker, STRICT_STRUCTURE_CLEANUP_VERSION,
+             "One-time strict convergence of draft menus; confirmed/pushed untouched"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return {"skipped": False, "menus": reports, "removed": removed}
 
 
 def repair_menu(menu_id, location="shenzhen", seed=None):

@@ -107,6 +107,9 @@ BREAKFAST_TOFU_ROTATION_TAG = "早餐豆腐"
 
 MEAT_PROTEINS = {"fish", "shrimp", "other_seafood", "beef", "pork", "猪肉", "chicken"}
 BREAKFAST_MEAT_PROTEINS = {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"}
+ANIMAL_PROTEIN_SOURCES = frozenset({
+    "fish", "shrimp", "other_seafood", "beef", "pork", "chicken", "duck", "lamb",
+})
 TOFU_INGREDIENT_CANONICAL_IDS = frozenset(
     normalize_ingredient_id(value)
     for value in ("tofu", "silken_tofu", "tofu_skin", "腐竹")
@@ -427,14 +430,21 @@ def dish_contains_vegetables(item):
 
 def is_breakfast_meat_candidate(item):
     """Frozen §2 independent breakfast meat main; porridge/filling/soup do not count."""
-    proteins = set(item.get("proteins") or item.get("protein_types") or [])
     roles = _item_roles(item)
     return (
         "breakfast" in _item_meal_tags(item)
         and "protein_main" in roles
         and "tofu_dish" not in roles
         and not _item_is_soup(item)
-        and bool(proteins & BREAKFAST_MEAT_PROTEINS)
+        and is_animal_protein_main(item)
+    )
+
+
+def is_animal_protein_main(item):
+    return (
+        "protein_main" in _item_roles(item)
+        and not bool(_item_roles(item) & {"tofu_dish", "egg_dish"})
+        and primary_protein_source(item) in ANIMAL_PROTEIN_SOURCES
     )
 
 
@@ -663,7 +673,7 @@ class MealState:
                 self.auto_egg_dish_count += 1
         if "tofu_dish" in roles:
             self.tofu_dish_count += 1
-        if "tofu_dish" not in roles and set(analysis["proteins"]) & MEAT_PROTEINS:
+        if is_animal_protein_main(analysis):
             self.meat_main_count += 1
         if is_one_pot_candidate(analysis) and is_manual_source(source):
             self.has_manual_one_pot_meal = True
@@ -971,9 +981,7 @@ class RuleEngine:
 
 def _meal_has_meat_with_vegetables(state, meal_type):
     checker = is_breakfast_meat_candidate if meal_type == "breakfast" else (
-        lambda item: bool(set(item.get("proteins", [])) & MEAT_PROTEINS)
-        and "protein_main" in _item_roles(item)
-        and "tofu_dish" not in _item_roles(item)
+        lambda item: is_animal_protein_main(item)
     )
     return any(checker(item) and dish_contains_vegetables(item) for item in state.dishes)
 
@@ -1014,6 +1022,146 @@ def meal_slot_targets(meal_type, state, diners_count):
             "staple": 1, "slow_soup": 1,
         }
     return {}
+
+
+def _canonical_structure_targets(meal_type, diners_count, meat_has_vegetables=False):
+    """Return structural targets without duplicate public slot aliases."""
+    diners = max(1, int(diners_count or 1))
+    if meal_type == "breakfast":
+        large = diners >= 4
+        return {
+            "porridge": 1, "companion_staple": 1, "tofu": 1, "egg": 1,
+            "breakfast_meat": 2 if large else 1,
+            "vegetable": 1 if large and meat_has_vegetables else (2 if large else 1),
+            "coarse_grain": 1,
+        }
+    if meal_type == "lunch":
+        if diners == 1:
+            return {"one_pot_meal": 1}
+        large = diners >= 3
+        return {
+            "meat_main": 2 if large else 1,
+            "vegetable_dish": 1 if large and meat_has_vegetables else (2 if large else 1),
+            "staple": 1, "quick_soup": 1,
+        }
+    if meal_type == "dinner":
+        large = diners >= 4
+        return {
+            "meat_main": 2,
+            "vegetable_dish": 1 if large and meat_has_vegetables else (2 if large else 1),
+            **({"egg_tofu": 1} if large else {}),
+            "staple": 1, "slow_soup": 1,
+        }
+    return {}
+
+
+def is_structure_slot_candidate(item, meal_type, slot):
+    """Strict, deterministic membership for one structural slot."""
+    roles = _item_roles(item)
+    if slot == "one_pot_meal":
+        return is_one_pot_candidate(item)
+    if slot == "porridge":
+        return item.get("carb_type") == "porridge"
+    if slot == "companion_staple":
+        return item.get("breakfast_staple_type") in BREAKFAST_COMPANION_STAPLES
+    if slot == "coarse_grain":
+        return item.get("carb_type") == "coarse_grain"
+    if slot == "egg":
+        return is_breakfast_egg_candidate(item)
+    if slot == "tofu":
+        return is_breakfast_tofu_candidate(item)
+    if slot == "breakfast_meat":
+        return is_breakfast_meat_candidate(item)
+    if slot in {"meat_main", "protein_main"}:
+        return is_animal_protein_main(item)
+    if slot in {"vegetable", "vegetable_dish"}:
+        return is_independent_vegetable_candidate(item)
+    if slot == "egg_tofu":
+        return bool(roles & {"egg_dish", "tofu_dish"}) and not _item_is_soup(item)
+    if slot == "staple":
+        return "staple" in roles and not is_one_pot_candidate(item)
+    if slot == "quick_soup":
+        return "quick_soup" in roles
+    if slot == "slow_soup":
+        return "slow_soup" in roles
+    return False
+
+
+def assign_meal_structure(meal_type, items, diners_count=4, owner_indices=None,
+                          priority_indices=None):
+    """Assign each dish to at most one slot; owner dishes always win and persist."""
+    owner_indices = set(owner_indices or [])
+    indexes = list(range(len(items)))
+    if priority_indices is not None:
+        wanted = [idx for idx in priority_indices if idx in indexes]
+        indexes = wanted + [idx for idx in indexes if idx not in wanted]
+    order_rank = {idx: rank for rank, idx in enumerate(indexes)}
+    indexes.sort(key=lambda idx: (0 if idx in owner_indices else 1, order_rank[idx]))
+
+    # A manually selected one-pot lunch is a complete manual structure. Other
+    # manual dishes remain visible as extras and AI dishes are left unmatched.
+    if meal_type == "lunch":
+        manual_onepots = [
+            idx for idx in indexes
+            if idx in owner_indices and is_one_pot_candidate(items[idx])
+        ]
+        if manual_onepots:
+            chosen = manual_onepots[0]
+            assignments = {chosen: "one_pot_meal"}
+            return {
+                "assignments": assignments,
+                "extra_indices": [idx for idx in owner_indices if idx != chosen],
+                "unmatched_ai_indices": [idx for idx in indexes if idx not in owner_indices],
+                "targets": {"one_pot_meal": 1},
+                "target_dish_count": 1,
+                "structure_dish_count": 1,
+                "manual_extra_count": max(0, len(owner_indices) - 1),
+            }
+
+    preliminary = _canonical_structure_targets(meal_type, diners_count, False)
+    assignments = {}
+    used = set()
+
+    # Meat is assigned first because its explicit vegetable content may reduce
+    # (but never eliminate) the independent vegetable target.
+    ordered_slots = list(preliminary)
+    meat_slot = "breakfast_meat" if meal_type == "breakfast" else "meat_main"
+    if meat_slot in ordered_slots:
+        ordered_slots.remove(meat_slot)
+        ordered_slots.insert(0, meat_slot)
+
+    def fill_slot(slot, amount):
+        for idx in indexes:
+            if amount <= 0:
+                break
+            if idx in used or not is_structure_slot_candidate(items[idx], meal_type, slot):
+                continue
+            assignments[idx] = slot
+            used.add(idx)
+            amount -= 1
+
+    fill_slot(meat_slot, preliminary.get(meat_slot, 0))
+    meat_has_vegetables = any(
+        slot == meat_slot and dish_contains_vegetables(items[idx])
+        for idx, slot in assignments.items()
+    )
+    targets = _canonical_structure_targets(meal_type, diners_count, meat_has_vegetables)
+    for slot in ordered_slots:
+        if slot == meat_slot:
+            continue
+        fill_slot(slot, targets.get(slot, 0))
+
+    extras = sorted(idx for idx in owner_indices if idx not in used)
+    unmatched_ai = [idx for idx in indexes if idx not in used and idx not in owner_indices]
+    return {
+        "assignments": assignments,
+        "extra_indices": extras,
+        "unmatched_ai_indices": unmatched_ai,
+        "targets": targets,
+        "target_dish_count": sum(targets.values()),
+        "structure_dish_count": len(assignments),
+        "manual_extra_count": len(extras),
+    }
 
 
 # ============================================================
@@ -1171,7 +1319,7 @@ def filter_candidates_for_slot(candidates, slot_name):
         # 排除菜名
         if any(ex in name for ex in spec.get("exclude_names", [])):
             continue
-        if spec.get("require_meat") and not (set(c.get("proteins", [])) & MEAT_PROTEINS):
+        if spec.get("require_meat") and not is_animal_protein_main(c):
             continue
         if spec.get("require_breakfast_tofu") and not is_breakfast_tofu_candidate(c):
             continue

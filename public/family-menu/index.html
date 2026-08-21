@@ -2596,7 +2596,12 @@ function refreshBadge(card) {
   const zone  = card.querySelector('.meal-detail') || card.querySelector('.mh-dishes');
   const badge = card.querySelector('.count-badge');
   if (badge && zone) {
-    badge.innerHTML = zone.querySelectorAll('.dish-row').length + ' 道<small>DISHES</small>';
+    const target = Number(card.dataset.targetDishCount || 0);
+    const structure = Number(card.dataset.structureDishCount || 0);
+    const extras = Number(card.dataset.manualExtraCount || 0);
+    badge.innerHTML = target
+      ? structure + ' 道' + (extras ? ' + ' + extras + ' 手动额外' : '') + '<small>DISHES</small>'
+      : zone.querySelectorAll('.dish-row:not([data-empty="true"])').length + ' 道<small>DISHES</small>';
   }
   refreshWarn(card);
 }
@@ -3088,6 +3093,10 @@ document.addEventListener('click', async e => {
   if (moPick && addTarget) {
     const d = DISH_DB.find(x => x.id === moPick.dataset.dishId);
     if (!d) return;
+    if (addTarget.card.dataset.structureComplete === '1') {
+      const accepted = window.confirm('本餐标准结构已完整，添加后将作为“手动额外菜”保留。是否继续？');
+      if (!accepted) return;
+    }
     try {
       await writeJSON('/api/tomorrow/add', {
         menu_id:Number(addTarget.card.dataset.menuId), dish_id:d.id,
@@ -3653,6 +3662,13 @@ pickModal.addEventListener('click',
       info.appendChild(en);
     }
     en.textContent = dish.name_en || '';
+    info.querySelectorAll('.structure-extra-tag').forEach(tag => tag.remove());
+    if (dish.is_structure_extra) {
+      const tag = document.createElement('span');
+      tag.className = 'miss-tag mt-low structure-extra-tag';
+      tag.textContent = '手动额外菜 · MANUAL EXTRA';
+      info.appendChild(tag);
+    }
     addAvailability(row, dish, availability);
     return row;
   }
@@ -3723,9 +3739,18 @@ pickModal.addEventListener('click',
     box.classList.toggle('has-note', Boolean(note));
   }
 
-  function setCount(card, count) {
+  function setCount(card, count, structure) {
     const badge = card.querySelector('.count-badge');
-    if (badge) badge.textContent = String(count);
+    const target = Number(structure?.target_dish_count || 0);
+    const filled = Number(structure?.structure_dish_count || 0);
+    const extras = Number(structure?.manual_extra_count || 0);
+    card.dataset.targetDishCount = String(target);
+    card.dataset.structureDishCount = String(filled);
+    card.dataset.manualExtraCount = String(extras);
+    card.dataset.structureComplete = target > 0 && filled >= target ? '1' : '';
+    if (badge) badge.innerHTML = target
+      ? filled + ' 道' + (extras ? ' + ' + extras + ' 手动额外' : '') + '<small>DISHES</small>'
+      : String(count) + '<small>DISHES</small>';
   }
 
   function updateSectionHeader(section, day) {
@@ -3766,7 +3791,11 @@ pickModal.addEventListener('click',
     card.dataset.cancelled = skipped ? '1' : '';
     card.style.display = skipped ? 'none' : '';
     const meta = card.querySelector('.meal-row .info > small');
-    if (meta) meta.textContent = diners + ' 人 Diners · ' + dishes.length + ' 道菜 Dishes';
+    const structure = menu.meal_structure?.[mealType] || null;
+    const countLabel = structure
+      ? structure.structure_dish_count + ' 道标准' + (structure.manual_extra_count ? ' + ' + structure.manual_extra_count + ' 手动额外' : '')
+      : dishes.length + ' 道菜';
+    if (meta) meta.textContent = diners + ' 人 Diners · ' + countLabel;
     card.querySelectorAll('.stepper .num').forEach(node => { node.textContent = String(diners); });
     const detail = card.querySelector('.meal-detail');
     if (detail) setRows(detail, dishes, menu, menu.availability || {}, true);
@@ -3776,7 +3805,7 @@ pickModal.addEventListener('click',
       if (zone) renderDrinkChips(zone, (menu.meal_notes || {}).breakfast_drinks || []);
     }
     setWarning(card, dishes, menu.availability || {}, slotGaps || {}, mealType);
-    setCount(card, dishes.length);
+    setCount(card, dishes.length, structure);
     setConfirmed(card, menu.status === 'confirmed');
   }
 
