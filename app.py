@@ -46,6 +46,7 @@ from menu_service import (
     ensure_menu_for_date,
     update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
     normalize_dish_slot_roles, ensure_dish_slot_metadata,
+    ensure_breakfast_rotation_metadata,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
@@ -199,6 +200,11 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
             and "饭" in current_analysis.get("name_cn", "")
         )
         if current_analysis:
+            current_roles = set(current_analysis.get("meal_roles", []))
+            if current["meal_type"] == "breakfast" and "egg_dish" in current_roles:
+                slot_name = "egg"
+            elif current["meal_type"] == "breakfast" and "tofu_dish" in current_roles:
+                slot_name = "tofu"
             if current["meal_type"] == "breakfast":
                 slot_candidates = [
                     "tofu", "egg", "porridge", "companion_staple", "coarse_grain",
@@ -210,10 +216,11 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
                     "quick_soup", "slow_soup", "meat_main", "protein_main",
                     "vegetable_dish", "staple",
                 ]
-            for candidate_slot in slot_candidates:
-                if filter_candidates_for_slot([current_analysis], candidate_slot):
-                    slot_name = candidate_slot
-                    break
+            if slot_name is None:
+                for candidate_slot in slot_candidates:
+                    if filter_candidates_for_slot([current_analysis], candidate_slot):
+                        slot_name = candidate_slot
+                        break
 
         occupied = {row["dish_id"] for row in conn.execute(
             "SELECT dish_id FROM menu_items WHERE menu_id=? AND id<>?",
@@ -1042,6 +1049,8 @@ SLOT_LABELS = {
     "slow_soup": ("汤羹", "Soup"),
     "quick_soup": ("快手汤", "Quick Soup"),
     "egg": ("鸡蛋", "Egg"),
+    "egg_tofu": ("蛋类/豆制品", "Egg / Tofu"),
+    "one_pot_meal": ("一餐型料理", "One-pot Meal"),
     "tofu": ("豆腐", "Tofu"),
     "porridge": ("粥", "Porridge"),
     "companion_staple": ("搭配主食", "Side Staple"),
@@ -2220,7 +2229,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
         return min(100, round(current / target * 100)) if target else 100
 
     nutrition_values = {
-        "protein": aggregate_progress((("breakfast", "protein_main"), ("lunch", "protein_main"), ("dinner", "protein_main"))),
+        "protein": aggregate_progress((("breakfast", "breakfast_meat"), ("lunch", "protein_main"), ("dinner", "protein_main"))),
         "vegetables": aggregate_progress((("breakfast", "vegetable"), ("lunch", "vegetable_dish"), ("dinner", "vegetable_dish"))),
         "staple": aggregate_progress((("breakfast", "staple"), ("lunch", "staple"), ("dinner", "staple"))),
     }
@@ -4686,6 +4695,7 @@ def main():
     init_db()
     ensure_inventory_taxonomy()
     ensure_dish_slot_metadata()
+    ensure_breakfast_rotation_metadata()
     ensure_breakfast_drink_catalog()
     # The four visible planning days must have real editable menu rows.
     today = datetime.now(FAMILY_TIMEZONE).date()

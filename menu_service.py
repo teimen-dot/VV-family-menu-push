@@ -19,6 +19,8 @@ from rule_engine import (
     BREAKFAST_COMPANION_STAPLES, NO_CANDIDATE_MESSAGE,
     counted_primary_protein_source, primary_vegetable_subject,
     is_breakfast_meat_candidate, is_breakfast_tofu_candidate,
+    is_breakfast_egg_candidate, qualifies_breakfast_tofu_rotation,
+    is_one_pot_candidate, BREAKFAST_TOFU_ROTATION_TAG,
     is_pantry_exempt_dish,
 )
 from inventory import check_shortages, get_available_ingredient_ids, check_dishes_availability_batch
@@ -83,6 +85,42 @@ def ensure_dish_slot_metadata():
                 "INSERT INTO config(key,value) VALUES('catalog_version',?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (new_version,),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+    if changed:
+        invalidate_catalog_cache()
+    return changed
+
+
+def ensure_breakfast_rotation_metadata():
+    """Idempotently tag existing ingredient-qualified breakfast tofu dishes."""
+    pool = _load_pool()
+    ingredient_map = get_dish_ingredients_map()
+    conn = get_db()
+    changed = 0
+    try:
+        for dish in pool["dishes"]:
+            analysis = NutritionAnalyzer.analyze(dish)
+            analysis["ingredient_ids"] = sorted(ingredient_map.get(dish["id"], set()))
+            if not qualifies_breakfast_tofu_rotation(analysis):
+                continue
+            tags = list(analysis.get("custom_tags") or [])
+            if BREAKFAST_TOFU_ROTATION_TAG in tags:
+                continue
+            tags.append(BREAKFAST_TOFU_ROTATION_TAG)
+            conn.execute(
+                "UPDATE dishes SET custom_tags=?,updated_at=datetime('now') WHERE id=?",
+                (json.dumps(tags, ensure_ascii=False), dish["id"]),
+            )
+            changed += 1
+        if changed:
+            old_version = get_config("catalog_version") or "1"
+            conn.execute(
+                "INSERT INTO config(key,value) VALUES('catalog_version',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(int(old_version) + 1),),
             )
         conn.commit()
     finally:
@@ -252,6 +290,7 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
         "expiring_ingredients": inv_exp,
         "dish_ingredients": dish_ings,
         "dish_availability": {dish_id: value["status"] for dish_id, value in dish_availability.items()},
+        "allow_almost_available": True,
         "vv_preferences": vv_prefs,  # V11: VV confirm-based preference
     }
 
@@ -816,6 +855,7 @@ def ai_fill_menu(menu_id, location="shenzhen", seed=None, meal_type=None):
                 count for meal_name, count in auto_eggs_by_meal.items()
                 if meal_name != mt
             )
+            context["allow_auto_one_pot"] = mt == "lunch" and diners_count == 1
 
             added = _fill_missing_slots_v8(
                 conn, menu_id, mt, state, gf, dish_map, context,
@@ -1061,6 +1101,8 @@ _RECONCILE_SLOT_ROLES = {
     "slow_soup": ["slow_soup"],
     "quick_soup": ["quick_soup"],
     "egg": ["egg_dish"],
+    "egg_tofu": ["egg_dish", "tofu_dish"],
+    "one_pot_meal": ["one_pot_meal"],
     "tofu": ["tofu_dish"],
     "breakfast_meat": ["protein_main"],
     "porridge": [],
@@ -1116,6 +1158,24 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                 (menu_id, mt)
             ).fetchall()
 
+            if mt == "lunch":
+                kept_items = []
+                for item in items:
+                    analysis = dish_map.get(item["dish_id"])
+                    is_owner = item["is_locked"] or item["source"] == "owner"
+                    is_one_pot = bool(analysis and is_one_pot_candidate(analysis))
+                    remove_for_mode = (
+                        not is_owner
+                        and ((diners_count == 1 and not is_one_pot)
+                             or (diners_count > 1 and is_one_pot))
+                    )
+                    if remove_for_mode:
+                        conn.execute("DELETE FROM menu_items WHERE id=?", (item["id"],))
+                        removed_count += 1
+                    else:
+                        kept_items.append(item)
+                items = kept_items
+
             # 分析所有菜品的槽位贡献
             state = MealState()
             owner_items = []  # (menu_item_id, dish_id, analysis)
@@ -1137,18 +1197,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                 else:
                     ai_items.append((item["id"], did, analysis))
 
-            # 获取 target
-            if mt == "dinner":
-                target = RuleEngine._dinner_target(diners_count)
-            elif mt == "lunch":
-                target = {"protein_main": 1, "vegetable_dish": 1, "staple": 1, "quick_soup": 1}
-            elif mt == "breakfast":
-                target = {
-                    "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
-                    "breakfast_meat": 1 if diners_count <= 2 else 2,
-                    "vegetable": 2, "egg": 1, "tofu": 1
-                }
-            else:
+            if mt not in {"breakfast", "lunch", "dinner"}:
                 continue
 
             # 计算每个 slot 的 owner-only 数量（用于限制删除：只删 AI，不删 owner）
@@ -1160,6 +1209,10 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
             # 对每个 slot，如果总数（owner + AI）超过 target，删除多余的 AI items
             slots = analyze_meal_slots(mt, state, diners_count)
             excess_slots = {k: v for k, v in slots.items() if v["current"] > v["target_min"]}
+            # protein_main and meat_main are two public names for the same strict
+            # animal-protein count. Reconcile it once to avoid double deletion.
+            if "meat_main" in excess_slots:
+                excess_slots.pop("protein_main", None)
 
             if not excess_slots:
                 continue
@@ -1209,7 +1262,11 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                     elif slot_name == "quick_soup":
                         contributes = "quick_soup" in roles
                     elif slot_name == "egg":
-                        contributes = "egg_dish" in roles
+                        contributes = is_breakfast_egg_candidate(analysis)
+                    elif slot_name == "egg_tofu":
+                        contributes = bool(set(roles) & {"egg_dish", "tofu_dish"})
+                    elif slot_name == "one_pot_meal":
+                        contributes = is_one_pot_candidate(analysis)
                     elif slot_name == "tofu":
                         contributes = is_breakfast_tofu_candidate(analysis)
                     elif slot_name == "breakfast_meat":
@@ -1221,8 +1278,7 @@ def reconcile_meal_for_diners(menu_id, location="shenzhen"):
                     elif slot_name == "coarse_grain":
                         contributes = analysis.get("carb_type") == "coarse_grain"
                     elif slot_name == "vegetable":
-                        # 早餐蔬菜是种类数，不是菜品数 — 不删除
-                        contributes = False
+                        contributes = bool(filter_candidates_for_slot([analysis], "vegetable"))
 
                     if contributes:
                         avail_status = avail_batch.get(did, {}).get("status", "available")

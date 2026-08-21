@@ -102,6 +102,8 @@ WEAK_CARB_TYPES = {"other", "dim_sum"}
 
 # 早餐搭配主食四选一
 BREAKFAST_COMPANION_STAPLES = {"mantou", "jiaozi", "bao", "huajuan"}
+BREAKFAST_EGG_ROTATION_TAG = "鸡蛋做法轮换"
+BREAKFAST_TOFU_ROTATION_TAG = "早餐豆腐"
 
 MEAT_PROTEINS = {"fish", "shrimp", "other_seafood", "beef", "pork", "猪肉", "chicken"}
 BREAKFAST_MEAT_PROTEINS = {"fish", "shrimp", "beef", "pork", "猪肉", "chicken"}
@@ -136,8 +138,8 @@ MEAL_SLOT_ORDER = {
         "porridge", "companion_staple", "tofu", "egg",
         "vegetable", "breakfast_meat", "coarse_grain",
     ],
-    "lunch": ["meat_main", "protein_main", "vegetable_dish", "staple", "quick_soup"],
-    "dinner": ["meat_main", "protein_main", "vegetable_dish", "staple", "slow_soup"],
+    "lunch": ["one_pot_meal", "meat_main", "protein_main", "vegetable_dish", "staple", "quick_soup"],
+    "dinner": ["meat_main", "protein_main", "vegetable_dish", "egg_tofu", "staple", "slow_soup"],
 }
 
 # 原 6 项 pending_review 是冻结保护对象；旧库尚无独立 pending_review 列时
@@ -165,7 +167,7 @@ def is_pantry_exempt_dish(dish):
     return bool(canonical) and canonical <= PANTRY_EXEMPT_CANONICAL_IDS
 
 
-def is_auto_candidate(analysis, meal_type):
+def is_auto_candidate(analysis, meal_type, context=None):
     """Frozen automatic-pool filter, including the breakfast 汤饺 exception."""
     if analysis.get("banquet"):
         return False
@@ -179,8 +181,12 @@ def is_auto_candidate(analysis, meal_type):
         return False
     if meal_type == "breakfast" and analysis.get("manual_only_breakfast"):
         return False
-    if "one_pot_meal" in analysis.get("meal_roles", []):
-        return meal_type == "breakfast" and analysis.get("name_cn") == TANG_JIAO_NAME
+    if is_one_pot_candidate(analysis):
+        return (
+            meal_type == "breakfast" and analysis.get("name_cn") == TANG_JIAO_NAME
+        ) or (
+            meal_type == "lunch" and bool((context or {}).get("allow_auto_one_pot"))
+        )
     return True
 
 
@@ -355,8 +361,19 @@ def _item_roles(item):
     return set(_json_list(item.get("meal_roles")))
 
 
+def is_one_pot_candidate(item):
+    return (
+        item.get("category_id") == "one_pot_meal"
+        or "one_pot_meal" in _item_roles(item)
+    )
+
+
 def _item_meal_tags(item):
     return set(_json_list(item.get("meal_tags")))
+
+
+def _item_custom_tags(item):
+    return set(_json_list(item.get("custom_tags")))
 
 
 def _item_cooking_methods(item):
@@ -371,13 +388,41 @@ def _item_is_soup(item):
     )
 
 
-def is_breakfast_tofu_candidate(item):
-    """Breakfast tofu is a non-soup breakfast dish with canonical tofu ingredients."""
+def qualifies_breakfast_tofu_rotation(item):
+    """Return whether an existing dish can safely receive the breakfast tofu tag."""
     return (
         "breakfast" in _item_meal_tags(item)
         and not _item_is_soup(item)
         and has_tofu_ingredient(item)
     )
+
+
+def is_breakfast_tofu_candidate(item):
+    """Breakfast tofu uses the owner-maintained rotation tag as its pool boundary."""
+    return (
+        qualifies_breakfast_tofu_rotation(item)
+        and BREAKFAST_TOFU_ROTATION_TAG in _item_custom_tags(item)
+    )
+
+
+def is_breakfast_egg_candidate(item):
+    return (
+        "breakfast" in _item_meal_tags(item)
+        and "egg_dish" in _item_roles(item)
+        and BREAKFAST_EGG_ROTATION_TAG in _item_custom_tags(item)
+        and not _item_is_soup(item)
+    )
+
+
+def is_independent_vegetable_candidate(item):
+    return (
+        item.get("category_id") == "vegetable_mushroom"
+        and "vegetable_dish" in _item_roles(item)
+    )
+
+
+def dish_contains_vegetables(item):
+    return bool(_json_list(item.get("vegetables")))
 
 
 def is_breakfast_meat_candidate(item):
@@ -408,9 +453,9 @@ def breakfast_slot_eligible(item, slot):
     if slot == "tofu":
         return is_breakfast_tofu_candidate(item)
     if slot == "egg":
-        return "egg_dish" in roles
+        return is_breakfast_egg_candidate(item)
     if slot.startswith("vegetable"):
-        return "vegetable_dish" in roles
+        return is_independent_vegetable_candidate(item)
     if slot == "breakfast_meat":
         return is_breakfast_meat_candidate(item)
     if slot == "coarse_grain":
@@ -605,7 +650,7 @@ class MealState:
         roles = analysis.get("meal_roles", [])
 
         # 所有业务槽只读取显式 role。
-        if "vegetable_dish" in roles:
+        if is_independent_vegetable_candidate(analysis):
             self.vegetable_dish_count += 1
         if "protein_main" in roles:
             self.protein_count += 1
@@ -620,7 +665,7 @@ class MealState:
             self.tofu_dish_count += 1
         if "tofu_dish" not in roles and set(analysis["proteins"]) & MEAT_PROTEINS:
             self.meat_main_count += 1
-        if "one_pot_meal" in roles and is_manual_source(source):
+        if is_one_pot_candidate(analysis) and is_manual_source(source):
             self.has_manual_one_pot_meal = True
 
         if is_locked:
@@ -754,22 +799,26 @@ class RuleEngine:
 
         if state.has_manual_one_pot_meal:
             return True, [], []
-        target = RuleEngine._meal_target("lunch", diners_count)
-        if state.protein_count < target["protein_main"]:
-            warnings.append(f"午餐蛋白质不足: {state.protein_count}/{target['protein_main']} / Insufficient protein")
+        slots = analyze_meal_slots("lunch", state, diners_count)
+        if diners_count == 1:
+            if slots["one_pot_meal"]["missing_min"]:
+                warnings.append("午餐缺一餐型料理 / No one-pot lunch")
+            return True, [], warnings
+        target = meal_slot_targets("lunch", state, diners_count)
+        if state.meat_main_count < target["protein_main"]:
+            warnings.append(f"午餐蛋白质不足: {state.meat_main_count}/{target['protein_main']} / Insufficient protein")
         if state.vegetable_dish_count < target["vegetable_dish"]:
             warnings.append(f"午餐蔬菜不足: {state.vegetable_dish_count}/{target['vegetable_dish']} / Insufficient vegetables")
         if state.carb_count < 1:
             warnings.append("午餐缺主食 / No carb for lunch")
-        if state.meat_main_count < 1:
-            warnings.append("午餐缺独立肉类菜 / No separate meat or seafood dish for lunch")
         # V3 新增
         if state.quick_soup_slot < 1:
             warnings.append("午餐还没有快手汤 / No quick soup for lunch")
 
         # 午餐不应过于丰富
-        if state.dish_count > target["total"]:
-            warnings.append(f"午餐菜品过多: {state.dish_count}/{target['total']} / Too many dishes")
+        expected_total = target["meat_main"] + target["vegetable_dish"] + 2
+        if state.dish_count > expected_total:
+            warnings.append(f"午餐菜品过多: {state.dish_count}/{expected_total} / Too many dishes")
 
         return True, [], warnings
 
@@ -784,16 +833,14 @@ class RuleEngine:
         返回: (passed, issues, warnings)
         """
         warnings = []
-        target = RuleEngine._meal_target("dinner", diners_count)
+        target = meal_slot_targets("dinner", state, diners_count)
 
         if state.has_manual_one_pot_meal:
             return True, [], []
         if state.dish_count < 3:
             warnings.append(f"晚餐菜品不足: {state.dish_count}道 / Insufficient dishes ({state.dish_count}, need >=3)")
-        if state.protein_count < target["protein_main"]:
-            warnings.append(f"晚餐蛋白质不足: {state.protein_count}/{target['protein_main']} / Insufficient protein ({state.protein_count}/{target['protein_main']}, diners={diners_count})")
-        if state.meat_main_count < 1:
-            warnings.append("晚餐缺独立肉类菜 / No separate meat or seafood dish for dinner")
+        if state.meat_main_count < target["protein_main"]:
+            warnings.append(f"晚餐蛋白质不足: {state.meat_main_count}/{target['protein_main']} / Insufficient protein ({state.meat_main_count}/{target['protein_main']}, diners={diners_count})")
         if state.vegetable_dish_count < target["vegetable_dish"]:
             warnings.append(f"晚餐蔬菜不足: {state.vegetable_dish_count}/{target['vegetable_dish']} / Insufficient vegetable dishes ({state.vegetable_dish_count}/{target['vegetable_dish']}, diners={diners_count})")
         if state.carb_count < 1:
@@ -806,8 +853,12 @@ class RuleEngine:
         # V3 新增
         if state.slow_soup_slot < 1:
             warnings.append("晚餐还没有煲汤 / No slow-cooked soup for dinner")
-        if state.dish_count > target["total"]:
-            warnings.append(f"晚餐菜品过多: {state.dish_count}/{target['total']} / Too many dishes")
+        if target.get("egg_tofu") and state.egg_dish_count + state.tofu_dish_count < 1:
+            warnings.append("晚餐缺蛋类/豆制品 / No egg or tofu dish for dinner")
+        expected_total = (target["meat_main"] + target["vegetable_dish"]
+                          + target.get("egg_tofu", 0) + 2)
+        if state.dish_count > expected_total:
+            warnings.append(f"晚餐菜品过多: {state.dish_count}/{expected_total} / Too many dishes")
 
         # 烹饪方式应多样
         if len(state.cooking_methods) < 2 and state.dish_count >= 3:
@@ -899,69 +950,70 @@ class RuleEngine:
         满足 → STOP，不再加菜。
         不满足 → 继续补缺口。
         """
-        if meal_type == "breakfast":
+        if meal_type in {"breakfast", "lunch", "dinner"}:
             if state.has_manual_one_pot_meal:
                 return True
             return all(
                 value["current"] >= value["target_min"]
-                for value in analyze_meal_slots(
-                    "breakfast", state, diners_count
-                ).values()
-            )
-        elif meal_type == "lunch":
-            if state.has_manual_one_pot_meal:
-                return True
-            target = RuleEngine._meal_target("lunch", diners_count)
-            return (
-                state.protein_count >= target["protein_main"]
-                and state.meat_main_count >= 1
-                and state.vegetable_dish_count >= target["vegetable_dish"]
-                and state.carb_count >= 1
-                and state.quick_soup_slot >= 1
-            )
-        elif meal_type == "dinner":
-            # V9: 按人数精确定量
-            target = RuleEngine._meal_target("dinner", diners_count)
-            if state.has_manual_one_pot_meal:
-                return True
-            return (
-                state.protein_count >= target["protein_main"]
-                and state.meat_main_count >= 1
-                and state.vegetable_dish_count >= target["vegetable_dish"]
-                and state.carb_count >= target["staple"]
-                and state.slow_soup_slot >= target["slow_soup"]
+                for value in analyze_meal_slots(meal_type, state, diners_count).values()
             )
         return True
 
     @staticmethod
     def _dinner_target(diners_count):
-        """V9: 晚餐按人数确定精确目标。
-        2人: 1蛋白+1蔬菜+1主食+1煲汤
-        3人: 2蛋白+1蔬菜+1主食+1煲汤
-        4人: 2蛋白+2蔬菜+1主食+1煲汤
-        1人或5+人: 使用 fallback（同4人）
-        """
-        target = RuleEngine._meal_target("dinner", diners_count)
+        target = meal_slot_targets("dinner", MealState(), diners_count)
         return {key: value for key, value in target.items() if key != "total"}
 
     @staticmethod
     def _meal_target(meal_type, diners_count):
-        """Frozen lunch/dinner matrix; 4+ diners stays at six dishes."""
-        if diners_count <= 2:
-            protein, vegetable = 1, 1
-        elif diners_count == 3:
-            protein, vegetable = 2, 1
-        else:
-            protein, vegetable = 2, 2
-        soup_key = "quick_soup" if meal_type == "lunch" else "slow_soup"
+        return meal_slot_targets(meal_type, MealState(), diners_count)
+
+
+def _meal_has_meat_with_vegetables(state, meal_type):
+    checker = is_breakfast_meat_candidate if meal_type == "breakfast" else (
+        lambda item: bool(set(item.get("proteins", [])) & MEAT_PROTEINS)
+        and "protein_main" in _item_roles(item)
+        and "tofu_dish" not in _item_roles(item)
+    )
+    return any(checker(item) and dish_contains_vegetables(item) for item in state.dishes)
+
+
+def meal_slot_targets(meal_type, state, diners_count):
+    """Single source of truth for all generation, fill, review and reconcile paths."""
+    diners = max(1, int(diners_count or 1))
+    if meal_type == "breakfast":
+        large = diners >= 4
+        vegetables = 2 if large else 1
+        if vegetables > 1 and _meal_has_meat_with_vegetables(state, meal_type):
+            vegetables = 1
         return {
-            "protein_main": protein,
-            "meat_main": 1,
-            "vegetable_dish": vegetable,
-            "staple": 1,
-            soup_key: 1,
-            "total": protein + vegetable + 2,
+            "porridge": 1, "companion_staple": 1, "tofu": 1, "egg": 1,
+            "vegetable": vegetables, "breakfast_meat": 2 if large else 1,
+            "coarse_grain": 1,
         }
+    if meal_type == "lunch":
+        if diners == 1:
+            return {"one_pot_meal": 1}
+        protein = 1 if diners == 2 else 2
+        vegetables = 1 if diners == 2 else 2
+        if vegetables > 1 and _meal_has_meat_with_vegetables(state, meal_type):
+            vegetables = 1
+        return {
+            "meat_main": protein, "protein_main": protein,
+            "vegetable_dish": vegetables, "staple": 1, "quick_soup": 1,
+        }
+    if meal_type == "dinner":
+        large = diners >= 4
+        vegetables = 2 if large else 1
+        if vegetables > 1 and _meal_has_meat_with_vegetables(state, meal_type):
+            vegetables = 1
+        return {
+            "meat_main": 2, "protein_main": 2,
+            "vegetable_dish": vegetables,
+            **({"egg_tofu": 1} if large else {}),
+            "staple": 1, "slow_soup": 1,
+        }
+    return {}
 
 
 # ============================================================
@@ -975,32 +1027,29 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
     missing_min > 0 的槽位需要 AI Fill 补齐。
     """
     if meal_type == "dinner":
-        # V9: 按 2/3/4 人精确定量
-        target = RuleEngine._meal_target("dinner", diners_count)
-        target = {key: value for key, value in target.items() if key != "total"}
+        target = meal_slot_targets("dinner", state, diners_count)
         current = {
-            "protein_main": state.protein_count,
+            "protein_main": state.meat_main_count,
             "meat_main": state.meat_main_count,
             "vegetable_dish": state.vegetable_dish_count,
+            "egg_tofu": state.egg_dish_count + state.tofu_dish_count,
             "staple": state.carb_count,
             "slow_soup": state.slow_soup_slot,
         }
     elif meal_type == "lunch":
-        target = RuleEngine._meal_target("lunch", diners_count)
-        target = {key: value for key, value in target.items() if key != "total"}
+        target = meal_slot_targets("lunch", state, diners_count)
         current = {
-            "protein_main": state.protein_count,
+            "one_pot_meal": int(any(
+                is_one_pot_candidate(item) for item in state.dishes
+            )),
+            "protein_main": state.meat_main_count,
             "meat_main": state.meat_main_count,
             "vegetable_dish": state.vegetable_dish_count,
             "staple": state.carb_count,
             "quick_soup": state.quick_soup_slot,
         }
     elif meal_type == "breakfast":
-        target = {
-            "porridge": 1, "companion_staple": 1, "coarse_grain": 1,
-            "vegetable": 2, "egg": 1, "tofu": 1,
-            "breakfast_meat": 1 if diners_count <= 2 else 2,
-        }
+        target = meal_slot_targets("breakfast", state, diners_count)
         _, _, assignment = assign_breakfast_slots(state.dishes)
         current = {
             "porridge": int("porridge" in assignment),
@@ -1041,6 +1090,8 @@ def analyze_meal_slots(meal_type, state, diners_count=4):
 SLOT_ROLE_MAP = {
     "protein_main": {
         "roles": ["protein_main"],
+        "require_meat": True,
+        "exclude_roles": ["tofu_dish", "egg_dish"],
         "exclude_names": ["肉末"],
     },
     "meat_main": {
@@ -1050,6 +1101,7 @@ SLOT_ROLE_MAP = {
     },
     "vegetable_dish": {
         "roles": ["vegetable_dish"],
+        "categories": ["vegetable_mushroom"],
     },
     "staple": {
         "roles": ["staple"],
@@ -1063,7 +1115,14 @@ SLOT_ROLE_MAP = {
         "roles": ["quick_soup"],
     },
     "egg": {
-        "roles": ["egg_dish"],
+        "require_breakfast_egg": True,
+    },
+    "egg_tofu": {
+        "roles": ["egg_dish", "tofu_dish"],
+    },
+    "one_pot_meal": {
+        "categories": ["one_pot_meal"],
+        "require_category": True,
     },
     "tofu": {
         "require_breakfast_tofu": True,
@@ -1084,7 +1143,7 @@ SLOT_ROLE_MAP = {
     # V9: 早餐蔬菜食材种类缺口（与 vegetable_dish 不同：这是食材种类数，不是菜品数）
     "vegetable": {
         "roles": ["vegetable_dish"],
-        "require_vegetables": True,
+        "categories": ["vegetable_mushroom"],
     },
 }
 
@@ -1105,6 +1164,8 @@ def filter_candidates_for_slot(candidates, slot_name):
         # 排除分类
         if spec.get("exclude_categories") and c.get("category_id") in spec["exclude_categories"]:
             continue
+        if spec.get("categories") and c.get("category_id") not in spec["categories"]:
+            continue
         if any(role in roles for role in spec.get("exclude_roles", [])):
             continue
         # 排除菜名
@@ -1113,6 +1174,8 @@ def filter_candidates_for_slot(candidates, slot_name):
         if spec.get("require_meat") and not (set(c.get("proteins", [])) & MEAT_PROTEINS):
             continue
         if spec.get("require_breakfast_tofu") and not is_breakfast_tofu_candidate(c):
+            continue
+        if spec.get("require_breakfast_egg") and not is_breakfast_egg_candidate(c):
             continue
         if spec.get("require_breakfast_meat") and not is_breakfast_meat_candidate(c):
             continue
@@ -1130,7 +1193,9 @@ def filter_candidates_for_slot(candidates, slot_name):
 
         if (role_match or spec.get("require_carb_type")
                 or spec.get("require_breakfast_staple")
-                or spec.get("require_breakfast_tofu")):
+                or spec.get("require_breakfast_tofu")
+                or spec.get("require_breakfast_egg")
+                or spec.get("require_category")):
             filtered.append(c)
 
     return filtered
@@ -1408,7 +1473,7 @@ class GapFiller:
             a for a in self.analyzed.values()
             if a["id"] not in explicit_exclude
             and meal_type in a["meal_tags"]
-            and is_auto_candidate(a, meal_type)
+            and is_auto_candidate(a, meal_type, ctx)
             and (not availability or availability.get(a["id"]) == "available")
         ]
 
@@ -1418,7 +1483,7 @@ class GapFiller:
         for analysis in self.analyzed.values():
             if meal_type not in analysis["meal_tags"]:
                 continue
-            if not is_auto_candidate(analysis, meal_type):
+            if not is_auto_candidate(analysis, meal_type, context):
                 continue
             if (meal_type == "breakfast" and analysis["is_soup"]
                     and analysis["name_cn"] != TANG_JIAO_NAME):
@@ -1564,7 +1629,8 @@ class GapFiller:
         返回: (dishes, state, log)
         """
         locked_ids = locked_dish_ids or []
-        ctx = context or {}
+        ctx = dict(context or {})
+        ctx["allow_auto_one_pot"] = meal_type == "lunch" and diners_count == 1
         state = MealState()
         log = []
 
@@ -1607,6 +1673,16 @@ class GapFiller:
                     self.candidate_selection_traces.append(qualification)
                     log.append(f"  [HARD WARN] {warning}")
                     break
+                availability = ctx.get("dish_availability", {})
+                available_candidates = [
+                    candidate for candidate in candidates
+                    if not availability or availability.get(candidate["id"]) == "available"
+                ]
+                almost_candidates = [
+                    candidate for candidate in candidates
+                    if availability.get(candidate["id"]) == "almost_available"
+                ]
+                candidates = available_candidates or almost_candidates
                 chosen, ranking = choose_rotation_candidate(
                     candidates, self.scorer, state, meal_type, ctx,
                     return_trace=True,

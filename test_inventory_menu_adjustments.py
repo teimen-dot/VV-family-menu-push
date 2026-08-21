@@ -10,7 +10,7 @@ import inventory
 import menu_service
 from rule_engine import (
     GapFiller, MealState, NutritionAnalyzer, analyze_meal_slots,
-    is_breakfast_tofu_candidate,
+    is_breakfast_tofu_candidate, is_breakfast_egg_candidate,
 )
 
 
@@ -63,7 +63,7 @@ class DatabaseFeatureTests(unittest.TestCase):
 
     def _insert_switch_dish(self, conn, dish_id, category_id, roles, *, meal="breakfast",
                             carb_type=None, vegetables=(), proteins=(),
-                            quick_soup=0, slow_soup=0):
+                            quick_soup=0, slow_soup=0, custom_tags=()):
         conn.execute(
             "INSERT OR IGNORE INTO categories (id,label_cn,label_en) VALUES (?,?,?)",
             (category_id, category_id, category_id),
@@ -71,11 +71,11 @@ class DatabaseFeatureTests(unittest.TestCase):
         conn.execute(
             "INSERT INTO dishes "
             "(id,name_cn,name_en,category_id,meal_tags,meal_roles,protein_types,vegetables,"
-            "carb_type,quick_soup,slow_soup,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,1)",
+            "carb_type,quick_soup,slow_soup,custom_tags,is_active) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,1)",
             (
                 dish_id, dish_id, dish_id, category_id, json.dumps([meal]), json.dumps(roles),
                 json.dumps(list(proteins)), json.dumps(list(vegetables)),
-                carb_type, quick_soup, slow_soup,
+                carb_type, quick_soup, slow_soup, json.dumps(list(custom_tags)),
             ),
         )
         conn.execute(
@@ -512,7 +512,10 @@ class DatabaseFeatureTests(unittest.TestCase):
             ("dish_tofu_missing", "tofu_dish"),
             ("dish_egg_a", "egg_dish"), ("dish_egg_b", "egg_dish"),
         ):
-            self._insert_switch_dish(conn, dish_id, "egg_tofu", [role])
+            self._insert_switch_dish(
+                conn, dish_id, "egg_tofu", [role],
+                custom_tags=("早餐豆腐",) if role == "tofu_dish" else ("鸡蛋做法轮换",),
+            )
             if role == "tofu_dish":
                 conn.execute(
                     "UPDATE dishes SET protein_types='[\"tofu\"]', "
@@ -563,18 +566,18 @@ class DatabaseFeatureTests(unittest.TestCase):
 
         self.assertEqual(set(self._cycle_ids(1, 1, 6)), {"dish_coarse_a", "dish_coarse_b"})
 
-    def test_direct_switch_vegetable_slot_crosses_cold_and_hot_categories(self):
+    def test_direct_switch_vegetable_slot_stays_in_vegetable_mushroom_category(self):
         conn = db.get_db()
         self._prepare_switch_inventory(conn)
         self._insert_switch_dish(
-            conn, "dish_salad", "cold_dish", ["vegetable_dish"], meal="dinner",
+            conn, "dish_leafy", "vegetable_mushroom", ["vegetable_dish"], meal="dinner",
             vegetables=("生菜",)
         )
         self._insert_switch_dish(
             conn, "dish_stir_fry", "vegetable_mushroom", ["vegetable_dish"], meal="dinner",
             vegetables=("西兰花",)
         )
-        self._insert_switch_menu(conn, 1, 1, "dish_salad", "dinner")
+        self._insert_switch_menu(conn, 1, 1, "dish_leafy", "dinner")
         conn.commit()
         conn.close()
         menu_service.invalidate_catalog_cache()
@@ -765,7 +768,7 @@ class DatabaseFeatureTests(unittest.TestCase):
             "id": "tofu_breakfast", "name_cn": "早餐豆腐", "category_id": "protein_main",
             "meal_tags": ["breakfast"], "meal_roles": ["protein_main"],
             "protein_types": ["tofu"], "ingredient_ids": ["tofu"],
-            "cooking_methods": ["steam"],
+            "cooking_methods": ["steam"], "custom_tags": ["早餐豆腐"],
         }
         analysis = NutritionAnalyzer.analyze(dish)
         self.assertTrue(is_breakfast_tofu_candidate(analysis))
@@ -774,8 +777,178 @@ class DatabaseFeatureTests(unittest.TestCase):
         state = MealState()
         self.assertEqual(analyze_meal_slots("breakfast", state, 1)["breakfast_meat"]["target_min"], 1)
         self.assertEqual(analyze_meal_slots("breakfast", state, 2)["breakfast_meat"]["target_min"], 1)
-        self.assertEqual(analyze_meal_slots("breakfast", state, 3)["breakfast_meat"]["target_min"], 2)
+        self.assertEqual(analyze_meal_slots("breakfast", state, 3)["breakfast_meat"]["target_min"], 1)
         self.assertEqual(analyze_meal_slots("breakfast", state, 4)["breakfast_meat"]["target_min"], 2)
+
+    def test_new_diners_matrix_and_meat_vegetable_offset(self):
+        empty = MealState()
+        for diners in (1, 2, 3):
+            slots = analyze_meal_slots("breakfast", empty, diners)
+            self.assertEqual(slots["vegetable"]["target_min"], 1)
+            self.assertEqual(slots["breakfast_meat"]["target_min"], 1)
+        for diners in (4, 6, 7):
+            slots = analyze_meal_slots("breakfast", empty, diners)
+            self.assertEqual(slots["vegetable"]["target_min"], 2)
+            self.assertEqual(slots["breakfast_meat"]["target_min"], 2)
+
+        self.assertEqual(set(analyze_meal_slots("lunch", empty, 1)), {"one_pot_meal"})
+        self.assertEqual(analyze_meal_slots("lunch", empty, 2)["meat_main"]["target_min"], 1)
+        self.assertEqual(analyze_meal_slots("lunch", empty, 3)["meat_main"]["target_min"], 2)
+        self.assertEqual(analyze_meal_slots("lunch", empty, 6)["vegetable_dish"]["target_min"], 2)
+        self.assertEqual(analyze_meal_slots("dinner", empty, 1)["meat_main"]["target_min"], 2)
+        self.assertNotIn("egg_tofu", analyze_meal_slots("dinner", empty, 3))
+        self.assertEqual(analyze_meal_slots("dinner", empty, 4)["egg_tofu"]["target_min"], 1)
+
+        meat_with_veg = NutritionAnalyzer.analyze({
+            "id": "meat_with_veg", "name_cn": "牛肉炒菜心",
+            "category_id": "protein_main", "meal_tags": ["breakfast", "lunch", "dinner"],
+            "meal_roles": ["protein_main"], "protein_types": ["beef"],
+            "vegetables": ["菜心"],
+        })
+        state = MealState()
+        state.add_dish(meat_with_veg, source="ai")
+        self.assertEqual(analyze_meal_slots("breakfast", state, 4)["vegetable"]["target_min"], 1)
+        self.assertEqual(analyze_meal_slots("lunch", state, 3)["vegetable_dish"]["target_min"], 1)
+        self.assertEqual(analyze_meal_slots("dinner", state, 4)["vegetable_dish"]["target_min"], 1)
+        self.assertEqual(analyze_meal_slots("lunch", state, 2)["vegetable_dish"]["target_min"], 1)
+
+    def test_breakfast_egg_requires_rotation_tag(self):
+        base = {
+            "id": "egg", "name_cn": "蒸蛋", "category_id": "egg_tofu",
+            "meal_tags": ["breakfast"], "meal_roles": ["egg_dish"],
+            "protein_types": ["egg"],
+        }
+        self.assertFalse(is_breakfast_egg_candidate(NutritionAnalyzer.analyze(base)))
+        base["custom_tags"] = ["鸡蛋做法轮换"]
+        self.assertTrue(is_breakfast_egg_candidate(NutritionAnalyzer.analyze(base)))
+
+    def test_one_diner_lunch_auto_generates_only_one_pot(self):
+        one_pot = {
+            "id": "dish_one_pot", "name_cn": "汤面", "category_id": "one_pot_meal",
+            "meal_tags": ["lunch"], "meal_roles": [],
+            "protein_types": ["pork"], "vegetables": ["菜心"],
+        }
+        ordinary = {
+            "id": "dish_ordinary", "name_cn": "牛肉", "category_id": "protein_main",
+            "meal_tags": ["lunch"], "meal_roles": ["protein_main"],
+            "protein_types": ["beef"], "vegetables": [],
+        }
+        context = {"dish_availability": {"dish_one_pot": "available", "dish_ordinary": "available"}}
+        filler = GapFiller({"dishes": [one_pot, ordinary]}, seed=3)
+        dishes, _, _ = filler.generate_meal("lunch", context=context, diners_count=1)
+        self.assertEqual([dish["id"] for dish in dishes], ["dish_one_pot"])
+
+    def test_reconcile_to_one_diner_replaces_ai_stir_fry_with_one_pot(self):
+        conn = db.get_db()
+        self._prepare_switch_inventory(conn)
+        self._insert_switch_dish(
+            conn, "dish_one_pot", "one_pot_meal", [], meal="lunch",
+            proteins=("pork",), vegetables=("菜心",),
+        )
+        self._insert_switch_dish(
+            conn, "dish_old_meat", "protein_main", ["protein_main"], meal="lunch",
+            proteins=("beef",),
+        )
+        conn.execute(
+            "INSERT INTO menus(id,date,location,status,diners_count) "
+            "VALUES(1,'2099-01-02','shenzhen','draft',1)"
+        )
+        conn.execute(
+            "INSERT INTO menu_items(menu_id,dish_id,meal_type,is_locked,sort_order,source) "
+            "VALUES(1,'dish_old_meat','lunch',0,1,'ai')"
+        )
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        ok, _, _ = menu_service.reconcile_meal_for_diners(1, "shenzhen")
+        self.assertTrue(ok)
+        conn = db.get_db()
+        ids = [row["dish_id"] for row in conn.execute(
+            "SELECT dish_id FROM menu_items WHERE menu_id=1 AND meal_type='lunch'"
+        ).fetchall()]
+        conn.close()
+        self.assertEqual(ids, ["dish_one_pot"])
+
+    def test_breakfast_tofu_tag_repair_is_idempotent(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO categories(id,label_cn,label_en) VALUES('egg_tofu','蛋豆','Egg tofu')"
+        )
+        conn.execute(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES('tofu','豆腐','Tofu')"
+        )
+        conn.execute(
+            "INSERT INTO dishes(id,name_cn,category_id,meal_tags,meal_roles,custom_tags,is_active) "
+            "VALUES('tag_tofu','蒸豆腐','egg_tofu','[\"breakfast\"]','[\"tofu_dish\"]','[]',1)"
+        )
+        conn.execute(
+            "INSERT INTO dish_ingredients(dish_id,ingredient_id,required) VALUES('tag_tofu','tofu',1)"
+        )
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        self.assertEqual(menu_service.ensure_breakfast_rotation_metadata(), 1)
+        self.assertEqual(menu_service.ensure_breakfast_rotation_metadata(), 0)
+        conn = db.get_db()
+        row = conn.execute(
+            "SELECT custom_tags FROM dishes WHERE id='tag_tofu'"
+        ).fetchone()
+        conn.close()
+        self.assertIn("早餐豆腐", json.loads(row["custom_tags"]))
+
+    def test_reconcile_downsizes_ai_dishes_but_preserves_owner_choice(self):
+        conn = db.get_db()
+        self._prepare_switch_inventory(conn)
+        for dish_id, protein in (
+            ("meat_owner", "beef"), ("meat_ai_1", "chicken"), ("meat_ai_2", "fish"),
+        ):
+            self._insert_switch_dish(
+                conn, dish_id, "protein_main", ["protein_main"], meal="lunch",
+                proteins=(protein,),
+            )
+        for dish_id, vegetable in (("veg_1", "菜心"), ("veg_2", "西兰花")):
+            self._insert_switch_dish(
+                conn, dish_id, "vegetable_mushroom", ["vegetable_dish"],
+                meal="lunch", vegetables=(vegetable,),
+            )
+        self._insert_switch_dish(
+            conn, "rice", "staple_carb", ["staple"], meal="lunch", carb_type="rice"
+        )
+        self._insert_switch_dish(
+            conn, "quick_soup", "soup", ["quick_soup"], meal="lunch", quick_soup=1
+        )
+        conn.execute(
+            "INSERT INTO menus(id,date,location,status,diners_count) "
+            "VALUES(1,'2099-01-02','shenzhen','draft',2)"
+        )
+        rows = [
+            ("meat_owner", 1, "owner"), ("meat_ai_1", 0, "ai"),
+            ("meat_ai_2", 0, "ai"), ("veg_1", 0, "ai"),
+            ("veg_2", 0, "ai"), ("rice", 0, "ai"), ("quick_soup", 0, "ai"),
+        ]
+        for order, (dish_id, locked, source) in enumerate(rows, 1):
+            conn.execute(
+                "INSERT INTO menu_items(menu_id,dish_id,meal_type,is_locked,sort_order,source) "
+                "VALUES(1,?,'lunch',?,?,?)",
+                (dish_id, locked, order, source),
+            )
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        ok, _, _ = menu_service.reconcile_meal_for_diners(1, "shenzhen")
+        self.assertTrue(ok)
+        conn = db.get_db()
+        remaining = conn.execute(
+            "SELECT mi.dish_id,mi.source,d.category_id FROM menu_items mi "
+            "JOIN dishes d ON d.id=mi.dish_id WHERE mi.menu_id=1 AND mi.meal_type='lunch'"
+        ).fetchall()
+        conn.close()
+        self.assertIn("meat_owner", {row["dish_id"] for row in remaining})
+        self.assertEqual(sum(row["category_id"] == "protein_main" for row in remaining), 1)
+        self.assertEqual(sum(row["category_id"] == "vegetable_mushroom" for row in remaining), 1)
 
     def test_cycle_replaces_unavailable_current_with_only_available_alternative(self):
         conn = db.get_db()
