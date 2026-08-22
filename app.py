@@ -47,6 +47,7 @@ from menu_service import (
     update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
     normalize_dish_slot_roles, ensure_dish_slot_metadata,
     ensure_breakfast_rotation_metadata, ensure_draft_menu_structure_cleanup,
+    ensure_planning_window,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
@@ -1502,11 +1503,16 @@ def build_family_ui_readonly_tabs(location, as_of=None):
 
 
 def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
-    """Build the final UI's four-day read-only view without generating or mutating data."""
+    """Build the final UI and ensure the selected kitchen has a real window."""
     if location not in LOCATIONS:
         location = "shenzhen"
     now = now or datetime.now(FAMILY_TIMEZONE)
     today = now.date()
+    initialization = ensure_planning_window(
+        location, today, days=4,
+        default_diners_count=3 if location == "hongkong" else 4,
+    )
+    initialization_error = initialization["errors"] or None
     days = []
     with legacy_schema_safe_availability():
         for offset, (label_cn, label_en) in enumerate(DAY_LABELS):
@@ -1602,6 +1608,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
         "days": days,
         "next_meal": next_meal,
         "breakfast_drinks": get_breakfast_drinks(),
+        "menu_initialization_error": initialization_error,
         **tabs,
     }
 
@@ -4697,22 +4704,15 @@ def main():
     ensure_dish_slot_metadata()
     ensure_breakfast_rotation_metadata()
     ensure_breakfast_drink_catalog()
-    # The four visible planning days must have real editable menu rows.
+    # Both kitchens own independent real menu windows. Existing rows are never
+    # regenerated or overwritten by this idempotent check.
     today = datetime.now(FAMILY_TIMEZONE).date()
-    for offset in range(4):
-        try:
-            ensure_menu_for_date(
-                (today + timedelta(days=offset)).isoformat(),
-                "shenzhen", seed=42 + offset,
-            )
-        except sqlite3.OperationalError as exc:
-            # Older production databases may not yet have the composite unique
-            # constraint required by SQLite UPSERT. Serving existing menus is
-            # safe; do not mutate production schema during application startup.
-            if "ON CONFLICT clause" not in str(exc):
-                raise
-            print("[WARN] legacy menus schema: skipped automatic four-day creation")
-            break
+    for location, default_diners in (("shenzhen", 4), ("hongkong", 3)):
+        window = ensure_planning_window(
+            location, today, days=4, default_diners_count=default_diners,
+        )
+        if window["errors"]:
+            print(f"[WARN] {location} menu window initialization failed: {window['errors']}")
     cleanup = ensure_draft_menu_structure_cleanup()
     if not cleanup.get("skipped"):
         print(f"[OK] draft menu structure cleanup removed {cleanup['removed']} AI dishes")

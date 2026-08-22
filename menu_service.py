@@ -226,7 +226,8 @@ def _store_menu_items(conn, menu_id, result, locked=None):
     conn.commit()
 
 
-def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=None):
+def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=None,
+                            default_diners_count=4):
     """
     用 rule_engine 生成一天菜单并存入 SQLite。
     locked: {"breakfast": ["dish_0001"], "dinner": ["dish_0010"]}
@@ -255,7 +256,13 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
     inv_avail, inv_pri, inv_exp = get_available_ingredient_ids(location)
 
     # 读取已有菜单的正常人数设置，确保晚餐按人数生成。
-    diners_count = 4
+    diners_count = (
+        default_diners_count
+        if isinstance(default_diners_count, int)
+        and not isinstance(default_diners_count, bool)
+        and default_diners_count > 0
+        else 4
+    )
     conn_pre = get_db()
     try:
         existing = conn_pre.execute(
@@ -332,9 +339,10 @@ def generate_and_store_menu(date_str, location="shenzhen", seed=None, locked=Non
             )
         else:
             conn.execute(
-                "INSERT INTO menus (date, location, status, notes_zh, notes_en) "
-                "VALUES (?, ?, 'draft', ?, ?)",
-                (date_str, location, notes_zh, notes_en),
+                "INSERT INTO menus "
+                "(date, location, status, notes_zh, notes_en, diners_count) "
+                "VALUES (?, ?, 'draft', ?, ?, ?)",
+                (date_str, location, notes_zh, notes_en, diners_count),
             )
         conn.commit()
 
@@ -1505,7 +1513,8 @@ def ensure_tomorrow_menu(location="shenzhen", seed=None):
         return menu["id"], None, False  # already exists
 
 
-def ensure_menu_for_date(date_str, location="shenzhen", seed=None):
+def ensure_menu_for_date(date_str, location="shenzhen", seed=None,
+                         default_diners_count=4):
     """Ensure one visible planning date has a real editable menu row."""
     conn = get_db()
     try:
@@ -1516,5 +1525,35 @@ def ensure_menu_for_date(date_str, location="shenzhen", seed=None):
         conn.close()
     if menu:
         return menu["id"], None, False
-    menu_id, review = generate_and_store_menu(date_str, location, seed=seed or 42)
+    menu_id, review = generate_and_store_menu(
+        date_str, location, seed=seed or 42,
+        default_diners_count=default_diners_count,
+    )
     return menu_id, review, True
+
+
+def ensure_planning_window(location, start_date, days=4, default_diners_count=4,
+                           seed=42):
+    """Create only missing menus in one kitchen's visible planning window."""
+    if isinstance(start_date, str):
+        start_date = date.fromisoformat(start_date)
+    report = {
+        "location": location,
+        "start_date": start_date.isoformat(),
+        "days": days,
+        "created": [],
+        "existing": [],
+        "errors": [],
+    }
+    for offset in range(days):
+        date_str = (start_date + timedelta(days=offset)).isoformat()
+        try:
+            menu_id, _review, created = ensure_menu_for_date(
+                date_str, location, seed=seed + offset,
+                default_diners_count=default_diners_count,
+            )
+            target = "created" if created else "existing"
+            report[target].append({"date": date_str, "menu_id": menu_id})
+        except Exception as exc:
+            report["errors"].append({"date": date_str, "error": str(exc)})
+    return report

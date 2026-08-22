@@ -101,10 +101,11 @@ class Phase2RealTabsTests(unittest.TestCase):
         )
 
     def test_three_tabs_use_real_rows_and_isolate_locations(self):
-        before = self._row_counts()
-
         shenzhen = self._bootstrap("shenzhen")
         hongkong = self._bootstrap("hongkong")
+        after_initialization = self._row_counts()
+        self._bootstrap("shenzhen")
+        self._bootstrap("hongkong")
 
         self.assertEqual(
             [item["ingredient_id"] for item in shenzhen["pantry"]["items"]],
@@ -123,7 +124,7 @@ class Phase2RealTabsTests(unittest.TestCase):
         self.assertEqual(shenzhen["history"][0]["location"], "shenzhen")
         self.assertEqual(shenzhen["history"][0]["meals"]["dinner"][0]["image"], "/photos/real.jpg")
         self.assertEqual(hongkong["history"][0]["location"], "hongkong")
-        self.assertEqual(before, self._row_counts())
+        self.assertEqual(after_initialization, self._row_counts())
 
     def test_dishes_keep_banquet_tag_and_only_map_existing_photos(self):
         rows = {dish["id"]: dish for dish in self._bootstrap("shenzhen")["dishes"]}

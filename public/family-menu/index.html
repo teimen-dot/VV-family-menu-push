@@ -3781,8 +3781,9 @@ pickModal.addEventListener('click',
   }
 
   function updateMealCard(card, menu, mealType, slotGaps) {
+    const unavailable = menu.exists === false;
     const dishes = menu.meals && Array.isArray(menu.meals[mealType]) ? menu.meals[mealType] : [];
-    const diners = menu.diners_count == null ? 0 : menu.diners_count;
+    const diners = menu.diners_count;
     card.dataset.menuId = menu.menu_id == null ? '' : String(menu.menu_id);
     card.dataset.mealType = mealType;
     const mealSetting = menu.meal_settings?.[mealType];
@@ -3795,17 +3796,25 @@ pickModal.addEventListener('click',
     const countLabel = structure
       ? structure.structure_dish_count + ' 道标准' + (structure.manual_extra_count ? ' + ' + structure.manual_extra_count + ' 手动额外' : '')
       : dishes.length + ' 道菜';
-    if (meta) meta.textContent = diners + ' 人 Diners · ' + countLabel;
-    card.querySelectorAll('.stepper .num').forEach(node => { node.textContent = String(diners); });
+    if (meta) meta.textContent = unavailable ? '菜单尚未建立 Menu not initialized' : diners + ' 人 Diners · ' + countLabel;
+    card.querySelectorAll('.stepper .num').forEach(node => { node.textContent = unavailable ? '—' : String(diners); });
+    card.querySelectorAll('.stepper, .md-foot, .confirm-meal-btn, .meal-skip').forEach(node => {
+      node.style.display = unavailable ? 'none' : '';
+    });
     const detail = card.querySelector('.meal-detail');
-    if (detail) setRows(detail, dishes, menu, menu.availability || {}, true);
+    if (detail) {
+      if (unavailable) detail.innerHTML = '<div class="empty-row"><b>菜单尚未建立</b><small>Menu not initialized · 请刷新重试</small></div>';
+      else setRows(detail, dishes, menu, menu.availability || {}, true);
+    }
     setNote(card, (menu.meal_notes || {})[mealType] || '');
     if (mealType === 'breakfast') {
       const zone = card.querySelector('.drink-zone');
       if (zone) renderDrinkChips(zone, (menu.meal_notes || {}).breakfast_drinks || []);
     }
-    setWarning(card, dishes, menu.availability || {}, slotGaps || {}, mealType);
+    if (!unavailable) setWarning(card, dishes, menu.availability || {}, slotGaps || {}, mealType);
     setCount(card, dishes.length, structure);
+    const countBadge = card.querySelector('.count-badge');
+    if (countBadge) countBadge.style.display = unavailable ? 'none' : '';
     setConfirmed(card, menu.status === 'confirmed');
   }
 
@@ -3874,18 +3883,27 @@ pickModal.addEventListener('click',
       .find(card => card !== hero && card.dataset.mtype === labels.zh)?.querySelector('.meal-ico');
     const currentIcon = hero.querySelector('.meal-row .meal-ico');
     if (matchingIcon && currentIcon) currentIcon.replaceWith(matchingIcon.cloneNode(true));
-    const diners = nextMeal && nextMeal.diners_count != null ? nextMeal.diners_count : 0;
+    const unavailable = !nextMeal || nextMeal.menu_id == null;
+    const diners = nextMeal && nextMeal.diners_count != null ? nextMeal.diners_count : null;
     const meta = hero.querySelector('.meal-row .info > small');
-    if (meta) meta.textContent = (nextMeal ? nextMeal.day_label_cn : '今天') + labels.zh + ' ' +
-      labels.en + ' · ' + diners + ' 人 Diners';
-    hero.querySelectorAll('.stepper .num').forEach(node => { node.textContent = String(diners); });
+    if (meta) meta.textContent = unavailable ? '菜单尚未建立 Menu not initialized' :
+      nextMeal.day_label_cn + labels.zh + ' ' + labels.en + ' · ' + diners + ' 人 Diners';
+    hero.querySelectorAll('.stepper .num').forEach(node => { node.textContent = unavailable ? '—' : String(diners); });
+    hero.querySelectorAll('.stepper, .md-foot, .confirm-meal-btn, .meal-skip').forEach(node => {
+      node.style.display = unavailable ? 'none' : '';
+    });
     const dishContainer = hero.querySelector('.mh-dishes');
-    if (dishContainer) setRows(dishContainer, dishes, menu, nextMeal?.availability || {}, true);
+    if (dishContainer) {
+      if (unavailable) dishContainer.innerHTML = '<div class="empty-row"><b>菜单尚未建立</b><small>Menu not initialized · 请刷新重试</small></div>';
+      else setRows(dishContainer, dishes, menu, nextMeal?.availability || {}, true);
+    }
     setNote(hero, nextMeal?.note || '');
     const drinkZone = hero.querySelector('.drink-zone');
     if (drinkZone && mealType === 'breakfast') renderDrinkChips(drinkZone, nextMeal?.drinks || []);
     setWarning(hero, dishes, nextMeal?.availability || {}, nextMeal?.slot_gaps || {}, mealType);
     setCount(hero, dishes.length);
+    const countBadge = hero.querySelector('.count-badge');
+    if (countBadge) countBadge.style.display = unavailable ? 'none' : '';
     setConfirmed(hero, nextMeal?.status === 'confirmed');
   }
 
@@ -3901,6 +3919,9 @@ pickModal.addEventListener('click',
 
   function hydrate(data) {
     applyLocation(data);
+    if (data.menu_initialization_error && typeof toast === 'function') {
+      toast('菜单建立失败，请刷新页面后重试');
+    }
     const days = Array.isArray(data.days) ? data.days : [];
     updateDayNav(days);
     days.forEach((day, index) => {
@@ -3945,7 +3966,7 @@ pickModal.addEventListener('click',
           label_en: ['Today', 'Tomorrow', 'Day After Tomorrow', 'Three Days Ahead'][offset],
           weekday_en: date.toLocaleDateString('en-US', { weekday: 'long' }),
           date: date.toISOString().slice(0, 10),
-          menu: { menu_id: null, diners_count: null, meals: {}, availability: {}, meal_notes: {} }
+          menu: { exists: false, menu_id: null, diners_count: null, meals: {}, availability: {}, meal_notes: {} }
         };
       });
       hydrate({

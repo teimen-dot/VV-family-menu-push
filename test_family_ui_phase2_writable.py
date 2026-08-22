@@ -73,6 +73,17 @@ class Phase2WritableRuntimeTests(unittest.TestCase):
         app.build_family_menu_bootstrap(
             "shenzhen", "owner", now=datetime.fromisoformat(f"{tomorrow}T11:00:00+08:00")
         )
+        # First authenticated load may create missing visible dates. Once the
+        # window exists, refresh remains idempotent and emits no new events.
+        conn = db.get_db()
+        try:
+            conn.execute("DELETE FROM events")
+            conn.commit()
+        finally:
+            conn.close()
+        app.build_family_menu_bootstrap(
+            "shenzhen", "owner", now=datetime.fromisoformat(f"{tomorrow}T11:00:00+08:00")
+        )
 
         handler = object.__new__(app.AppHandler)
         handler.path = "/api/tomorrow"
