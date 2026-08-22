@@ -1502,7 +1502,8 @@ def build_family_ui_readonly_tabs(location, as_of=None):
     }
 
 
-def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
+def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None,
+                                include_tabs=True):
     """Build the final UI and ensure the selected kitchen has a real window."""
     if location not in LOCATIONS:
         location = "shenzhen"
@@ -1598,8 +1599,7 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
             "slot_gaps": day.get("slot_gaps", {}),
         }
 
-    tabs = build_family_ui_readonly_tabs(location, as_of=today)
-    return {
+    payload = {
         "readonly": False,
         "role": role,
         "location": location,
@@ -1609,7 +1609,30 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None):
         "next_meal": next_meal,
         "breakfast_drinks": get_breakfast_drinks(),
         "menu_initialization_error": initialization_error,
-        **tabs,
+    }
+    if include_tabs:
+        payload.update(build_family_ui_readonly_tabs(location, as_of=today))
+    return payload
+
+
+def build_family_tabs_bootstrap(location="shenzhen", role="owner", now=None):
+    """Build the slower pantry/dishes/history payload independently.
+
+    Kitchen switching must not wait for the shared catalog availability pass.
+    The caller can render the four-day menu first, then hydrate these tabs in
+    the background without changing any persisted state.
+    """
+    if location not in LOCATIONS:
+        location = "shenzhen"
+    now = now or datetime.now(FAMILY_TIMEZONE)
+    return {
+        "readonly": False,
+        "role": role,
+        "location": location,
+        "location_label": LOCATIONS[location],
+        "server_now": now.isoformat(timespec="seconds"),
+        "breakfast_drinks": get_breakfast_drinks(),
+        **build_family_ui_readonly_tabs(location, as_of=now.date()),
     }
 
 
@@ -3937,7 +3960,15 @@ class AppHandler(BaseHTTPRequestHandler):
             tomorrow = get_tomorrow_date()
             self.send_json(get_menu_with_dishes(tomorrow, location))
         elif path == "/api/family-menu/bootstrap":
-            self.send_json(build_family_menu_bootstrap(location, role))
+            scope = qs.get("scope", ["all"])[0]
+            if scope == "menu":
+                self.send_json(build_family_menu_bootstrap(
+                    location, role, include_tabs=False
+                ))
+            elif scope == "tabs":
+                self.send_json(build_family_tabs_bootstrap(location, role))
+            else:
+                self.send_json(build_family_menu_bootstrap(location, role))
         elif path == "/api/history":
             days = max(1, min(int(qs.get("days", ["14"])[0]), 14))
             self.send_json(get_history_menus(days, location))

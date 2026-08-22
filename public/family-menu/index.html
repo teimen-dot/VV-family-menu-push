@@ -3938,18 +3938,42 @@ pickModal.addEventListener('click',
     updateHero(data.next_meal || null);
     if (days[0]) updateTodayRestoredMeals(days[0], data.next_meal?.meal_type || null);
     updateConfirmProgress();
-    if (typeof window.hydratePhase2Tabs === 'function') window.hydratePhase2Tabs(data);
+    if (data.pantry && Array.isArray(data.dishes) &&
+        typeof window.hydratePhase2Tabs === 'function') {
+      window.hydratePhase2Tabs(data);
+    }
   }
 
   async function load(location) {
     const version = ++requestVersion;
     if (location) document.cookie = 'loc=' + location + '; Path=/; SameSite=Lax';
+    if (location) {
+      applyLocation({
+        location,
+        location_label: location === 'hongkong' ? '香港 Hong Kong' : '深圳 Shenzhen'
+      });
+    }
     let data = null;
     try {
-      const response = await fetch(API, { credentials: 'same-origin', cache: 'no-store' });
+      const response = await fetch(API + '?scope=menu', {
+        credentials: 'same-origin', cache: 'no-store'
+      });
       if (!response.ok) throw new Error('bootstrap ' + response.status);
       data = await response.json();
-      if (version === requestVersion) hydrate(data);
+      if (version === requestVersion) {
+        hydrate(data);
+        fetch(API + '?scope=tabs', { credentials: 'same-origin', cache: 'no-store' })
+          .then(response => {
+            if (!response.ok) throw new Error('tabs bootstrap ' + response.status);
+            return response.json();
+          })
+          .then(tabs => {
+            if (version === requestVersion && typeof window.hydratePhase2Tabs === 'function') {
+              window.hydratePhase2Tabs(tabs);
+            }
+          })
+          .catch(error => console.error('background tabs load failed', error));
+      }
     } catch (error) {
       if (version !== requestVersion) return;
       if (data) {

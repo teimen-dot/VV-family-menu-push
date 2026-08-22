@@ -335,7 +335,37 @@ class ReadonlyUiAssetTests(unittest.TestCase):
             "/api/tomorrow/confirm", "/api/tomorrow/ai-fill", "/api/tomorrow/repair",
         ):
             self.assertNotIn(endpoint, self.bridge)
-        self.assertEqual(self.bridge.count("fetch("), 1)
+        # Kitchen switching renders the menu from the fast payload first and
+        # hydrates pantry/dishes/history independently in the background.
+        self.assertEqual(self.bridge.count("fetch("), 2)
+        self.assertIn("?scope=menu", self.bridge)
+        self.assertIn("?scope=tabs", self.bridge)
+
+    def test_http_get_supports_fast_menu_and_background_tab_scopes(self):
+        handler = object.__new__(app.AppHandler)
+        handler.headers = {"Cookie": "loc=hongkong"}
+        handler.request_role = lambda: "owner"
+        captured = {}
+        handler.send_json = lambda payload, status=200: captured.update(
+            payload=payload, status=status
+        )
+        with patch.object(
+            app, "build_family_menu_bootstrap", return_value={"days": []}
+        ) as menu_build:
+            handler.path = "/api/family-menu/bootstrap?scope=menu"
+            app.AppHandler.do_GET(handler)
+        menu_build.assert_called_once_with(
+            "hongkong", "owner", include_tabs=False
+        )
+        self.assertEqual(captured["payload"], {"days": []})
+
+        with patch.object(
+            app, "build_family_tabs_bootstrap", return_value={"dishes": []}
+        ) as tabs_build:
+            handler.path = "/api/family-menu/bootstrap?scope=tabs"
+            app.AppHandler.do_GET(handler)
+        tabs_build.assert_called_once_with("hongkong", "owner")
+        self.assertEqual(captured["payload"], {"dishes": []})
 
     def test_bridge_binds_real_menu_fields_without_capture_write_blockers(self):
         self.assertIn("dataset.menuId", self.bridge)
