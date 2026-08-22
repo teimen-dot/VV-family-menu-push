@@ -44,7 +44,8 @@ from menu_service import (
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
     get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
     ensure_menu_for_date,
-    update_menu_diners_count, set_menu_meal_skipped, invalidate_catalog_cache,
+    update_menu_diners_count, set_menu_meal_skipped, set_menu_meal_confirmed,
+    invalidate_catalog_cache,
     normalize_dish_slot_roles, ensure_dish_slot_metadata,
     ensure_breakfast_rotation_metadata, ensure_draft_menu_structure_cleanup,
     ensure_planning_window,
@@ -1590,6 +1591,9 @@ def build_family_menu_bootstrap(location="shenzhen", role="owner", now=None,
             "meal_type": meal_type,
             "menu_id": menu.get("menu_id"),
             "status": menu.get("status"),
+            "is_confirmed": bool(
+                menu.get("meal_settings", {}).get(meal_type, {}).get("is_confirmed")
+            ),
             "diners_count": menu.get("diners_count"),
             "note": menu.get("meal_notes", {}).get(meal_type, ""),
             "drinks": menu.get("meal_notes", {}).get("breakfast_drinks", []),
@@ -4044,6 +4048,35 @@ class AppHandler(BaseHTTPRequestHandler):
             if menu_row["location"] != location:
                 self.send_json({"ok": False, "error": "menu location mismatch"}, 403)
                 return
+            meal_type = body.get("meal_type")
+            if path == "/api/tomorrow/drinks":
+                meal_type = "breakfast"
+            if not meal_type and body.get("menu_item_id") is not None:
+                conn = get_db()
+                try:
+                    item = conn.execute(
+                        "SELECT meal_type FROM menu_items WHERE menu_id=? AND id=?",
+                        (menu_id, body.get("menu_item_id")),
+                    ).fetchone()
+                    meal_type = item["meal_type"] if item else None
+                finally:
+                    conn.close()
+            if meal_type:
+                conn = get_db()
+                try:
+                    setting = conn.execute(
+                        "SELECT is_confirmed FROM menu_meal_settings "
+                        "WHERE menu_id=? AND meal_type=?",
+                        (menu_id, meal_type),
+                    ).fetchone()
+                finally:
+                    conn.close()
+                if setting and setting["is_confirmed"]:
+                    self.send_json({
+                        "ok": False,
+                        "error": "此餐已确认，请先点击已确认条恢复编辑",
+                    }, 409)
+                    return
 
         if path == "/api/pantry/submit":
             # V4: 增量保存库存变更
@@ -4500,18 +4533,19 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json({"ok": ok, "error": msg if not ok else None, "review": review})
 
         elif path == "/api/tomorrow/confirm":
-            ok, msg, warnings, transitioned = confirm_menu(
-                body["menu_id"], triggered_by=username,
-                expected_location=location, include_transition=True,
+            ok, msg, all_confirmed, transitioned, warnings = set_menu_meal_confirmed(
+                body["menu_id"], body.get("meal_type"), True,
+                triggered_by=username, expected_location=location,
             )
-            if ok and transitioned:
+            if ok and all_confirmed and transitioned:
                 from push_service import push_confirmed_menu, push_on_confirm_is_enabled
                 if push_on_confirm_is_enabled():
                     push_ok, push_msg = push_confirmed_menu(body["menu_id"], triggered_by=username)
                 else:
                     push_ok, push_msg = False, "菜单已确认；确认后即时推送未启用"
                 self.send_json({
-                    "ok": True, "confirmed": True, "transitioned": True, "pushed": push_ok,
+                    "ok": True, "meal_confirmed": True, "all_confirmed": True,
+                    "confirmed": True, "transitioned": True, "pushed": push_ok,
                     "push_failed": push_on_confirm_is_enabled() and not push_ok,
                     "error": None,
                     "warnings": warnings,
@@ -4519,7 +4553,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 })
             elif ok:
                 self.send_json({
-                    "ok": True, "confirmed": True, "transitioned": False,
+                    "ok": True, "meal_confirmed": True,
+                    "all_confirmed": all_confirmed,
+                    "confirmed": all_confirmed, "transitioned": False,
                     "pushed": False, "push_failed": False, "error": None,
                     "warnings": warnings, "message": msg,
                 })
@@ -4528,8 +4564,10 @@ class AppHandler(BaseHTTPRequestHandler):
                                 "error": msg, "warnings": warnings, "message": msg})
 
         elif path == "/api/tomorrow/revert":
-            # V3: Confirmed → Edit Menu → Reconfirm flow
-            ok, msg = revert_to_draft(body["menu_id"])
+            ok, msg, _all_confirmed, _transitioned, _warnings = set_menu_meal_confirmed(
+                body["menu_id"], body.get("meal_type"), False,
+                triggered_by=username, expected_location=location,
+            )
             self.send_json({"ok": ok, "error": msg if not ok else None, "message": msg})
 
         elif path == "/api/tomorrow/push":

@@ -282,6 +282,8 @@ def init_db():
             FOREIGN KEY (menu_id) REFERENCES menus(id)
         )
     """)
+    _safe_add_column(c, "menu_meal_settings", "is_confirmed", "INTEGER DEFAULT 0")
+    _safe_add_column(c, "menu_meal_settings", "confirmed_at", "TEXT")
 
     # V6 迁移：为已存在的 menu_items 表添加新列（幂等）
     _safe_add_column(c, "menu_items", "custom_name", "TEXT")

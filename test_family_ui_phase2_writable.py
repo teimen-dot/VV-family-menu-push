@@ -64,6 +64,106 @@ class Phase2WritableRuntimeTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def _seed_three_meal_menu(self):
+        tomorrow = app.get_tomorrow_date()
+        conn = db.get_db()
+        try:
+            menu_id = conn.execute(
+                "INSERT INTO menus(date,location,status,diners_count,diners) "
+                "VALUES(?,'shenzhen','draft',3,'[]')", (tomorrow,),
+            ).lastrowid
+            conn.executemany(
+                "INSERT INTO menu_items(menu_id,custom_name,meal_type) VALUES(?,?,?)",
+                [(menu_id, "早餐", "breakfast"),
+                 (menu_id, "午餐", "lunch"),
+                 (menu_id, "晚餐", "dinner")],
+            )
+            conn.commit()
+            return menu_id
+        finally:
+            conn.close()
+
+    def test_confirming_breakfast_does_not_confirm_or_lock_other_meals(self):
+        menu_id = self._seed_three_meal_menu()
+
+        ok, _message, all_confirmed, transitioned, _warnings = (
+            menu_service.set_menu_meal_confirmed(
+                menu_id, "breakfast", True, expected_location="shenzhen"
+            )
+        )
+
+        self.assertTrue(ok)
+        self.assertFalse(all_confirmed)
+        self.assertFalse(transitioned)
+        conn = db.get_db()
+        try:
+            menu_status = conn.execute(
+                "SELECT status FROM menus WHERE id=?", (menu_id,)
+            ).fetchone()["status"]
+            settings = {
+                row["meal_type"]: row["is_confirmed"]
+                for row in conn.execute(
+                    "SELECT meal_type,is_confirmed FROM menu_meal_settings WHERE menu_id=?",
+                    (menu_id,),
+                )
+            }
+        finally:
+            conn.close()
+        self.assertEqual(menu_status, "draft")
+        self.assertEqual(settings, {"breakfast": 1})
+
+    def test_day_finalizes_only_after_every_active_meal_is_confirmed(self):
+        menu_id = self._seed_three_meal_menu()
+        menu_service.set_menu_meal_confirmed(menu_id, "breakfast", True)
+        menu_service.set_menu_meal_confirmed(menu_id, "lunch", True)
+
+        with patch.object(
+            menu_service, "confirm_menu",
+            return_value=(True, "菜单已确认", [], True),
+        ) as finalize:
+            result = menu_service.set_menu_meal_confirmed(
+                menu_id, "dinner", True, expected_location="shenzhen"
+            )
+
+        self.assertEqual(result[0:4], (True, "菜单已确认", True, True))
+        finalize.assert_called_once_with(
+            menu_id, triggered_by="vivian", expected_location="shenzhen",
+            include_transition=True,
+        )
+
+    def test_reopening_one_meal_reverts_day_and_only_reopens_that_meal(self):
+        menu_id = self._seed_three_meal_menu()
+        conn = db.get_db()
+        try:
+            conn.execute("UPDATE menus SET status='confirmed' WHERE id=?", (menu_id,))
+            conn.executemany(
+                "INSERT INTO menu_meal_settings(menu_id,meal_type,is_confirmed) VALUES(?,?,1)",
+                [(menu_id, "breakfast"), (menu_id, "lunch"), (menu_id, "dinner")],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        result = menu_service.set_menu_meal_confirmed(menu_id, "lunch", False)
+
+        self.assertTrue(result[0])
+        conn = db.get_db()
+        try:
+            status = conn.execute(
+                "SELECT status FROM menus WHERE id=?", (menu_id,)
+            ).fetchone()["status"]
+            settings = {
+                row["meal_type"]: row["is_confirmed"]
+                for row in conn.execute(
+                    "SELECT meal_type,is_confirmed FROM menu_meal_settings WHERE menu_id=?",
+                    (menu_id,),
+                )
+            }
+        finally:
+            conn.close()
+        self.assertEqual(status, "draft")
+        self.assertEqual(settings, {"breakfast": 1, "lunch": 0, "dinner": 1})
+
     def test_menu_get_and_refresh_paths_do_not_append_events(self):
         tomorrow, _ = self._seed_menu()
         self.assertEqual(self._event_types(), [])

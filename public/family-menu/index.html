@@ -429,8 +429,9 @@ button { font-family: inherit; }
 
 /* ============ Bottom Nav ============ */
 .b-nav {
-  position: fixed; bottom: var(--safe-b); left: 0; right: 0; z-index: 56;
-  height: var(--nav-h);
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 56;
+  height: calc(var(--nav-h) + var(--safe-b));
+  padding-bottom: var(--safe-b);
   background: rgba(255,255,255,.95); backdrop-filter: blur(16px);
   border-top: 1px solid var(--c-line);
 }
@@ -447,6 +448,22 @@ button { font-family: inherit; }
 .n-tab.active::before {
   content: ""; position: absolute; top: 0; width: 32px; height: 3px;
   border-radius: 0 0 4px 4px; background: var(--c-forest-800);
+}
+@media (max-width: 520px) {
+  #page-menu .dish-row {
+    min-height: 100px;
+    gap: 12px;
+    padding: 13px 12px 13px 14px;
+  }
+  #page-menu .dish-row .tile-lg {
+    width: 72px;
+    height: 72px;
+    flex-basis: 72px;
+    border-radius: 17px;
+  }
+  #page-menu .dish-row .info h4 { font-size: 16.5px; }
+  #page-menu .dish-row .info small { font-size: 11px; }
+  #page-menu .dish-row .dish-ops { gap: 5px; }
 }
 
 /* ============ Pantry ============ */
@@ -2985,8 +3002,10 @@ document.addEventListener('click', async e => {
   if (cfmBtn) {
     const card = cfmBtn.closest('.meal-card');
     try {
-      await writeJSON('/api/tomorrow/confirm', {menu_id:Number(card.dataset.menuId)});
-      await reloadLiveData('餐单已确认');
+      await writeJSON('/api/tomorrow/confirm', {
+        menu_id:Number(card.dataset.menuId), meal_type:card.dataset.mealType
+      });
+      await reloadLiveData('此餐已确认');
     } catch (error) { toast(error.message); }
     return;
   }
@@ -2994,8 +3013,10 @@ document.addEventListener('click', async e => {
   if (cStrip) {
     const card = cStrip.closest('.meal-card');
     try {
-      await writeJSON('/api/tomorrow/revert', {menu_id:Number(card.dataset.menuId)});
-      await reloadLiveData('餐单已恢复编辑');
+      await writeJSON('/api/tomorrow/revert', {
+        menu_id:Number(card.dataset.menuId), meal_type:card.dataset.mealType
+      });
+      await reloadLiveData('此餐已恢复编辑');
     } catch (error) { toast(error.message); }
     return;
   }
@@ -3815,7 +3836,7 @@ pickModal.addEventListener('click',
     setCount(card, dishes.length, structure);
     const countBadge = card.querySelector('.count-badge');
     if (countBadge) countBadge.style.display = unavailable ? 'none' : '';
-    setConfirmed(card, menu.status === 'confirmed');
+    setConfirmed(card, Boolean(mealSetting?.is_confirmed));
   }
 
   function updateFutureDay(day, sectionId) {
@@ -3904,7 +3925,7 @@ pickModal.addEventListener('click',
     setCount(hero, dishes.length);
     const countBadge = hero.querySelector('.count-badge');
     if (countBadge) countBadge.style.display = unavailable ? 'none' : '';
-    setConfirmed(hero, nextMeal?.status === 'confirmed');
+    setConfirmed(hero, Boolean(nextMeal?.is_confirmed));
   }
 
   function applyLocation(data) {

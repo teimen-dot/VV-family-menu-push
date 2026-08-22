@@ -484,11 +484,16 @@ def get_menu_with_dishes(date_str, location=None, record_filter_events=False):
 
         try:
             setting_rows = conn.execute(
-                "SELECT meal_type, is_skipped FROM menu_meal_settings WHERE menu_id = ?",
+                "SELECT meal_type, is_skipped, is_confirmed, confirmed_at "
+                "FROM menu_meal_settings WHERE menu_id = ?",
                 (menu["id"],),
             ).fetchall()
             meal_settings = {
-                row["meal_type"]: {"is_skipped": bool(row["is_skipped"])}
+                row["meal_type"]: {
+                    "is_skipped": bool(row["is_skipped"]),
+                    "is_confirmed": bool(row["is_confirmed"]),
+                    "confirmed_at": row["confirmed_at"],
+                }
                 for row in setting_rows
             }
         except sqlite3.OperationalError as exc:
@@ -588,6 +593,77 @@ def set_menu_meal_skipped(menu_id, meal_type, skipped):
         return True, "updated"
     finally:
         conn.close()
+
+
+def set_menu_meal_confirmed(menu_id, meal_type, confirmed, triggered_by="vivian",
+                            expected_location=None):
+    """Confirm or reopen one meal without deciding the other meals."""
+    valid_meals = ("breakfast", "lunch", "afternoon_snack", "dinner", "supper")
+    if meal_type not in valid_meals:
+        return False, "invalid meal_type", False, False, []
+
+    conn = get_db()
+    try:
+        menu = conn.execute(
+            "SELECT id,status,location FROM menus WHERE id=?", (menu_id,)
+        ).fetchone()
+        if not menu:
+            return False, "菜单不存在", False, False, []
+        if expected_location and menu["location"] != expected_location:
+            return False, "菜单厨房与当前厨房不一致", False, False, []
+
+        if not confirmed and menu["status"] in ("confirmed", "pushed"):
+            conn.close()
+            conn = None
+            ok, message = revert_to_draft(menu_id)
+            if not ok:
+                return False, message, False, False, []
+            conn = get_db()
+
+        confirmed_at = datetime.now().isoformat() if confirmed else None
+        conn.execute(
+            "INSERT INTO menu_meal_settings "
+            "(menu_id,meal_type,is_confirmed,confirmed_at,updated_at) "
+            "VALUES (?,?,?,?,datetime('now')) "
+            "ON CONFLICT(menu_id,meal_type) DO UPDATE SET "
+            "is_confirmed=excluded.is_confirmed, "
+            "confirmed_at=excluded.confirmed_at, updated_at=excluded.updated_at",
+            (menu_id, meal_type, 1 if confirmed else 0, confirmed_at),
+        )
+        conn.commit()
+
+        active_rows = conn.execute(
+            "SELECT DISTINCT mi.meal_type FROM menu_items mi "
+            "LEFT JOIN menu_meal_settings ms "
+            "ON ms.menu_id=mi.menu_id AND ms.meal_type=mi.meal_type "
+            "WHERE mi.menu_id=? AND COALESCE(ms.is_skipped,0)=0",
+            (menu_id,),
+        ).fetchall()
+        active_meals = [row["meal_type"] for row in active_rows]
+        confirmed_rows = conn.execute(
+            "SELECT meal_type FROM menu_meal_settings "
+            "WHERE menu_id=? AND is_confirmed=1", (menu_id,),
+        ).fetchall()
+        confirmed_meals = {row["meal_type"] for row in confirmed_rows}
+        all_confirmed = bool(active_meals) and all(
+            value in confirmed_meals for value in active_meals
+        )
+        log_event(
+            "meal_confirmed" if confirmed else "meal_reopened",
+            "menu", str(menu_id),
+            {"meal_type": meal_type, "by": triggered_by},
+        )
+    finally:
+        if conn is not None:
+            conn.close()
+
+    if confirmed and all_confirmed:
+        ok, message, warnings, transitioned = confirm_menu(
+            menu_id, triggered_by=triggered_by,
+            expected_location=expected_location, include_transition=True,
+        )
+        return ok, message, True, transitioned, warnings
+    return True, ("此餐已确认" if confirmed else "此餐已恢复编辑"), all_confirmed, False, []
 
 
 def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None):
