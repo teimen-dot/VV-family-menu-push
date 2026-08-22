@@ -4,8 +4,8 @@
 
 - Repository: `https://github.com/teimen-dot/VV-family-menu-push.git`
 - Branch: `codex/family-ui-phase2-writable`
-- Production code commit: `0051ffa`
-- Stable tag: `production-2026-08-21-strict-convergence`
+- Production code commit: `3fe120b`
+- Stable tag: `production-2026-08-22-hongkong-isolation`
 - Production host: `43.129.246.80` (Ubuntu)
 
 The Git repository contains source code, migrations, deployment examples, and
@@ -31,10 +31,15 @@ Git at `/Users/heymen/Documents/family-menu-backups/production-20260820-stable/`
 Use its `SHA256SUMS` file to verify every restored archive before extraction.
 
 The immediate pre-deployment rollback snapshot is stored at
-`/opt/family-menu/backups/predeploy-20260821-strict-convergence/`. It contains
-the consistent SQLite database and the complete previous application tree.
-Both are covered by the adjacent `SHA256SUMS` file; the database copy passed
-`PRAGMA quick_check` before deployment.
+`/opt/family-menu/backups/predeploy-20260822-hk-isolation-3fe120b/`. It contains
+the consistent SQLite database, complete previous application tree, uploaded
+photos, protected environment file, service definitions, SHA-256 manifests,
+and pre/post-migration Shenzhen fingerprints.
+
+Production menus now use `UNIQUE(date, location)`, so Shenzhen and Hong Kong
+can have independent menus for the same date while continuing to share the
+same dishes, ingredients, categories, and photos. The one-time migration is
+`migrate_menu_location_unique.py`; it is never run automatically at startup.
 
 ## Last verified recovery drill
 
@@ -73,11 +78,11 @@ The known safe production defaults at this release are `APP_ENV=production`,
 ```bash
 git clone https://github.com/teimen-dot/VV-family-menu-push.git family-menu
 cd family-menu
-git checkout production-2026-08-21-strict-convergence
+git checkout production-2026-08-22-hongkong-isolation
 git rev-parse HEAD
 ```
 
-The stable tag contains this recovery document and has `0051ffa` as its
+The stable tag contains this recovery document and has `3fe120b` as its
 production application parent commit.
 
 Verify and unpack the independent snapshot, then place its contents using the
