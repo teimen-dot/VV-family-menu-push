@@ -33,14 +33,15 @@ from inventory import (
     update_ingredient_status, confirm_pantry_unchanged,
     is_ingredient_in_pantry,
     _invalidate_availability_cache, _increment_inventory_version,
-    get_inventory_version,
+    get_inventory_version, normalize_ingredient_id,
 )
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
     replace_dish_in_menu, lock_dish, ai_fill_menu, repair_menu,
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
-    get_tomorrow_date, revert_to_draft, push_menu,
+    get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
 )
+from rule_engine import NutritionAnalyzer, filter_candidates_for_slot
 from photo_security import PhotoValidationError, resolve_photo_path
 from runtime_config import photo_dir, server_host, validate_app_startup
 
@@ -108,6 +109,7 @@ def resolve_ingredient_name(raw_name, ingredient_rows):
     if mapped:
         corrected_from, normalized = normalized, mapped
     key = normalized.casefold()
+    exact_matches = []
     for row in ingredient_rows:
         aliases = row["aliases"] if "aliases" in row.keys() else "[]"
         try:
@@ -116,9 +118,16 @@ def resolve_ingredient_name(raw_name, ingredient_rows):
             aliases = []
         values = [row["name_cn"], row["name_en"], *(aliases or [])]
         if any(_normalize_ingredient_name(value).casefold() == key for value in values if value):
-            if normalized != row["name_cn"] and corrected_from is None:
-                corrected_from = _normalize_ingredient_name(raw_name)
-            return row, row["name_cn"], corrected_from
+            exact_matches.append(row)
+    if exact_matches:
+        canonical_id = normalize_ingredient_id(normalized)
+        row = next(
+            (candidate for candidate in exact_matches if candidate["ingredient_id"] == canonical_id),
+            exact_matches[0],
+        )
+        if normalized != row["name_cn"] and corrected_from is None:
+            corrected_from = _normalize_ingredient_name(raw_name)
+        return row, row["name_cn"], corrected_from
     # Similar matching is deliberately limited to longer names and a very high threshold.
     if len(normalized) >= 3:
         scored = []
@@ -133,7 +142,7 @@ def resolve_ingredient_name(raw_name, ingredient_rows):
 
 
 def get_next_available_same_class_dish(menu_id, menu_item_id, location):
-    """Select the next available same-class dish with bounded list/index arithmetic."""
+    """Select the next available dish that preserves the current rule-engine slot."""
     conn = get_db()
     try:
         current = conn.execute(
@@ -147,27 +156,43 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
             current_proteins = set(json.loads(current["protein_types"] or "[]"))
         except (TypeError, json.JSONDecodeError):
             current_proteins = set()
-        rows = conn.execute(
-            "SELECT id, name_cn, name_en, category_id, image, meal_tags, protein_types "
-            "FROM dishes WHERE (is_active=1 OR is_active IS NULL) AND category_id=? "
-            "ORDER BY name_cn, id", (current["category_id"],)
-        ).fetchall()
+        pool = _load_pool()["dishes"]
+        analyzed = {dish["id"]: NutritionAnalyzer.analyze(dish) for dish in pool}
+        current_analysis = analyzed.get(current["dish_id"])
+        slot_name = None
+        if current_analysis:
+            slot_candidates = [
+                "tofu", "egg", "coarse_grain", "porridge", "companion_staple",
+                "quick_soup", "slow_soup", "protein_main",
+            ]
+            slot_candidates.append(
+                "vegetable" if current["meal_type"] == "breakfast" else "vegetable_dish"
+            )
+            slot_candidates.append("staple")
+            for candidate_slot in slot_candidates:
+                if filter_candidates_for_slot([current_analysis], candidate_slot):
+                    slot_name = candidate_slot
+                    break
+
         occupied = {row["dish_id"] for row in conn.execute(
             "SELECT dish_id FROM menu_items WHERE menu_id=? AND meal_type=? AND id<>?",
             (menu_id, current["meal_type"], menu_item_id)
         ).fetchall()}
         candidates = []
-        for row in rows:
-            try:
-                meal_tags = set(json.loads(row["meal_tags"] or "[]"))
-                proteins = set(json.loads(row["protein_types"] or "[]"))
-            except (TypeError, json.JSONDecodeError):
+        for dish in pool:
+            analysis = analyzed[dish["id"]]
+            if current["meal_type"] not in analysis["meal_tags"] or dish["id"] in occupied:
                 continue
-            if current["meal_type"] not in meal_tags or row["id"] in occupied:
-                continue
-            if current["category_id"] == "protein_main" and current_proteins and not (proteins & current_proteins):
-                continue
-            candidates.append(dict(row))
+            if slot_name:
+                if not filter_candidates_for_slot([analysis], slot_name):
+                    continue
+            else:
+                if dish.get("category_id") != current["category_id"]:
+                    continue
+                proteins = set(analysis["proteins"])
+                if current["category_id"] == "protein_main" and current_proteins and not (proteins & current_proteins):
+                    continue
+            candidates.append(dish)
         if not candidates:
             return None
         availability = check_dishes_availability_batch([row["id"] for row in candidates], location)
@@ -2066,10 +2091,19 @@ def render_tomorrow(role="owner", location="shenzhen"):
                 cat_label = d.get("category_id", "")
                 cat_badge = f'<span class="badge badge-cat">{cat_label}</span>' if cat_label else ""
 
-                # 操作按钮：替换 + 删除（所有菜都可操作）
+                # 操作按钮：普通切换 + 搜索更换 + 删除（所有菜都可操作）
                 item_actions = ""
                 if role == "owner":
-                    item_actions = f'<div class="item-actions"><button class="item-btn" onclick="openDishSearch(\'{mt}\',{d["menu_item_id"]},\'{d.get("dish_id","")}\',\'{d.get("category_id","")}\')" title="替换 Replace">↻</button><button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" title="删除 Delete">×</button></div>'
+                    item_actions = (
+                        f'<div class="item-actions">'
+                        f'<button class="item-btn" onclick="cycleDish(this,{d["menu_item_id"]})" '
+                        f'title="普通切换 Switch" aria-label="普通切换 {d["name_cn"]}">↻</button>'
+                        f'<button class="item-btn" onclick="openDishSearch(\'{mt}\',{d["menu_item_id"]},'
+                        f'\'{d.get("dish_id","")}\',\'{d.get("category_id","")}\')" '
+                        f'title="搜索更换 Search replace" aria-label="搜索更换 {d["name_cn"]}">🔍</button>'
+                        f'<button class="item-btn danger" onclick="removeDish({d["menu_item_id"]})" '
+                        f'title="删除 Delete">×</button></div>'
+                    )
 
                 items_html += f"""<div class="meal-item">
 {img_html}{no_img}
@@ -2266,6 +2300,16 @@ async function doDishSearch(q){{
   }}
   let availability=await postJSON('/api/dishes/availability',{{dish_ids:data.map(d=>d.id),location:currentLoc}});
   container.innerHTML='<div class="rec-section-title">搜索结果 Search results</div>'+data.slice(0,30).map(d=>{{let av=availability[d.id]||{{}};let item={{...d,missing_required:av.missing_names||[],missing_required_en:av.missing_names_en||[]}};return renderRecCard(item,av.status==='available'?'available':av.status==='almost_available'?'almost':av.status==='incomplete'?'incomplete':'missing');}}).join('');
+}}
+async function cycleDish(button,itemId){{
+  button.disabled=true;
+  try{{
+    let result=await postJSON('/api/tomorrow/cycle-replace',{{menu_id:menuId,menu_item_id:itemId,location:currentLoc}});
+    if(!result.replaced){{snack('暂无其他可做同类菜品 / No other available dish');return;}}
+    snack('已切换为：'+result.dish.name_cn);
+    location.reload();
+  }}catch(error){{snack(error.message||'切换失败');}}
+  finally{{button.disabled=false;}}
 }}
 async function doPickDish(dishId){{
   try{{

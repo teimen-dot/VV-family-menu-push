@@ -401,7 +401,10 @@ INGREDIENT_ALIASES = {
     # 豆腐/嫩豆腐
     "豆腐": "tofu", "嫩豆腐": "silken_tofu",
     # 菌菇/口蘑/蟹味菇/舞茸
-    "菌菇": "mushroom", "口蘑": "button_mushroom", "蟹味菇": "buna_mushroom", "舞茸": "maitake",
+    "菌菇": "mushroom", "蘑菇": "mushroom", "mushroom_generic": "mushroom",
+    "口蘑": "button_mushroom", "蟹味菇": "buna_mushroom", "舞茸": "maitake",
+    # 山药/淮山
+    "山药": "yam", "淮山": "yam",
     # 虾/黑虎虾/虾滑
     "虾": "shrimp", "黑虎虾": "black_tiger_shrimp", "虾滑": "shrimp_paste",
     # 鱼/银鳕鱼/青花鱼

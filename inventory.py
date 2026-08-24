@@ -70,11 +70,17 @@ INGREDIENT_ALIASES = {
     "Sweet Potato": "红薯",
     "红薯": "红薯",
     "番薯": "红薯",
+    # Mushroom
+    "mushroom": "mushroom",
+    "Mushroom": "mushroom",
+    "mushroom_generic": "mushroom",
+    "菌菇": "mushroom",
+    "蘑菇": "mushroom",
     # Chinese yam
     "yam": "yam",
     "Chinese Yam": "yam",
     "山药": "yam",
-    "淮山": "淮山",
+    "淮山": "yam",
 }
 
 # Pantry-exempt staples are still required recipe ingredients, but do not need
@@ -546,6 +552,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
         available_required = []
         missing_required = []
         optional = []
+        seen_required_ids = set()
 
         for ing in ings:
             # V10: 归一化菜品食材 ID
@@ -554,6 +561,10 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                         "name_cn": ing["name_cn"],
                         "name_en": ing["name_en"] if ing["name_en"] else ""}
             if ing["required"]:
+                # Synonymous required rows represent one canonical ingredient.
+                if norm_id in seen_required_ids:
+                    continue
+                seen_required_ids.add(norm_id)
                 required.append(ing_data)
                 if (norm_id in PANTRY_EXEMPT_INGREDIENT_IDS
                         or norm_id in normalized_pantry
