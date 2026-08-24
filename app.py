@@ -1027,13 +1027,13 @@ def get_menu_diners(menu_id):
 
 
 def update_menu_diners(menu_id, diners_list):
-    """更新菜单的用餐成员"""
+    """更新 legacy 用餐成员列表，不改变菜单人数。"""
     conn = get_db()
     try:
         diners_json = json.dumps(diners_list, ensure_ascii=False)
         conn.execute(
-            "UPDATE menus SET diners = ?, diners_count = ?, updated_at = datetime('now') WHERE id = ?",
-            (diners_json, len(diners_list), menu_id)
+            "UPDATE menus SET diners = ?, updated_at = datetime('now') WHERE id = ?",
+            (diners_json, menu_id)
         )
         conn.commit()
         log_event("diners_updated", "menu", str(menu_id), {"diners": diners_list})

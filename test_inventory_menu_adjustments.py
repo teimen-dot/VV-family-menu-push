@@ -15,6 +15,26 @@ from rule_engine import (
 
 
 class InventoryNameTests(unittest.TestCase):
+    def test_required_aliases_share_canonical_ids(self):
+        self.assertEqual(inventory.normalize_ingredient_id("山药"), "yam")
+        self.assertEqual(inventory.normalize_ingredient_id("淮山"), "yam")
+        self.assertEqual(inventory.normalize_ingredient_id("mushroom_generic"), "mushroom")
+        self.assertEqual(inventory.normalize_ingredient_id("蘑菇"), "mushroom")
+
+    def test_name_resolution_prefers_canonical_alias_row(self):
+        rows = [
+            {"ingredient_id": "淮山", "name_cn": "淮山", "name_en": "Chinese Yam", "aliases": "[]"},
+            {"ingredient_id": "yam", "name_cn": "山药", "name_en": "Chinese Yam", "aliases": '["淮山"]'},
+            {"ingredient_id": "mushroom_generic", "name_cn": "蘑菇", "name_en": "Mushroom", "aliases": "[]"},
+            {"ingredient_id": "mushroom", "name_cn": "菌菇", "name_en": "Mushroom", "aliases": '["蘑菇"]'},
+        ]
+        for raw_name in ("山药", "淮山"):
+            row, _, _ = app.resolve_ingredient_name(raw_name, rows)
+            self.assertEqual(row["ingredient_id"], "yam")
+        for raw_name in ("蘑菇", "Mushroom"):
+            row, _, _ = app.resolve_ingredient_name(raw_name, rows)
+            self.assertEqual(row["ingredient_id"], "mushroom")
+
     def test_known_typo_maps_to_existing_standard_name(self):
         rows = [
             {"ingredient_id": "lettuce_stem", "name_cn": "莴笋", "name_en": "Celtuce", "aliases": "[]"},
@@ -152,6 +172,52 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertEqual(result["dish_available"]["status"], "available")
         self.assertEqual(result["dish_almost"]["status"], "almost_available")
         self.assertEqual(result["dish_missing"]["status"], "missing")
+
+    def test_required_alias_rows_are_deduplicated_for_availability(self):
+        conn = db.get_db()
+        for ingredient_id, name_cn in (
+            ("yam", "山药"),
+            ("淮山", "淮山"),
+            ("mushroom", "菌菇"),
+            ("mushroom_generic", "蘑菇"),
+        ):
+            conn.execute(
+                "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES (?,?,?)",
+                (ingredient_id, name_cn, name_cn),
+            )
+        for dish_id, ingredient_ids in (
+            ("dish_yam", ("yam", "淮山")),
+            ("dish_mushroom", ("mushroom", "mushroom_generic")),
+        ):
+            conn.execute(
+                "INSERT INTO dishes (id,name_cn,name_en,meal_tags,is_active) "
+                "VALUES (?,?,?,'[\"lunch\"]',1)",
+                (dish_id, dish_id, dish_id),
+            )
+            for ingredient_id in ingredient_ids:
+                conn.execute(
+                    "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES (?,?,1)",
+                    (dish_id, ingredient_id),
+                )
+        conn.execute(
+            "INSERT INTO current_pantry (location,ingredient_id,status,is_active) "
+            "VALUES ('shenzhen','淮山','available',1)"
+        )
+        conn.execute(
+            "INSERT INTO current_pantry (location,ingredient_id,status,is_active) "
+            "VALUES ('shenzhen','mushroom_generic','available',1)"
+        )
+        conn.commit()
+        conn.close()
+
+        result = inventory.check_dishes_availability_batch(
+            ["dish_yam", "dish_mushroom"], "shenzhen"
+        )
+        for dish_id in ("dish_yam", "dish_mushroom"):
+            self.assertEqual(result[dish_id]["status"], "available")
+            self.assertEqual(len(result[dish_id]["required"]), 1)
+            self.assertEqual(len(result[dish_id]["available_required"]), 1)
+            self.assertEqual(result[dish_id]["missing_required"], [])
 
     def test_leafy_placeholder_accepts_only_controlled_leafy_inventory(self):
         conn = db.get_db()

@@ -1,8 +1,12 @@
+import json
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
 import app
+import db
+import menu_service
 import runtime_config
 
 
@@ -32,6 +36,48 @@ class HeaderRecorder:
 
     def cookie_header(self):
         return next(value for name, value in self.headers if name == "Set-Cookie")
+
+
+class LegacyDinersRegressionTests(unittest.TestCase):
+    def setUp(self):
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.db_patch = patch.object(db, "DB_PATH", os.path.join(self.tempdir.name, "test.db"))
+        self.db_patch.start()
+        db.init_db()
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO menus "
+            "(id,date,location,status,diners,diners_count,meal_mode,banquet_total_diners) "
+            "VALUES (1,'2099-01-01','shenzhen','draft','[]',4,'banquet',12)"
+        )
+        conn.commit()
+        conn.close()
+
+    def tearDown(self):
+        self.db_patch.stop()
+        self.tempdir.cleanup()
+
+    def test_legacy_member_updates_preserve_explicit_diners_count(self):
+        for diners in ([], ["vivian", "sir", "grandma"]):
+            with self.subTest(diners=diners):
+                self.assertTrue(app.update_menu_diners(1, diners))
+                conn = db.get_db()
+                row = conn.execute(
+                    "SELECT diners,diners_count FROM menus WHERE id=1"
+                ).fetchone()
+                conn.close()
+                self.assertEqual(json.loads(row["diners"]), diners)
+                self.assertEqual(row["diners_count"], 4)
+
+    def test_historical_banquet_fields_do_not_override_diners_count(self):
+        self.assertEqual(menu_service._get_effective_diners_count(menu_id=1), 4)
+        conn = db.get_db()
+        conn.execute(
+            "UPDATE menus SET diners='[\"vivian\"]', banquet_total_diners=20 WHERE id=1"
+        )
+        conn.commit()
+        conn.close()
+        self.assertEqual(menu_service._get_effective_diners_count(menu_id=1), 4)
 
 
 class SessionTests(unittest.TestCase):
