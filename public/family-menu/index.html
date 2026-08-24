@@ -132,6 +132,16 @@ button { font-family: inherit; }
 .k-banner .txt small { display: block; font-size: 10px; color: var(--c-gold-d); letter-spacing: .06em; }
 .k-banner .txt strong { font-size: 15px; font-weight: 700; }
 .k-banner .pin { color: var(--c-gold); }
+.account-switch {
+  border: 1px solid #d8c99f; background: rgba(255,255,255,.58);
+  color: var(--c-forest-800); border-radius: 10px; padding: 7px 10px;
+  font: inherit; font-size: 11px; font-weight: 700; line-height: 1.05;
+  cursor: pointer; white-space: nowrap;
+}
+.account-switch small {
+  display: block; margin-top: 2px; font-size: 7.5px; font-weight: 550;
+  letter-spacing: .08em; opacity: .65;
+}
 
 /* ============ Page & Sections ============ */
 .page { display: none; padding: 4px 16px 0; }
@@ -1095,9 +1105,11 @@ button { font-family: inherit; }
       </svg>
     </span>
     <span class="txt"><small>当前厨房 KITCHEN</small><strong id="kName">深圳 Shenzhen</strong></span>
-    <svg class="pin" width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6a2.5 2.5 0 0 1 0 5.5Z"/>
-    </svg>
+    <form method="post" action="/logout">
+      <button class="account-switch" type="submit" aria-label="退出并切换账号">
+        切换账号<small>SIGN OUT</small>
+      </button>
+    </form>
   </div>
 
   <!-- ================= PAGE: MENU ================= -->

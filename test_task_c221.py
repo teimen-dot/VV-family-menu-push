@@ -28,6 +28,12 @@ class RoleModelTests(unittest.TestCase):
             self.assertFalse(app.post_path_allowed("worker", path), path)
             self.assertTrue(app.post_path_allowed("owner", path), path)
 
+    def test_worker_can_add_existing_ingredient_by_name_but_not_write_menus(self):
+        self.assertIn("/api/pantry/add-by-name", app.PANTRY_POST_PATHS)
+        self.assertNotIn("/api/pantry/add-by-name", app.OWNER_ONLY_POST_PATHS)
+        self.assertTrue(app.post_path_allowed("worker", "/api/pantry/add-by-name"))
+        self.assertFalse(app.post_path_allowed("worker", "/api/tomorrow/confirm"))
+
     def test_read_only_post_endpoints_remain_available(self):
         for path in ("/api/dishes/availability", "/api/dishes/recommend"):
             self.assertTrue(app.post_path_allowed("worker", path))

@@ -78,7 +78,6 @@ _AUTH_LOCK = threading.Lock()
 OWNER_ONLY_POST_PATHS = {
     "/api/ingredients/add",
     "/api/ingredients/update-english",
-    "/api/pantry/add-by-name",
     "/api/tomorrow/add",
     "/api/tomorrow/remove",
     "/api/tomorrow/replace",
@@ -102,6 +101,7 @@ OWNER_ONLY_POST_PATHS = {
 PANTRY_POST_PATHS = {
     "/api/pantry/submit",
     "/api/pantry/add",
+    "/api/pantry/add-by-name",
     "/api/pantry/same-as-last",
     "/api/pantry/update_status",
     "/api/pantry/remove",
@@ -4100,7 +4100,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(result)
 
         elif path == "/api/pantry/add-by-name":
-            # Owner-only exact-name creation and pantry add in one transaction.
+            # Existing ingredients are a normal pantry write for Owner and Worker.
+            # Creating a new ingredient remains Owner-only.
             raw_name = body.get("ingredient_name", "")
             requested_name = _normalize_ingredient_name(raw_name)
             if not requested_name:
@@ -4126,6 +4127,13 @@ class AppHandler(BaseHTTPRequestHandler):
                         display_name, existing["name_en"]
                     )
                 else:
+                    if role != "owner":
+                        conn.rollback()
+                        self.send_json({
+                            "ok": False,
+                            "error": "仅主人可创建新食材；工人可录入已有食材",
+                        }, 403)
+                        return
                     ingredient_id = normalized_name.casefold().replace(" ", "_")
                     occupied = conn.execute(
                         "SELECT 1 FROM ingredients WHERE ingredient_id = ?", (ingredient_id,)
@@ -4156,22 +4164,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 ensure_ingredient_classification(conn, ingredient_id, display_name)
 
                 active = conn.execute(
-                    "SELECT 1 FROM current_pantry "
+                    "SELECT quantity_level FROM current_pantry "
                     "WHERE location = ? AND ingredient_id = ? AND is_active = 1",
                     (loc, ingredient_id),
                 ).fetchone()
                 if active:
-                    conn.execute(
-                        "UPDATE current_pantry SET quantity_level=?, updated_at=datetime('now') "
-                        "WHERE location=? AND ingredient_id=? AND is_active=1",
-                        (quantity_level, loc, ingredient_id),
-                    )
                     conn.commit()
                     self.send_json({
                         "ok": True, "already_in_pantry": True,
                         "ingredient_id": ingredient_id, "name_cn": display_name,
                         "name_en": display_name_en,
-                        "corrected_from": corrected_from, "quantity_level": quantity_level,
+                        "corrected_from": corrected_from,
+                        "quantity_level": active["quantity_level"],
                     })
                     return
 
