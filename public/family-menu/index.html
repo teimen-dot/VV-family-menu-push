@@ -513,6 +513,14 @@ button { font-family: inherit; }
 }
 .big-add small { font-size: 10px; font-weight: 500; letter-spacing: .12em; opacity: .65; }
 .big-add svg { width: 18px; height: 18px; }
+.pending-panel { margin: 0 0 18px; padding: 14px; border: 1px solid #e6c98f; border-radius: var(--r-md); background: #fff8e9; }
+.pending-panel h3 { margin: 0 0 10px; font-size: 14px; }
+.pending-row { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid #eadfc4; }
+.pending-row:first-of-type { border-top: 0; }
+.pending-row small { color: var(--c-mut); }
+.pending-actions { display: flex; gap: 8px; }
+.pending-actions button { flex: 1; border: 1px solid #d8c99f; border-radius: 9px; background: #fff; padding: 8px; color: var(--c-forest-800); font-weight: 700; }
+.pending-badge { display: inline-block; margin-left: 6px; padding: 2px 6px; border-radius: 6px; background: #fff0cf; color: #8a5d08; font-size: 9px; }
 
 .chip-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
 .chip {
@@ -1728,6 +1736,11 @@ button { font-family: inherit; }
            stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
       <span>添加食材 <small>ADD INGREDIENT</small></span>
     </button>
+
+    <section class="pending-panel" id="pendingPanel" hidden>
+      <h3>待整理食材 <small>PENDING INGREDIENTS</small></h3>
+      <div id="pendingList"></div>
+    </section>
 
     <div class="sec-head">
       <strong>常用食材</strong> <span>点击快速加入 Tap to add</span> <small>COMMON</small>
@@ -4080,8 +4093,9 @@ pickModal.addEventListener('click',
     const englishPending = !String(item.name_en || '').trim();
     const meta = recent ? `已用完 Used up · ${safe(String(item.updated_at || '').slice(0, 10))}`
       : safe(item.name_en || '英文待补 / English pending');
+    const pending = String(item.ingredient_id || '').startsWith('pending_');
     return `<div class="ing-row ${expiring ? 'is-expiring' : ''}" data-ingredient-id="${safe(item.ingredient_id)}" data-source="sqlite">
-      <div class="info"><h4>${safe(item.name_cn || item.ingredient_id)}${expiring ? '<span class="exp-badge">⏱ 快过期 EXP</span>' : ''}</h4><small>${meta}</small></div>
+      <div class="info"><h4>${safe(item.name_cn || item.ingredient_id)}${pending ? '<span class="pending-badge">待匹配 PENDING</span>' : ''}${expiring ? '<span class="exp-badge">⏱ 快过期 EXP</span>' : ''}</h4><small>${meta}</small></div>
       <div class="ops">${recent
         ? '<button class="mini-btn restock" type="button" data-action="restock">补货 Restock</button>'
         : `${englishPending ? '<button class="mini-btn" type="button" data-action="english">补英文 English</button>' : ''}<button class="mini-btn warn ${expiring ? 'marked' : ''}" type="button" data-action="expiring">${expiring ? '撤销快过期 Undo' : '标记快过期 Expiring'}</button><button class="mini-btn used-up" type="button" data-action="consume">已用完 Used up</button>`}
@@ -4166,7 +4180,39 @@ pickModal.addEventListener('click',
     renderPantry(data.pantry || {});
     renderDishes(data.dishes || []);
     renderHistory(data.history || [], data.history_stats || {}, data.location_label || data.location || '');
+    renderPending(data.role === 'owner' ? (data.pending_ingredients || []) : null);
   };
+
+  function renderPending(items) {
+    const panel = document.getElementById('pendingPanel');
+    const list = document.getElementById('pendingList');
+    if (!Array.isArray(items)) { panel.hidden = true; return; }
+    panel.hidden = items.length === 0;
+    list.innerHTML = items.map(item => `<div class="pending-row" data-pending-id="${safe(item.pending_id)}">
+      <strong>${safe(item.raw_input)} <span class="pending-badge">待匹配</span></strong>
+      <small>${item.detected_language === 'zh' ? '待补充英文' : '待补充中文'} · ${safe(item.pending_id)}</small>
+      <div class="pending-actions"><button type="button" data-pending-action="merge">合并到已有</button><button type="button" data-pending-action="complete">确认为标准</button></div>
+    </div>`).join('');
+  }
+
+  document.getElementById('pendingList').addEventListener('click', async event => {
+    const button = event.target.closest('[data-pending-action]');
+    if (!button) return;
+    const pendingId = button.closest('[data-pending-id]').dataset.pendingId;
+    try {
+      if (button.dataset.pendingAction === 'merge') {
+        const target = prompt('输入目标标准 ingredient_id');
+        if (!target?.trim()) return;
+        await phase3Post('/api/ingredients/pending/merge', {pending_id:pendingId,target_ingredient_id:target.trim(),aliases:[]});
+      } else {
+        const nameCn = prompt('标准中文名'); if (!nameCn?.trim()) return;
+        const nameEn = prompt('标准英文名'); if (!nameEn?.trim()) return;
+        const aliases = prompt('别名，逗号分隔（可留空）') || '';
+        await phase3Post('/api/ingredients/pending/complete', {pending_id:pendingId,name_cn:nameCn.trim(),name_en:nameEn.trim(),aliases:aliases.split(/[、,，;；]+/).map(value => value.trim()).filter(Boolean)});
+      }
+      await reloadLive('待整理食材已更新');
+    } catch (error) { toast(error.message); }
+  });
 
   pantrySearch.addEventListener('input', () => {
     const query = pantrySearch.value.trim().toLowerCase();

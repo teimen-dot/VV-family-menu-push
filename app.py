@@ -38,6 +38,10 @@ from inventory import (
     is_pantry_exempt_ingredient,
     ensure_ingredient_classification, ensure_inventory_taxonomy,
 )
+from ingredient_resolution import (
+    backfill_aliases, ensure_resolution_schema, list_pending,
+    merge_ingredient, register_alias, resolve_ingredient_input,
+)
 from menu_service import (
     get_menu_with_dishes, add_dish_to_menu, remove_dish_from_menu,
     replace_dish_in_menu, lock_dish, ai_fill_menu, repair_menu,
@@ -78,6 +82,8 @@ _AUTH_LOCK = threading.Lock()
 OWNER_ONLY_POST_PATHS = {
     "/api/ingredients/add",
     "/api/ingredients/update-english",
+    "/api/ingredients/pending/merge",
+    "/api/ingredients/pending/complete",
     "/api/tomorrow/add",
     "/api/tomorrow/remove",
     "/api/tomorrow/replace",
@@ -807,33 +813,13 @@ def _next_dish_id(conn):
 
 
 def _sync_dish_ingredients(conn, dish_id, ingredient_names):
-    ingredient_rows = conn.execute(
-        "SELECT ingredient_id, name_cn, name_en, aliases FROM ingredients"
-    ).fetchall()
+    ensure_resolution_schema(conn)
+    backfill_aliases(conn)
     ingredient_ids = []
     for raw_name in _dish_json_list(ingredient_names):
-        matched, normalized_name, _ = resolve_ingredient_name(raw_name, ingredient_rows)
-        if matched:
-            ingredient_id = matched["ingredient_id"]
-        else:
-            ingredient_id = normalized_name.casefold().replace(" ", "_")
-            if conn.execute(
-                "SELECT 1 FROM ingredients WHERE ingredient_id = ?", (ingredient_id,)
-            ).fetchone():
-                ingredient_id = "custom_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
-            conn.execute(
-                "INSERT INTO ingredients "
-                "(ingredient_id, name_cn, name_en, aliases, category, ingredient_group, is_common) "
-                "VALUES (?, ?, '', '[]', '', 'other', 0)",
-                (ingredient_id, normalized_name),
-            )
-            ensure_ingredient_classification(conn, ingredient_id, normalized_name)
-            ingredient_rows.append({
-                "ingredient_id": ingredient_id,
-                "name_cn": normalized_name,
-                "name_en": "",
-                "aliases": "[]",
-            })
+        resolved = resolve_ingredient_input(conn, raw_name)
+        ingredient_id = resolved["ingredient_id"]
+        ensure_ingredient_classification(conn, ingredient_id, resolved["name_cn"])
         if ingredient_id not in ingredient_ids:
             ingredient_ids.append(ingredient_id)
 
@@ -843,6 +829,18 @@ def _sync_dish_ingredients(conn, dish_id, ingredient_names):
         [(dish_id, ingredient_id) for ingredient_id in ingredient_ids],
     )
     return ingredient_ids
+
+
+def _resolve_dish_vegetables(conn, vegetable_names):
+    resolved_ids = []
+    for raw_name in _dish_json_list(vegetable_names):
+        if raw_name in ("any_available_leafy_vegetable", "任意可用绿叶菜"):
+            ingredient_id = "any_available_leafy_vegetable"
+        else:
+            ingredient_id = resolve_ingredient_input(conn, raw_name)["ingredient_id"]
+        if ingredient_id not in resolved_ids:
+            resolved_ids.append(ingredient_id)
+    return resolved_ids
 
 
 def save_family_dish(payload, dish_id=None):
@@ -866,6 +864,9 @@ def save_family_dish(payload, dish_id=None):
 
     conn = get_db()
     try:
+        ensure_resolution_schema(conn)
+        backfill_aliases(conn)
+        vegetables = _resolve_dish_vegetables(conn, vegetables)
         if not conn.execute(
             "SELECT 1 FROM categories WHERE id = ? AND active = 1", (category_id,)
         ).fetchone():
@@ -951,7 +952,19 @@ def save_family_dish(payload, dish_id=None):
             event_type = "dish_added"
             event_details = {"name_cn": name_cn, "name_en": name_en, "via": "family_ui"}
 
-        _sync_dish_ingredients(conn, dish_id, ingredient_names)
+        resolved_ingredient_ids = _sync_dish_ingredients(conn, dish_id, ingredient_names)
+        pending_count = 0
+        if resolved_ingredient_ids:
+            marks = ",".join("?" for _ in resolved_ingredient_ids)
+            pending_count = conn.execute(
+                f"SELECT COUNT(*) FROM pending_ingredients WHERE status='pending' "
+                f"AND pending_id IN ({marks})", tuple(resolved_ingredient_ids)
+            ).fetchone()[0]
+        if pending_count:
+            conn.execute(
+                "UPDATE dishes SET ingredients_pending=1,needs_review=1 WHERE id=?",
+                (dish_id,),
+            )
         _increment_catalog_version(conn)
         conn.commit()
     finally:
@@ -1400,6 +1413,9 @@ def build_family_ui_readonly_tabs(location, as_of=None):
             preference_rows = conn.execute(
                 "SELECT dish_id, vv_confirm_count FROM dish_preference_stats"
             ).fetchall()
+            ingredient_catalog_rows = conn.execute(
+                "SELECT ingredient_id,name_cn FROM ingredients"
+            ).fetchall()
         finally:
             conn.close()
 
@@ -1409,6 +1425,9 @@ def build_family_ui_readonly_tabs(location, as_of=None):
     preference_counts = {
         row["dish_id"]: int(row["vv_confirm_count"] or 0)
         for row in preference_rows
+    }
+    ingredient_display_names = {
+        row["ingredient_id"]: row["name_cn"] for row in ingredient_catalog_rows
     }
 
     def decoded_list(value):
@@ -1439,7 +1458,10 @@ def build_family_ui_readonly_tabs(location, as_of=None):
             "created_at": dish.get("created_at") or "",
             "meal_tags": decoded_list(dish.get("meal_tags")),
             "protein_types": decoded_list(dish.get("protein_types")),
-            "vegetables": decoded_list(dish.get("vegetables")),
+            "vegetables": [
+                ingredient_display_names.get(value, value)
+                for value in decoded_list(dish.get("vegetables"))
+            ],
             "cooking_methods": decoded_list(dish.get("cooking_methods")),
             "custom_tags": custom_tags,
             "carb_type": dish.get("carb_type"),
@@ -1629,7 +1651,7 @@ def build_family_tabs_bootstrap(location="shenzhen", role="owner", now=None):
     if location not in LOCATIONS:
         location = "shenzhen"
     now = now or datetime.now(FAMILY_TIMEZONE)
-    return {
+    payload = {
         "readonly": False,
         "role": role,
         "location": location,
@@ -1638,6 +1660,15 @@ def build_family_tabs_bootstrap(location="shenzhen", role="owner", now=None):
         "breakfast_drinks": get_breakfast_drinks(),
         **build_family_ui_readonly_tabs(location, as_of=now.date()),
     }
+    if role == "owner":
+        conn = get_db()
+        try:
+            payload["pending_ingredients"] = list_pending(conn)
+        except sqlite3.OperationalError:
+            payload["pending_ingredients"] = []
+        finally:
+            conn.close()
+    return payload
 
 
 def render_family_menu_readonly(role="owner", location="shenzhen"):
@@ -3958,6 +3989,15 @@ class AppHandler(BaseHTTPRequestHandler):
                     self.send_json({"error": "not found"}, 404)
         elif path == "/api/ingredients":
             self.send_json(get_all_ingredients())
+        elif path == "/api/ingredients/pending":
+            if role != "owner":
+                self.send_forbidden()
+                return
+            conn = get_db()
+            try:
+                self.send_json({"ok": True, "items": list_pending(conn)})
+            finally:
+                conn.close()
         elif path == "/api/breakfast-drinks":
             self.send_json(get_breakfast_drinks())
         elif path == "/api/tomorrow":
@@ -4100,11 +4140,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(result)
 
         elif path == "/api/pantry/add-by-name":
-            # Existing ingredients are a normal pantry write for Owner and Worker.
-            # Creating a new ingredient remains Owner-only.
             raw_name = body.get("ingredient_name", "")
-            requested_name = _normalize_ingredient_name(raw_name)
-            if not requested_name:
+            if not _normalize_ingredient_name(raw_name):
                 self.send_json({"ok": False, "error": "ingredient_name required"}, 400)
                 return
             loc = body.get("location", location)
@@ -4114,49 +4151,21 @@ class AppHandler(BaseHTTPRequestHandler):
             conn = get_db()
             try:
                 conn.execute("BEGIN IMMEDIATE")
-                ingredient_rows = conn.execute(
-                    "SELECT ingredient_id, name_cn, name_en, aliases FROM ingredients"
-                ).fetchall()
-                existing, normalized_name, corrected_from = resolve_ingredient_name(raw_name, ingredient_rows)
-
-                created = False
-                if existing:
-                    ingredient_id = existing["ingredient_id"]
-                    display_name = existing["name_cn"]
-                    display_name_en = resolve_ingredient_english_name(
-                        display_name, existing["name_en"]
-                    )
-                else:
-                    if role != "owner":
-                        conn.rollback()
-                        self.send_json({
-                            "ok": False,
-                            "error": "仅主人可创建新食材；工人可录入已有食材",
-                        }, 403)
-                        return
-                    ingredient_id = normalized_name.casefold().replace(" ", "_")
-                    occupied = conn.execute(
-                        "SELECT 1 FROM ingredients WHERE ingredient_id = ?", (ingredient_id,)
-                    ).fetchone()
-                    if occupied:
-                        ingredient_id = "custom_" + datetime.now().strftime("%Y%m%d%H%M%S%f")
-                    display_name_en = resolve_ingredient_english_name(normalized_name)
-                    conn.execute(
-                        "INSERT INTO ingredients "
-                        "(ingredient_id, name_cn, name_en, aliases, category, ingredient_group, is_common) "
-                        "VALUES (?, ?, ?, '[]', '', 'other', 0)",
-                        (ingredient_id, normalized_name, display_name_en),
-                    )
-                    display_name = normalized_name
-                    created = True
+                backfill_aliases(conn)
+                resolved = resolve_ingredient_input(conn, raw_name)
+                ingredient_id = resolved["ingredient_id"]
+                display_name = resolved["name_cn"]
+                display_name_en = resolved["name_en"]
+                resolution_status = resolved["resolution_status"]
 
                 if is_pantry_exempt_ingredient(ingredient_id, display_name):
                     conn.commit()
                     self.send_json({
                         "ok": True, "pantry_exempt": True,
-                        "already_in_pantry": False, "created": created,
+                        "already_in_pantry": False,
                         "ingredient_id": ingredient_id, "name_cn": display_name,
                         "name_en": display_name_en,
+                        "resolution_status": resolution_status,
                         "message": "家庭常备，默认有货",
                     })
                     return
@@ -4174,7 +4183,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         "ok": True, "already_in_pantry": True,
                         "ingredient_id": ingredient_id, "name_cn": display_name,
                         "name_en": display_name_en,
-                        "corrected_from": corrected_from,
+                        "resolution_status": resolution_status,
                         "quantity_level": active["quantity_level"],
                     })
                     return
@@ -4197,14 +4206,17 @@ class AppHandler(BaseHTTPRequestHandler):
                 conn.commit()
                 _invalidate_availability_cache(loc)
                 log_event("pantry_item_added", "current_pantry", ingredient_id, {
-                    "location": loc, "created": created, "submitted_by": "owner",
+                    "location": loc, "resolution_status": resolution_status,
+                    "submitted_by": username,
                 })
                 self.send_json({
-                    "ok": True, "already_in_pantry": False, "created": created,
+                    "ok": True, "already_in_pantry": False,
                     "ingredient_id": ingredient_id, "name_cn": display_name,
                     "name_en": display_name_en,
                     "english_pending": not bool(display_name_en),
-                    "corrected_from": corrected_from, "quantity_level": quantity_level,
+                    "resolution_status": resolution_status,
+                    "pending": resolution_status == "pending",
+                    "quantity_level": quantity_level,
                     "pantry_count": pantry_count,
                 })
             except Exception:
@@ -4234,12 +4246,81 @@ class AppHandler(BaseHTTPRequestHandler):
                     "UPDATE ingredients SET name_en=? WHERE ingredient_id=?",
                     (name_en, ingredient_id),
                 )
+                ensure_resolution_schema(conn)
+                register_alias(conn, ingredient_id, name_en, "name_en")
                 conn.commit()
                 log_event("ingredient_english_updated", "ingredient", ingredient_id, {
                     "name_cn": row["name_cn"], "name_en": name_en,
                 })
                 self.send_json({"ok": True, "ingredient_id": ingredient_id,
                                 "name_cn": row["name_cn"], "name_en": name_en})
+            finally:
+                conn.close()
+
+        elif path == "/api/ingredients/pending/merge":
+            source_id = str(body.get("pending_id") or "").strip()
+            target_id = str(body.get("target_ingredient_id") or "").strip()
+            aliases = _dish_json_list(body.get("aliases"))
+            if not source_id or not target_id:
+                self.send_json({"ok": False, "error": "pending_id and target_ingredient_id required"}, 400)
+                return
+            conn = get_db()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                pending = conn.execute(
+                    "SELECT raw_input FROM pending_ingredients WHERE pending_id=? AND status='pending'",
+                    (source_id,),
+                ).fetchone()
+                if not pending:
+                    self.send_json({"ok": False, "error": "pending ingredient not found"}, 404)
+                    return
+                counts = merge_ingredient(conn, source_id, target_id)
+                register_alias(conn, target_id, pending["raw_input"], "merged_pending")
+                for alias in aliases:
+                    register_alias(conn, target_id, alias, "owner")
+                conn.commit()
+                invalidate_catalog_cache()
+                self.send_json({"ok": True, "ingredient_id": target_id, "counts": counts})
+            except ValueError as error:
+                conn.rollback()
+                self.send_json({"ok": False, "error": str(error)}, 409)
+            finally:
+                conn.close()
+
+        elif path == "/api/ingredients/pending/complete":
+            pending_id = str(body.get("pending_id") or "").strip()
+            name_cn = _normalize_ingredient_name(body.get("name_cn"))
+            name_en = " ".join(str(body.get("name_en") or "").strip().split())
+            aliases = _dish_json_list(body.get("aliases"))
+            if not pending_id or not name_cn or not name_en:
+                self.send_json({"ok": False, "error": "pending_id, name_cn and name_en required"}, 400)
+                return
+            conn = get_db()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                pending = conn.execute(
+                    "SELECT raw_input FROM pending_ingredients WHERE pending_id=? AND status='pending'",
+                    (pending_id,),
+                ).fetchone()
+                if not pending:
+                    self.send_json({"ok": False, "error": "pending ingredient not found"}, 404)
+                    return
+                conn.execute("UPDATE ingredients SET name_cn=?,name_en=?,aliases=? WHERE ingredient_id=?",
+                             (name_cn, name_en, json.dumps(aliases, ensure_ascii=False), pending_id))
+                conn.execute("UPDATE pending_ingredients SET status='canonical',updated_at=datetime('now') "
+                             "WHERE pending_id=?", (pending_id,))
+                register_alias(conn, pending_id, pending["raw_input"], "original")
+                register_alias(conn, pending_id, name_cn, "name_cn")
+                register_alias(conn, pending_id, name_en, "name_en")
+                for alias in aliases:
+                    register_alias(conn, pending_id, alias, "owner")
+                conn.commit()
+                invalidate_catalog_cache()
+                self.send_json({"ok": True, "ingredient_id": pending_id,
+                                "name_cn": name_cn, "name_en": name_en})
+            except ValueError as error:
+                conn.rollback()
+                self.send_json({"ok": False, "error": str(error)}, 409)
             finally:
                 conn.close()
 

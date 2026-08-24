@@ -237,14 +237,8 @@ class MarkupTests(unittest.TestCase):
     def test_worker_existing_pantry_name_path_and_new_ingredient_guard(self):
         self.assertTrue(app.post_path_allowed("worker", "/api/pantry/add-by-name"))
         self.assertFalse(app.post_path_allowed("worker", "/api/tomorrow/confirm"))
-        with open(os.path.join(os.path.dirname(__file__), "app.py"), encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertIn('if role != "owner":', source)
-        self.assertIn("仅主人可创建新食材；工人可录入已有食材", source)
-        self.assertNotIn(
-            'UPDATE current_pantry SET quantity_level=?, updated_at=datetime(\'now\')',
-            source,
-        )
+        self.assertIn("/api/ingredients/pending/merge", app.OWNER_ONLY_POST_PATHS)
+        self.assertIn("/api/ingredients/pending/complete", app.OWNER_ONLY_POST_PATHS)
 
     def test_breakpoints_and_owner_controls(self):
         self.assertIn("@media(min-width:1024px){.dishes-page .dish-grid{grid-template-columns:repeat(3", app.CSS)
