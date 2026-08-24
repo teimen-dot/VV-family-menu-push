@@ -666,29 +666,24 @@ def set_menu_meal_confirmed(menu_id, meal_type, confirmed, triggered_by="vivian"
     return True, ("此餐已确认" if confirmed else "此餐已恢复编辑"), all_confirmed, False, []
 
 
-def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None):
+def _dish_blocked_for_menu(conn, menu_id, dish_id, ignore_item_id=None, meal_type=None):
     if not conn.execute("SELECT 1 FROM menus WHERE id=?", (menu_id,)).fetchone():
         return True
     params = [menu_id, dish_id]
+    meal_sql = ""
+    if meal_type is not None:
+        meal_sql = " AND meal_type=?"
+        params.append(meal_type)
     ignore_sql = ""
     if ignore_item_id is not None:
         ignore_sql = " AND id<>?"
         params.append(ignore_item_id)
     duplicate = conn.execute(
-        "SELECT 1 FROM menu_items WHERE menu_id=? AND dish_id=?" + ignore_sql + " LIMIT 1",
+        "SELECT 1 FROM menu_items WHERE menu_id=? AND dish_id=?" + meal_sql + ignore_sql + " LIMIT 1",
         tuple(params),
     ).fetchone()
-    if duplicate:
-        rice = conn.execute(
-            "SELECT 1 FROM dishes WHERE id=? AND category_id='staple_carb' "
-            "AND name_cn LIKE '%饭%'",
-            (dish_id,),
-        ).fetchone()
-        if rice:
-            return False
-    # Cross-day locking is disabled. Only a duplicate inside the same menu is
-    # blocked for owner add/search-replace/cycle actions. Rice is the explicit
-    # household exception: lunch and dinner may use the same rice dish.
+    # The same dish may appear in different meals on one day. Only a duplicate
+    # inside the target meal is blocked for owner add/search-replace actions.
     return bool(duplicate)
 
 
@@ -703,7 +698,7 @@ def add_dish_to_menu(menu_id, dish_id, meal_type):
             return False
         if meal_type == "supper" and active["category_id"] != "one_pot_meal":
             return False
-        if _dish_blocked_for_menu(conn, menu_id, dish_id):
+        if _dish_blocked_for_menu(conn, menu_id, dish_id, meal_type=meal_type):
             return False
         # 获取当前最大 sort_order
         row = conn.execute(
@@ -767,8 +762,11 @@ def replace_dish_in_menu(menu_id, menu_item_id, new_dish_id):
             return False, "菜品不存在"
         if item["meal_type"] == "supper" and active["category_id"] != "one_pot_meal":
             return False, "宵夜只能选择一餐型菜品"
-        if _dish_blocked_for_menu(conn, menu_id, new_dish_id, ignore_item_id=menu_item_id):
-            return False, "该菜品已在当前菜单中"
+        if _dish_blocked_for_menu(
+            conn, menu_id, new_dish_id,
+            ignore_item_id=menu_item_id, meal_type=item["meal_type"],
+        ):
+            return False, "该菜品已在当前餐次中"
 
         # 替换菜品，新菜自动锁定为 owner 选择
         conn.execute(

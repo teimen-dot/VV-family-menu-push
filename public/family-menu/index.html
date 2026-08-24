@@ -2459,11 +2459,17 @@ function moItem(d) {
 function renderMoList(q) {
   const curId  = swapRow ? swapRow.dataset.dishId : '';
   const curCat = swapRow ? swapRow.dataset.cat : '';
+  const targetCard = addTarget?.card || swapRow?.closest('.meal-card');
+  const occupiedInMeal = new Set(
+    [...(targetCard?.querySelectorAll('.dish-row') || [])]
+      .map(row => row.dataset.dishId)
+      .filter(id => id && id !== curId)
+  );
   const query  = q.trim().toLowerCase();
   const hit = d => !query || d.zh.includes(q.trim()) || d.en.toLowerCase().includes(query);
 
   const supperOnly = addTarget?.card?.dataset.mtype === '宵夜' || swapRow?.closest('.meal-card')?.dataset.mtype === '宵夜';
-  const visible = DISH_DB.filter(d => d.id !== curId && hit(d) &&
+  const visible = DISH_DB.filter(d => d.id !== curId && !occupiedInMeal.has(d.id) && hit(d) &&
     (!supperOnly || d.categoryId === 'one_pot_meal'));
   const stableDishSort = (a, b) => (b.vvConfirmCount || 0) - (a.vvConfirmCount || 0) ||
     String(b.createdAt || '').localeCompare(String(a.createdAt || '')) ||
@@ -4179,6 +4185,10 @@ pickModal.addEventListener('click',
       const result = await phase3Post('/api/pantry/add-by-name', {
         ingredient_name: name, location: window.currentFamilyLocation(), submitted_by: 'owner'
       });
+      if (result.already_in_pantry) {
+        await reloadLive(`该食材已在当前库存：${result.name_cn || name}`);
+        return;
+      }
       pantrySearch.value = '';
       await reloadLive(result.english_pending
         ? `已加入 ${name}，英文待补`

@@ -225,8 +225,8 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
                         break
 
         occupied = {row["dish_id"] for row in conn.execute(
-            "SELECT dish_id FROM menu_items WHERE menu_id=? AND id<>?",
-            (menu_id, menu_item_id)
+            "SELECT dish_id FROM menu_items WHERE menu_id=? AND meal_type=? AND id<>?",
+            (menu_id, current["meal_type"], menu_item_id)
         ).fetchall()}
         rotation = get_rotation_context(
             current["date"], current["location"] or location, exclude_menu_id=menu_id
@@ -4379,7 +4379,7 @@ class AppHandler(BaseHTTPRequestHandler):
         elif path == "/api/tomorrow/add":
             ok = add_dish_to_menu(body["menu_id"], body["dish_id"], body["meal_type"])
             self.send_json(
-                {"ok": ok, "error": None if ok else "菜品不可添加或已在当前菜单中"},
+                {"ok": ok, "error": None if ok else "菜品不可添加或已在当前餐次中"},
                 200 if ok else 409,
             )
 

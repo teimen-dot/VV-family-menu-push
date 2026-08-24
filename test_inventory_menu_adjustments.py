@@ -786,7 +786,9 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertEqual(set(seen), {f"dish_rice_{index}" for index in range(1, 5)})
         self.assertNotIn("dish_rice_0", seen)
         conn = db.get_db()
-        self.assertFalse(menu_service._dish_blocked_for_menu(conn, 1, "dish_rice_2", 1))
+        self.assertFalse(menu_service._dish_blocked_for_menu(
+            conn, 1, "dish_rice_2", 1, meal_type="lunch"
+        ))
         conn.close()
 
     def test_breakfast_dim_sum_names_join_companion_rotation_pool(self):

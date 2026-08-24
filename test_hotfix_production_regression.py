@@ -79,6 +79,29 @@ class LegacyDinersRegressionTests(unittest.TestCase):
         conn.close()
         self.assertEqual(menu_service._get_effective_diners_count(menu_id=1), 4)
 
+    def test_same_dish_is_allowed_in_different_meals_but_not_twice_in_one_meal(self):
+        conn = db.get_db()
+        conn.execute(
+            "INSERT INTO dishes (id,name_cn,name_en,is_active) "
+            "VALUES ('dish_shared','金蒜牛肉粒','Golden Garlic Diced Beef',1)"
+        )
+        conn.execute(
+            "INSERT INTO menu_items (menu_id,dish_id,meal_type,sort_order) "
+            "VALUES (1,'dish_shared','dinner',1)"
+        )
+        conn.commit()
+        conn.close()
+
+        self.assertTrue(menu_service.add_dish_to_menu(1, "dish_shared", "lunch"))
+        self.assertFalse(menu_service.add_dish_to_menu(1, "dish_shared", "lunch"))
+        conn = db.get_db()
+        rows = conn.execute(
+            "SELECT meal_type FROM menu_items WHERE menu_id=1 AND dish_id='dish_shared' "
+            "ORDER BY meal_type"
+        ).fetchall()
+        conn.close()
+        self.assertEqual([row["meal_type"] for row in rows], ["dinner", "lunch"])
+
 
 class SessionTests(unittest.TestCase):
     def test_signed_session_is_30_days_and_restart_safe(self):
@@ -197,6 +220,13 @@ class SessionTests(unittest.TestCase):
 
 
 class MarkupTests(unittest.TestCase):
+    def test_family_ui_reports_existing_pantry_item_instead_of_added(self):
+        index_path = os.path.join(os.path.dirname(__file__), "public", "family-menu", "index.html")
+        with open(index_path, encoding="utf-8") as handle:
+            html = handle.read()
+        self.assertIn("if (result.already_in_pantry)", html)
+        self.assertIn("该食材已在当前库存", html)
+
     def test_breakpoints_and_owner_controls(self):
         self.assertIn("@media(min-width:1024px){.dishes-page .dish-grid{grid-template-columns:repeat(3", app.CSS)
         self.assertIn("@media(min-width:1400px){.dishes-page .dish-grid{grid-template-columns:repeat(4", app.CSS)
