@@ -19,7 +19,13 @@ from datetime import date, datetime, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse, parse_qs
-from db import get_db, log_event, init_db
+from db import (
+    get_db,
+    get_config,
+    set_config,
+    log_event,
+    init_db,
+)
 from inventory import (
     get_latest_inventory, submit_inventory,
     get_available_ingredient_ids, check_shortages,
@@ -40,6 +46,7 @@ from menu_service import (
     replace_dish_in_menu, lock_dish, ai_fill_menu, repair_menu,
     confirm_menu, generate_and_store_menu, ensure_tomorrow_menu,
     get_tomorrow_date, revert_to_draft, push_menu, _load_pool,
+    _get_effective_diners_count,
 )
 from rule_engine import (
     NutritionAnalyzer, filter_candidates_for_slot,
@@ -56,6 +63,12 @@ PWA_DIR = os.path.join(BASE_DIR, "pwa", "family")
 PUBLIC_DIR = os.path.join(BASE_DIR, "public")
 LOCATIONS = {"shenzhen": "深圳 Shenzhen", "hongkong": "香港 Hong Kong"}
 SESSION_COOKIE_NAME = "__Host-family_session"
+
+
+def session_cookie_name():
+    if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true":
+        return "family_preview_session"
+    return SESSION_COOKIE_NAME
 SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
 LOGIN_WINDOW_SECONDS = 5 * 60
 LOGIN_MAX_FAILURES = 8
@@ -73,7 +86,6 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/revert",
     "/api/tomorrow/push",
     "/api/tomorrow/diners",
-    "/api/tomorrow/meal-mode",
     "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal",
     "/api/tomorrow/cycle-replace",
@@ -92,9 +104,79 @@ PANTRY_POST_PATHS = {
 MENU_DRAFT_WRITE_PATHS = {
     "/api/tomorrow/add", "/api/tomorrow/remove", "/api/tomorrow/replace",
     "/api/tomorrow/ai-fill", "/api/tomorrow/repair", "/api/tomorrow/diners",
-    "/api/tomorrow/meal-mode", "/api/tomorrow/meal-note",
+    "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal", "/api/tomorrow/cycle-replace",
 }
+
+BREAKFAST_DRINKS_CONFIG_KEY = "tomorrow_breakfast_drinks_v1"
+BREAKFAST_DRINKS_DEFAULT = [
+    {"id": "soy_milk_plain", "name_cn": "经典原味豆浆", "name_en": "Classic Soy Milk"},
+    {"id": "red_bean_peanut_oat_soy_milk", "name_cn": "红豆花生燕麦豆浆", "name_en": "Red Bean Peanut Oat Soy Milk"},
+    {"id": "red_bean_black_rice_soy_milk", "name_cn": "红豆黑米豆浆", "name_en": "Red Bean Black Rice Soy Milk"},
+    {"id": "red_bean_peanut_jujube_soy_milk", "name_cn": "红豆花生红枣豆浆", "name_en": "Red Bean Peanut Jujube Soy Milk"},
+    {"id": "red_bean_oat_soy_milk", "name_cn": "红豆燕麦豆浆", "name_en": "Red Bean Oat Soy Milk"},
+    {"id": "three_bean_soy_milk", "name_cn": "三色豆浆", "name_en": "Three-bean Soy Milk"},
+]
+
+
+def _normalize_breakfast_drink_entries(raw_items):
+    if raw_items is None:
+        raw_items = []
+    if not isinstance(raw_items, list):
+        raise ValueError("drinks must be a list")
+
+    normalized = []
+    used_ids = set()
+    for index, item in enumerate(raw_items, start=1):
+        if not isinstance(item, dict):
+            raise ValueError(f"item {index} must be an object")
+
+        name_cn = str(item.get("name_cn", "")).strip()
+        name_en = str(item.get("name_en", "")).strip()
+        if not name_cn and not name_en:
+            continue
+
+        drink_id = str(item.get("id", "")).strip() or f"drink_{index}"
+        if not drink_id or drink_id.lower() == "none":
+            drink_id = f"drink_{index}"
+
+        base_id = drink_id
+        suffix = 1
+        while drink_id in used_ids:
+            suffix += 1
+            drink_id = f"{base_id}_{suffix}"
+        used_ids.add(drink_id)
+
+        normalized.append({
+            "id": drink_id,
+            "name_cn": name_cn,
+            "name_en": name_en,
+        })
+
+    if not normalized:
+        return [dict(entry) for entry in BREAKFAST_DRINKS_DEFAULT]
+    return normalized
+
+
+def _get_breakfast_drinks():
+    raw = get_config(BREAKFAST_DRINKS_CONFIG_KEY)
+    if raw is None:
+        set_config(
+            BREAKFAST_DRINKS_CONFIG_KEY,
+            json.dumps(BREAKFAST_DRINKS_DEFAULT, ensure_ascii=False),
+            "Default breakfast drinks (preview)",
+        )
+        return [dict(entry) for entry in BREAKFAST_DRINKS_DEFAULT]
+
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, json.JSONDecodeError):
+        return [dict(entry) for entry in BREAKFAST_DRINKS_DEFAULT]
+
+    try:
+        return _normalize_breakfast_drink_entries(parsed)
+    except ValueError:
+        return [dict(entry) for entry in BREAKFAST_DRINKS_DEFAULT]
 
 INGREDIENT_TYPO_MAP = {
     "窝笋": "莴笋",
@@ -350,7 +432,7 @@ def session_from_cookie(cookie_header):
         cookie.load(cookie_header)
     except Exception:
         return None, None
-    morsel = cookie.get(SESSION_COOKIE_NAME)
+    morsel = cookie.get(session_cookie_name())
     if not morsel:
         return None, None
     token = morsel.value
@@ -697,13 +779,13 @@ def get_menu_diners(menu_id):
 
 
 def update_menu_diners(menu_id, diners_list):
-    """更新菜单的用餐成员"""
+    """更新菜单的用餐成员，不改变菜单人数。"""
     conn = get_db()
     try:
         diners_json = json.dumps(diners_list, ensure_ascii=False)
         conn.execute(
-            "UPDATE menus SET diners = ?, diners_count = ?, updated_at = datetime('now') WHERE id = ?",
-            (diners_json, len(diners_list), menu_id)
+            "UPDATE menus SET diners = ?, updated_at = datetime('now') WHERE id = ?",
+            (diners_json, menu_id)
         )
         conn.commit()
         log_event("diners_updated", "menu", str(menu_id), {"diners": diners_list})
@@ -712,8 +794,8 @@ def update_menu_diners(menu_id, diners_list):
         conn.close()
 
 
-def get_menu_meal_mode(menu_id):
-    """V11: 获取菜单的 meal_mode 和 banquet_total_diners"""
+def _get_frozen_ui_meal_mode(menu_id):
+    """Read legacy mode fields only to keep the frozen server-rendered UI stable."""
     conn = get_db()
     try:
         row = conn.execute(
@@ -726,25 +808,6 @@ def get_menu_meal_mode(menu_id):
             "meal_mode": row["meal_mode"] or "daily",
             "banquet_total_diners": row["banquet_total_diners"],
         }
-    finally:
-        conn.close()
-
-
-def update_menu_meal_mode(menu_id, meal_mode, banquet_total_diners=None):
-    """V11: 更新菜单的 meal_mode 和 banquet_total_diners"""
-    conn = get_db()
-    try:
-        conn.execute(
-            "UPDATE menus SET meal_mode = ?, banquet_total_diners = ?, "
-            "updated_at = datetime('now') WHERE id = ?",
-            (meal_mode, banquet_total_diners if meal_mode == "banquet" else None, menu_id)
-        )
-        conn.commit()
-        log_event("meal_mode_updated", "menu", str(menu_id), {
-            "meal_mode": meal_mode,
-            "banquet_total_diners": banquet_total_diners,
-        })
-        return True
     finally:
         conn.close()
 
@@ -1081,6 +1144,12 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hira
 .meal-act-btn{font-size:15px;padding:8px 14px;border-radius:8px;border:1px solid #d4c9b8;background:#faf7f2;color:#5a4a3a;cursor:pointer;white-space:nowrap;min-height:44px;display:flex;align-items:center}
 .meal-act-btn:active{background:#e8e0d4}
 .meal-items{padding:0 14px 8px}
+.drink-manager{margin:4px 0 0;border-top:1px solid #e8e0d4;padding-top:10px}
+.drink-row{display:grid;grid-template-columns:1fr 1fr auto auto auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid #f5f0e8}
+.drink-row:last-child{border-bottom:none}
+.drink-input{height:40px;padding:0 10px;border-radius:8px;border:1px solid #d4c9b8;background:#fff;color:#2c2620;font-size:14px}
+.drink-row-btn{width:36px;height:36px;border:1px solid #d4c9b8;background:#faf7f2;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#5a4a3a}
+.drink-empty{color:#a89888;padding:10px 0 2px;font-size:14px}
 .slot-hint{padding:9px 12px;font-size:14px;color:#856404;background:#fff7d6;border:1px solid #f0d98a;border-radius:8px;margin:0 14px 6px}
 .meal-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #f5f0e8;align-items:center}
 .meal-item:last-child{border-bottom:none}
@@ -1568,7 +1637,10 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     tomorrow = get_tomorrow_date()
     is_owner = role == "owner"
     if is_owner:
-        ensure_tomorrow_menu(location)
+        try:
+            ensure_tomorrow_menu(location)
+        except Exception as exc:
+            print(f"[WARN] 预览页面跳过明日菜单生成: {exc}")
     menu = get_menu_with_dishes(tomorrow, location)
     if not menu.get("exists"):
         return tomorrow_preview_head("菜单 · Menu", "tomorrow", location) + \
@@ -1578,10 +1650,10 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
     menu_diners = get_menu_diners(menu["menu_id"])
     if not menu_diners:
         menu_diners = [d["id"] for d in all_diners if d["default_attends"]]
-    meal_mode_info = get_menu_meal_mode(menu["menu_id"])
+    meal_mode_info = _get_frozen_ui_meal_mode(menu["menu_id"])
     meal_mode = meal_mode_info["meal_mode"]
     banquet_total = meal_mode_info["banquet_total_diners"] or 8
-    effective_diners = banquet_total if meal_mode == "banquet" else len(menu_diners)
+    effective_diners = _get_effective_diners_count(menu_id=menu["menu_id"])
 
     # Legacy combo rows are snapshots of whole meals, not individual dishes.
     # When rendering the live menu, only current dish records are actionable.
@@ -1696,6 +1768,11 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             for meal_type in ("breakfast", "lunch", "afternoon_snack", "dinner")
         ],
     ]
+    breakfast_drinks = _get_breakfast_drinks()
+    breakfast_drinks_json = json.dumps(
+        [dict(entry) for entry in breakfast_drinks],
+        ensure_ascii=False,
+    ).replace("</", "<\\/")
     for display_type, dishes, cn, en, color_class, target_menu_id, target_diners, target_notes, editable in meal_rows:
         meal_type = "dinner" if display_type == "today_dinner" else display_type
         count_html = (
@@ -1790,6 +1867,27 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
             )
         elif menu.get("push_status") == "success":
             push_notice = f'<section class="attention-banner"><div>{bilingual("菜单已确认并推送", "Menu confirmed and pushed")}</div></section>'
+    breakfast_drinks_section = ""
+    if is_owner:
+        current_drink_count = len(breakfast_drinks)
+        count_badge = bilingual(f"{current_drink_count} 项", f"{current_drink_count} items")
+        breakfast_drinks_section = (
+            '<section class="card">'
+            f'<div class="section-label"><span>{bilingual("早餐饮品", "Breakfast drinks")}</span>'
+            f'<small>{count_badge}</small></div>'
+            '<div id="breakfastDrinkList" class="drink-manager"></div>'
+            '<div style="display:flex;gap:8px;margin-top:8px;align-items:center">'
+            '<button class="btn btn-outline" type="button" onclick="addBreakfastDrink()">'
+            f'{bilingual("添加豆浆", "Add drink")}</button>'
+            '<button class="btn btn-primary" type="button" id="saveBreakfastDrinksBtn" onclick="saveBreakfastDrinks()" disabled>'
+            f'{bilingual("保存饮品顺序", "Save drinks")}</button>'
+            '</div>'
+            '<p style="margin-top:8px;color:#a89888;font-size:12px">'
+            f'{bilingual("支持自定义名称并拖动/按钮调整顺序（此功能仅调试预览可写）", "Editable names and reorder support (preview write only)")}'
+            '</p>'
+            '</section>'
+        )
+
     owner_action_bar = ""
     desktop_action_bar = ""
     if is_owner:
@@ -1825,7 +1923,7 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 <div class="banquet-count" {banquet_hidden}><span>{bilingual('家宴总人数','Total diners')}</span><div class="banquet-stepper">{f'<button type="button" onclick="adjustBanquet(-1)" aria-label="减少人数">−</button>' if is_owner else ''}<output id="banquetTotal">{banquet_total}</output>{f'<button type="button" onclick="adjustBanquet(1)" aria-label="增加人数">＋</button>' if is_owner else ''}</div></div></section>
 <section class="nutrition-card"><div class="nutrition-heading"><div><small>{bilingual('营养概览','Nutrition overview')}</small><h2>{bilingual(nutrition_title_cn,nutrition_title_en)}</h2></div>
 <span>{bilingual(f'{pending_count} 项待补',f'{pending_count} item{"s" if pending_count != 1 else ""} needed')}</span></div>{nutrition_rows}</section>{desktop_action_bar}</aside>
-<div class="menu-content">{"".join(meal_sections)}</div></div></main>
+<div class="menu-content">{breakfast_drinks_section}{"".join(meal_sections)}</div></div></main>
 {owner_action_bar}
 """
     if not is_owner:
@@ -1854,8 +1952,110 @@ def render_tomorrow_reference_preview(role="owner", location="shenzhen"):
 <div class="dish-picker-results" id="dishSearchResults"></div><div class="modal-actions"><button class="secondary-button" onclick="closeDishSearch()">{bilingual('取消','Cancel')}</button></div></div></div>
 <div class="snack-bar" id="snackBar"></div><script>
 let menuId={menu['menu_id']},currentLoc='{location}',selectedDiners={json.dumps(menu_diners)},banquetTotal={banquet_total},mealNotesByMenu={meal_notes_by_menu_json},noteMenuId=null,noteMealType=null,mealDinerMenuId=null,mealDinerSelection=[],dinerOptions={diner_options_json},searchMode={{menuId:null,meal:null,replaceId:null,currentDishId:null,categoryId:null}},searchTimer;
+let hasUnsavedChanges=false;
+let breakfastDrinks={breakfast_drinks_json};
+let breakfastDrinksSnapshot=JSON.stringify(breakfastDrinks);
 function snack(msg){{let b=document.getElementById('snackBar');b.textContent=msg;b.classList.add('show');setTimeout(()=>b.classList.remove('show'),1800)}}
 function pairMarkup(zh,en){{return '<span class="bilingual-pair"><span class="lang-zh">'+zh+'</span><span class="lang-en">'+en+'</span></span>'}}
+function escapeText(value){{value=value==null?'':String(value);return value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}}
+function markBreakfastDrinksDirtyState() {{
+  let changed = JSON.stringify(breakfastDrinks) !== breakfastDrinksSnapshot;
+  let button = document.getElementById('saveBreakfastDrinksBtn');
+  if (button) button.disabled = !changed;
+  hasUnsavedChanges = changed;
+}}
+function renderBreakfastDrinkList() {{
+  let container = document.getElementById('breakfastDrinkList');
+  if (!container) return;
+  if (!breakfastDrinks.length) {{
+    container.innerHTML = '<div class="drink-empty">'+pairMarkup('暂无饮品','No drinks')+'</div>';
+    return;
+  }}
+  const rows = [];
+  for (let i = 0; i < breakfastDrinks.length; i++) {{
+    const drink = breakfastDrinks[i] || {{}};
+    const nameCn = escapeText(drink.name_cn || '');
+    const nameEn = escapeText(drink.name_en || '');
+    const upDisabled = i === 0 ? ' disabled' : '';
+    const downDisabled = i === breakfastDrinks.length - 1 ? ' disabled' : '';
+    rows.push(
+      '<div class="drink-row" data-index="' + i + '"><input class="drink-input" value="' + nameCn + '" onblur="updateBreakfastDrinkName(' + i + ',\\'cn\\',this.value)" placeholder="中文名称 / Chinese name"/>' +
+      '<input class="drink-input" value="' + nameEn + '" onblur="updateBreakfastDrinkName(' + i + ',\\'en\\',this.value)" placeholder="英文名称 / English name"/>' +
+      '<button class="drink-row-btn" type="button" onclick="moveBreakfastDrink(' + i + ',-1)"' + upDisabled + '>↑</button>' +
+      '<button class="drink-row-btn" type="button" onclick="moveBreakfastDrink(' + i + ',1)"' + downDisabled + '>↓</button>' +
+      '<button class="drink-row-btn" type="button" onclick="removeBreakfastDrink(' + i + ')">×</button></div>'
+    );
+  }}
+  container.innerHTML = rows.join('');
+  markBreakfastDrinksDirtyState();
+}}
+function updateBreakfastDrinkName(index, field, value) {{
+  if (!breakfastDrinks[index]) return;
+  if (field === 'cn') {{
+    breakfastDrinks[index] = Object.assign({{}}, breakfastDrinks[index], {{name_cn: value}});
+  }} else {{
+    breakfastDrinks[index] = Object.assign({{}}, breakfastDrinks[index], {{name_en: value}});
+  }}
+  markBreakfastDrinksDirtyState();
+}}
+function moveBreakfastDrink(index, delta) {{
+  let target = index + delta;
+  if (target < 0 || target >= breakfastDrinks.length) return;
+  const moved = breakfastDrinks.splice(index, 1)[0];
+  breakfastDrinks.splice(target, 0, moved);
+  renderBreakfastDrinkList();
+}}
+function addBreakfastDrink() {{
+  breakfastDrinks.push({{id: 'drink_' + Date.now(), name_cn: '', name_en: ''}});
+  renderBreakfastDrinkList();
+  hasUnsavedChanges = true;
+  setTimeout(function () {{
+    const rows = document.querySelectorAll('#breakfastDrinkList .drink-row');
+    const target = rows[rows.length - 1];
+    if (target) {{
+      const input = target.querySelector('input');
+      if (input) {{
+        input.focus();
+      }}
+    }}
+  }}, 0);
+}}
+function removeBreakfastDrink(index) {{
+  if (breakfastDrinks.length <= 1) {{
+    snack('至少保留一项饮品 At least one drink');
+    return;
+  }}
+  if (!confirm('确认删除该行？\\nDelete this drink?')) return;
+  breakfastDrinks.splice(index, 1);
+  renderBreakfastDrinkList();
+}}
+async function saveBreakfastDrinks() {{
+  let button = document.getElementById('saveBreakfastDrinksBtn');
+  if (!button || button.disabled) return;
+  let payload = breakfastDrinks.map((item,index) => {{
+    return Object.assign({{}}, item, {{
+      id: item.id || 'drink_' + (index + 1),
+      name_cn: (item.name_cn || '').trim(),
+      name_en: (item.name_en || '').trim()
+    }});
+  }}).filter(item => item.name_cn || item.name_en);
+  if (!payload.length) {{
+    snack('至少保留一项有内容的饮品 At least one non-empty drink');
+    return;
+  }}
+  button.disabled = true;
+  try {{
+    let result = await postJSON('/api/breakfast-drinks', {{drinks: payload}});
+    breakfastDrinks = result.drinks || payload;
+    breakfastDrinksSnapshot = JSON.stringify(breakfastDrinks);
+    renderBreakfastDrinkList();
+    snack('饮品配置已保存 Drinks saved');
+  }} catch (error) {{
+    snack(error.message);
+    button.disabled = JSON.stringify(breakfastDrinks) !== breakfastDrinksSnapshot;
+  }}
+}}
+renderBreakfastDrinkList();
 async function requestJSON(path,options){{let response;try{{response=await fetch(path,options)}}catch(e){{throw new Error('网络连接失败 Network error')}}let data;try{{data=await response.json()}}catch(e){{throw new Error('服务器返回无效响应 Invalid server response')}}if(!response.ok||data.ok===false)throw new Error(data.error||data.message||('请求失败 HTTP '+response.status));return data}}
 function postJSON(path,payload){{return requestJSON(path,{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(payload)}})}}
 async function toggleDiner(id){{let next=selectedDiners.includes(id)?selectedDiners.filter(v=>v!==id):selectedDiners.concat(id);if(!next.length){{snack('至少保留一名用餐成员 Keep at least one diner');return}}try{{await postJSON('/api/tomorrow/diners',{{menu_id:menuId,diners:next,location:currentLoc}});location.reload()}}catch(e){{snack(e.message)}}}}
@@ -1915,7 +2115,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
     # V11: 获取 Meal Mode
     meal_mode_info = {"meal_mode": "daily", "banquet_total_diners": None}
     if menu.get("menu_id"):
-        meal_mode_info = get_menu_meal_mode(menu["menu_id"])
+        meal_mode_info = _get_frozen_ui_meal_mode(menu["menu_id"])
     meal_mode = meal_mode_info["meal_mode"]
     banquet_total = meal_mode_info["banquet_total_diners"] or 8
 
@@ -1924,7 +2124,7 @@ def render_tomorrow(role="owner", location="shenzhen"):
     menu_validation = {"meal_slots": {}, "warnings": []}
     if menu.get("exists") and menu.get("menu_id"):
         try:
-            effective_diners = banquet_total if meal_mode == "banquet" else len(menu_diners)
+            effective_diners = _get_effective_diners_count(menu_id=menu["menu_id"])
             menu_validation = validate_menu_meals(menu, effective_diners)
             menu_warnings = menu_validation["warnings"]
         except Exception:
@@ -3365,24 +3565,26 @@ class AppHandler(BaseHTTPRequestHandler):
         self.send_response(303)
         self.send_header("Location", location)
         self.send_header("Cache-Control", "no-store")
+        secure_cookie = "" if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true" else "; Secure"
         if session_id:
             self.send_header(
                 "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}={session_id}; Path=/; Max-Age={SESSION_TTL_SECONDS}; Secure; HttpOnly; SameSite=Lax",
+                f"{session_cookie_name()}={session_id}; Path=/; Max-Age={SESSION_TTL_SECONDS}{secure_cookie}; HttpOnly; SameSite=Lax",
             )
         elif clear_session:
             self.send_header(
                 "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; Secure; HttpOnly; SameSite=Lax",
+                f"{session_cookie_name()}=; Path=/; Max-Age=0{secure_cookie}; HttpOnly; SameSite=Lax",
             )
         self.end_headers()
 
     def send_session_refresh_header(self):
         refreshed = getattr(self, "_session_refresh", None)
         if refreshed:
+            secure_cookie = "" if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true" else "; Secure"
             self.send_header(
                 "Set-Cookie",
-                f"{SESSION_COOKIE_NAME}={refreshed}; Path=/; Max-Age={SESSION_TTL_SECONDS}; Secure; HttpOnly; SameSite=Lax",
+                f"{session_cookie_name()}={refreshed}; Path=/; Max-Age={SESSION_TTL_SECONDS}{secure_cookie}; HttpOnly; SameSite=Lax",
             )
 
     def send_login_page(self, error=""):
@@ -3504,6 +3706,8 @@ class AppHandler(BaseHTTPRequestHandler):
             self.send_json(get_categories())
         elif path == "/api/diners":
             self.send_json(get_all_diners())
+        elif path == "/api/breakfast-drinks":
+            self.send_json(_get_breakfast_drinks())
         else:
             self.send_error(404, "Not Found")
 
@@ -3935,8 +4139,8 @@ class AppHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/menu/diners":
             diners = body.get("diners")
-            if not isinstance(diners, list) or not diners:
-                self.send_json({"ok": False, "error": "至少保留一名用餐成员"}, 400)
+            if not isinstance(diners, list):
+                self.send_json({"ok": False, "error": "diners must be a list"}, 400)
                 return
             diners = list(dict.fromkeys(str(value) for value in diners))
             valid_diner_ids = {item["id"] for item in get_all_diners()}
@@ -3957,18 +4161,32 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "menu location mismatch"}, 403)
                 return
             ok = update_menu_diners(body["menu_id"], diners)
-            if ok and menu_row["status"] == "draft":
-                try:
-                    from menu_service import reconcile_meal_for_diners
-                    reconcile_meal_for_diners(body["menu_id"], location=location)
-                except Exception:
-                    pass
             self.send_json({"ok": ok})
+
+        elif path == "/api/breakfast-drinks":
+            if os.environ.get("LOCAL_PREVIEW_UI", "").lower() != "true":
+                self.send_json({"ok": False, "error": "preview only"}, 404)
+                return
+            drinks = body.get("drinks")
+            if not isinstance(drinks, list):
+                self.send_json({"ok": False, "error": "drinks must be a list"}, 400)
+                return
+            try:
+                normalized = _normalize_breakfast_drink_entries(drinks)
+            except Exception as err:
+                self.send_json({"ok": False, "error": str(err)}, 400)
+                return
+            set_config(
+                BREAKFAST_DRINKS_CONFIG_KEY,
+                json.dumps(normalized, ensure_ascii=False),
+                "Updated by preview UI",
+            )
+            self.send_json({"ok": True, "drinks": normalized})
 
         elif path == "/api/tomorrow/diners":
             diners = body.get("diners")
-            if not isinstance(diners, list) or not diners:
-                self.send_json({"ok": False, "error": "至少保留一名用餐成员"}, 400)
+            if not isinstance(diners, list):
+                self.send_json({"ok": False, "error": "diners must be a list"}, 400)
                 return
             diners = list(dict.fromkeys(str(value) for value in diners))
             valid_diner_ids = {item["id"] for item in get_all_diners()}
@@ -3976,50 +4194,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "invalid diner"}, 400)
                 return
             ok = update_menu_diners(body["menu_id"], diners)
-            if ok:
-                # V10: Diners 变化后自动 Reconcile AI 菜品
-                try:
-                    from menu_service import reconcile_meal_for_diners
-                    reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(
-                        body["menu_id"], location=body.get("location", "shenzhen")
-                    )
-                    self.send_json({"ok": True, "reconciled": True, "message": reconcile_msg})
-                except Exception as e:
-                    self.send_json({"ok": True, "reconcile_error": str(e)})
-            else:
-                self.send_json({"ok": False})
-
-        elif path == "/api/tomorrow/meal-mode":
-            # V11: 设置 Meal Mode (daily/banquet) + banquet_total_diners
-            meal_mode = body.get("meal_mode", "daily")
-            banquet_total = body.get("banquet_total_diners")
-            if meal_mode not in ("daily", "banquet"):
-                self.send_json({"ok": False, "error": "invalid meal_mode"}, 400)
-                return
-            if meal_mode == "banquet":
-                try:
-                    banquet_total = int(banquet_total)
-                except (TypeError, ValueError):
-                    self.send_json({"ok": False, "error": "banquet_total_diners required"}, 400)
-                    return
-                if not 2 <= banquet_total <= 30:
-                    self.send_json({"ok": False, "error": "家宴人数必须为 2–30"}, 400)
-                    return
-            else:
-                banquet_total = None
-            ok = update_menu_meal_mode(body["menu_id"], meal_mode, banquet_total)
-            if ok:
-                # V11: Meal Mode 变化后自动 Reconcile
-                try:
-                    from menu_service import reconcile_meal_for_diners
-                    reconcile_ok, reconcile_msg, review = reconcile_meal_for_diners(
-                        body["menu_id"], location=body.get("location", "shenzhen")
-                    )
-                    self.send_json({"ok": True, "reconciled": True, "message": reconcile_msg})
-                except Exception as e:
-                    self.send_json({"ok": True, "reconcile_error": str(e)})
-            else:
-                self.send_json({"ok": False})
+            self.send_json({"ok": ok})
 
         else:
             self.send_error(404, "Not Found")
@@ -4140,7 +4315,13 @@ def main():
     validate_app_startup()
     init_db()
     # 确保明天菜单存在
-    ensure_tomorrow_menu("shenzhen")
+    if os.environ.get("LOCAL_PREVIEW_UI", "").lower() == "true":
+        try:
+            ensure_tomorrow_menu("shenzhen")
+        except Exception as exc:
+            print(f"[WARN] 预览模式下跳过明天菜单初始化: {exc}")
+    else:
+        ensure_tomorrow_menu("shenzhen")
     server = ThreadingHTTPServer((HOST, PORT), AppHandler)
     print(f"[OK] H5 应用已启动: http://{HOST}:{PORT}")
     try:

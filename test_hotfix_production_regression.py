@@ -66,7 +66,7 @@ class MarkupTests(unittest.TestCase):
              patch.object(app, "get_menu_with_dishes", return_value=menu), \
              patch.object(app, "get_all_diners", return_value=diners), \
              patch.object(app, "get_menu_diners", return_value=["vv"]), \
-             patch.object(app, "get_menu_meal_mode", return_value={"meal_mode": "daily", "banquet_total_diners": None}), \
+             patch.object(app, "_get_frozen_ui_meal_mode", return_value={"meal_mode": "daily", "banquet_total_diners": None}), \
              patch.object(app, "validate_menu_meals", return_value={"meal_slots": slots, "warnings": []}), \
              patch.object(app, "get_menu_purchase_requests", return_value=[]):
             owner_html = app.render_tomorrow("owner", "shenzhen")
@@ -103,7 +103,7 @@ class MarkupTests(unittest.TestCase):
              patch.object(app, "get_menu_with_dishes", return_value=menu), \
              patch.object(app, "get_all_diners", return_value=diners), \
              patch.object(app, "get_menu_diners", return_value=["vv"]), \
-             patch.object(app, "get_menu_meal_mode", return_value={"meal_mode": "daily", "banquet_total_diners": None}), \
+             patch.object(app, "_get_frozen_ui_meal_mode", return_value={"meal_mode": "daily", "banquet_total_diners": None}), \
              patch.object(app, "validate_menu_meals", return_value=validation):
             owner_html = app.render_tomorrow("owner", "shenzhen")
             worker_html = app.render_tomorrow("worker", "shenzhen")

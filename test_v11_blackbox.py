@@ -194,21 +194,21 @@ def test_b_preference_vs_available():
 
 
 # ============================================================
-# Test C: Grandma (婆婆) Diner Count
+# Test C: Member List Does Not Override Diner Count
 # ============================================================
 def test_c_grandma_diner():
-    print("\n=== Test C: Grandma Diner Count ===")
+    print("\n=== Test C: Member List Does Not Override Diner Count ===")
     test_date = get_test_date()
     cleanup_menu(test_date)
 
-    # Create a menu with Vivian, Sir, Grandma
+    # Keep four diners as the explicit count while the legacy member list has three.
     menu_id, review = generate_and_store_menu(test_date, "shenzhen", seed=42)
 
     conn = get_db()
     try:
         conn.execute(
             "UPDATE menus SET diners = ?, diners_count = ? WHERE id = ?",
-            (json.dumps(["vivian", "sir", "grandma"]), 3, menu_id)
+            (json.dumps(["vivian", "sir", "grandma"]), 4, menu_id)
         )
         conn.commit()
     finally:
@@ -216,7 +216,7 @@ def test_c_grandma_diner():
 
     # Verify effective diners count
     effective = _get_effective_diners_count(menu_id=menu_id)
-    test("C: Effective diners = 3 (with Grandma)", effective == 3,
+    test("C: Member list does not override diners_count", effective == 4,
          f"got {effective}")
 
     # Verify dinner target for 3 people
@@ -238,20 +238,20 @@ def test_c_grandma_diner():
 
 
 # ============================================================
-# Test D: Banquet Mode + Total Diners
+# Test D: Legacy Banquet Fields Do Not Override Diner Count
 # ============================================================
 def test_d_banquet_mode():
-    print("\n=== Test D: Banquet Mode + Total Diners ===")
+    print("\n=== Test D: Banquet Fields Do Not Override Diner Count ===")
     test_date = get_test_date()
     cleanup_menu(test_date)
 
     menu_id, review = generate_and_store_menu(test_date, "shenzhen", seed=42)
 
-    # Set to banquet mode with 8 total diners
+    # Historical mode data remains stored but must not affect diner-count rules.
     conn = get_db()
     try:
         conn.execute(
-            "UPDATE menus SET meal_mode = 'banquet', banquet_total_diners = 8 WHERE id = ?",
+            "UPDATE menus SET diners_count = 4, meal_mode = 'banquet', banquet_total_diners = 8 WHERE id = ?",
             (menu_id,)
         )
         conn.commit()
@@ -259,7 +259,7 @@ def test_d_banquet_mode():
         conn.close()
 
     effective = _get_effective_diners_count(menu_id=menu_id)
-    test("D: Banquet effective diners = 8", effective == 8,
+    test("D: Banquet fields do not override diners_count", effective == 4,
          f"got {effective}")
 
     # Verify meal_mode stored correctly
