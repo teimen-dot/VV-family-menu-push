@@ -60,6 +60,12 @@ class IngredientDictionaryTests(unittest.TestCase):
         rows[0]["status"] = "canonical"
         apply_rows(self.conn, rows)
         self.assertEqual(list_dictionary(self.conn)[0]["status"], "canonical")
+        self.assertEqual(self.conn.execute(
+            "SELECT value FROM config WHERE key='inventory_version_shenzhen'"
+        ).fetchone()[0], "2")
+        self.assertEqual(self.conn.execute(
+            "SELECT value FROM config WHERE key='inventory_version_hongkong'"
+        ).fetchone()[0], "2")
 
     def test_invalid_status_is_rejected(self):
         _, errors = validate_rows(self.conn, [{"ingredient_id": "maitake", "name_cn": "舞茸",

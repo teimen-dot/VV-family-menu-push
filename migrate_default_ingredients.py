@@ -91,6 +91,13 @@ def apply_default_ingredients(conn, dry_run=False):
             report["updated"].append(ingredient_id)
             report["defaults"].append({"ingredient_id": ingredient_id, "names": list(desired)})
 
+        for location in ("shenzhen", "hongkong"):
+            conn.execute(
+                "INSERT INTO config(key,value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET "
+                "value=CAST(CAST(value AS INTEGER)+1 AS TEXT)",
+                (f"inventory_version_{location}",),
+            )
+
         if dry_run:
             conn.rollback()
         else:

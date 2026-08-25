@@ -26,6 +26,15 @@ def _invalidate_runtime_caches():
     invalidate_catalog_cache()
 
 
+def _bump_inventory_versions(conn):
+    for location in ("shenzhen", "hongkong"):
+        conn.execute(
+            "INSERT INTO config(key,value) VALUES(?, '1') ON CONFLICT(key) DO UPDATE SET "
+            "value=CAST(CAST(value AS INTEGER)+1 AS TEXT)",
+            (f"inventory_version_{location}",),
+        )
+
+
 def _aliases(value):
     if isinstance(value, list):
         values = value
@@ -169,6 +178,7 @@ def apply_rows(conn, rows):
                 "status=excluded.status,updated_at=excluded.updated_at",
                 (ingredient_id, row["status"]),
             )
+        _bump_inventory_versions(conn)
         conn.commit()
     except Exception:
         conn.rollback()
@@ -385,6 +395,7 @@ def apply_authoritative_workbook(conn, rows, operations):
             register_alias(conn, ingredient_id, ingredient_id, "id")
         for ingredient_id, kind, text in ownership.values():
             register_alias(conn, ingredient_id, text, kind)
+        _bump_inventory_versions(conn)
         conn.commit()
     except Exception:
         conn.rollback()
