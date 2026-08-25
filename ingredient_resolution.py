@@ -132,6 +132,22 @@ def resolve_ingredient_input(conn, raw_input, allow_pending=True):
     if row:
         return {"ingredient_id": row["ingredient_id"], "name_cn": row["name_cn"],
                 "name_en": row["name_en"] or "", "resolution_status": "canonical"}
+    # A common English typing variation inserts/removes spaces or hyphens
+    # ("blue berry" / "blue-berry" / "blueberry").  Resolve it only when the
+    # compact Latin form has exactly one canonical owner; ambiguity stays pending.
+    if re.fullmatch(r"[a-z0-9\s-]+", key):
+        compact = re.sub(r"[\s-]+", "", key)
+        owners = {}
+        for alias in conn.execute(
+            "SELECT a.alias_key,a.ingredient_id,i.name_cn,i.name_en "
+            "FROM ingredient_aliases a JOIN ingredients i ON i.ingredient_id=a.ingredient_id"
+        ).fetchall():
+            if re.sub(r"[\s-]+", "", alias["alias_key"]) == compact:
+                owners[alias["ingredient_id"]] = alias
+        if len(owners) == 1:
+            matched = next(iter(owners.values()))
+            return {"ingredient_id": matched["ingredient_id"], "name_cn": matched["name_cn"],
+                    "name_en": matched["name_en"] or "", "resolution_status": "canonical"}
     pending = conn.execute(
         "SELECT p.pending_id,i.name_cn,i.name_en FROM pending_ingredients p "
         "JOIN ingredients i ON i.ingredient_id=p.pending_id "

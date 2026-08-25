@@ -24,6 +24,7 @@ from ingredient_dictionary import (
     create_preview as create_dictionary_preview,
     export_xlsx as export_dictionary_xlsx,
     list_dictionary,
+    list_pending_dictionary,
     parse_xlsx as parse_dictionary_xlsx,
 )
 
@@ -971,7 +972,7 @@ body {
 <div class="modal-overlay" id="ingredientDictionaryModal">
   <div class="modal modal-large">
     <h3>食材词典 Excel</h3>
-    <div class="dictionary-help">下载当前词典，在 Excel 中修改后上传。状态可填写 canonical（按库存判断）、default（默认食材，无需录入）或 rule（逻辑规则）。已有 ingredient_id 不可修改；新增食材请将 ID 留空。别名可用换行或逗号分隔。系统会先预检，确认后才整批写入。</div>
+    <div class="dictionary-help">下载当前词典，在 Excel 中修改后上传。第一张“食材词典”维护标准名称和别名；第二张“待匹配食材”可填写“合并到ingredient_id”，或填写完整中英文名确认成新食材。只读列不要修改，未处理行可保持不变。系统会先预检，确认后才整批写入。</div>
     <div class="dictionary-actions">
       <a class="btn-secondary" href="/api/ingredient_dictionary/export">下载当前 Excel</a>
       <button class="btn-secondary" type="button" onclick="document.getElementById('ingredientDictionaryFile').click()">上传修改后的 Excel</button>
@@ -1051,7 +1052,7 @@ async function previewIngredientDictionary(input) {
     ingredientDictionaryPreviewToken = result.preview_token;
     const counts = result.counts || {};
     box.className = 'dictionary-preview';
-    box.textContent = `预检通过\n新增：${counts.create || 0}\n修改：${counts.update || 0}\n无变化：${counts.unchanged || 0}`;
+    box.textContent = `预检通过\n词典新增：${counts.create || 0}\n词典修改：${counts.update || 0}\n词典无变化：${counts.unchanged || 0}\n待匹配合并：${counts.pending_merge || 0}\n待匹配新建：${counts.pending_create || 0}\n待处理保留：${counts.pending_unchanged || 0}`;
     document.getElementById('ingredientDictionaryCommit').hidden = false;
   } catch (error) {
     showToast('Excel 预检失败: ' + error.message, 'error');
@@ -1881,7 +1882,7 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         from db import get_db
         conn = get_db()
         try:
-            body = export_dictionary_xlsx(list_dictionary(conn))
+            body = export_dictionary_xlsx(list_dictionary(conn), list_pending_dictionary(conn))
         finally:
             conn.close()
         self.send_response(200)
@@ -1956,11 +1957,12 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             if len(encoded) > 12_000_000:
                 self._json_response(413, {"success": False, "error": "Excel 文件过大"})
                 return
-            rows = parse_dictionary_xlsx(base64.b64decode(encoded, validate=True))
+            rows, pending_rows = parse_dictionary_xlsx(
+                base64.b64decode(encoded, validate=True), include_pending=True)
             from db import get_db
             conn = get_db()
             try:
-                result = create_dictionary_preview(conn, rows)
+                result = create_dictionary_preview(conn, rows, pending_rows)
             finally:
                 conn.close()
             result["success"] = result["ok"]
@@ -1978,9 +1980,11 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             finally:
                 conn.close()
             _invalidate_menu_cache()
+            applied_count = len(applied["canonical"]) + len(applied["pending"])
             log_event("ingredient_dictionary_imported", "ingredient", "dictionary",
-                      {"rows": len(applied), "via": "photo_manager"})
-            self._json_response(200, {"success": True, "applied": len(applied)})
+                      {"rows": applied_count, "pending_rows": len(applied["pending"]),
+                       "via": "photo_manager"})
+            self._json_response(200, {"success": True, "applied": applied_count})
         except ValueError as error:
             self._json_response(409, {"success": False, "error": str(error)})
 
