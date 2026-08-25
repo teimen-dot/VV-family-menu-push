@@ -220,8 +220,17 @@ class Phase2RealTabsStaticTests(unittest.TestCase):
         self.assertIn("d.avail === 'ok' && d.fav ? 0", self.html)
         self.assertIn("b.vvConfirmCount", self.html)
         self.assertIn("availableFav", self.html)
-        self.assertIn("差少量 · 同类菜", self.html)
+        self.assertIn("/api/dishes/replacement-options", self.html)
+        self.assertIn("openSwap(row, 'same_class')", self.html)
+        self.assertIn("'差少量', 'ALMOST AVAILABLE'", self.html)
+        self.assertIn("'其他', 'OTHER · MISSING INGREDIENTS'", self.html)
         self.assertNotIn("const eggPenalty", self.html)
+
+    def test_next_meal_detail_does_not_repeat_hero_title(self):
+        hero = self.html.split('<div class="card meal-hero" id="heroCard">', 1)[1].split(
+            '<div class="mh-dishes">', 1
+        )[0]
+        self.assertNotIn('<div class="mh-title">', hero)
 
     def test_history_photos_are_center_cropped_and_almost_fill_is_explained(self):
         self.assertIn(".h-meal .hm-tiles .tile img", self.html)

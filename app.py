@@ -96,6 +96,7 @@ OWNER_ONLY_POST_PATHS = {
     "/api/tomorrow/meal-note",
     "/api/tomorrow/delete-meal",
     "/api/tomorrow/cycle-replace",
+    "/api/dishes/replacement-options",
     "/api/menu/diners",
     "/api/menu/diners-count",
     "/api/tomorrow/meal-state",
@@ -294,6 +295,100 @@ def get_next_available_same_class_dish(menu_id, menu_item_id, location):
         if chosen["id"] == current["dish_id"]:
             return None
         return {**chosen, "_pool_size": len(ring), "_cycle_wrapped": wrapped}
+    finally:
+        conn.close()
+
+
+def _replacement_slot(analysis, meal_type):
+    """Return the narrow rule-engine slot used by the manual same-class picker."""
+    if not analysis:
+        return None
+    roles = set(analysis.get("meal_roles", []))
+    if meal_type == "breakfast" and "egg_dish" in roles:
+        return "egg"
+    if meal_type == "breakfast" and "tofu_dish" in roles:
+        return "tofu"
+    slots = ([
+        "tofu", "egg", "porridge", "companion_staple", "coarse_grain",
+        "quick_soup", "slow_soup", "meat_main", "protein_main",
+        "vegetable", "staple",
+    ] if meal_type == "breakfast" else [
+        "quick_soup", "slow_soup", "meat_main", "protein_main",
+        "vegetable_dish", "staple",
+    ])
+    return next((slot for slot in slots if filter_candidates_for_slot([analysis], slot)), None)
+
+
+def get_replacement_options(menu_id, menu_item_id, location, mode="all"):
+    """Return meal-compatible replacement dishes grouped by pantry readiness."""
+    if mode not in {"same_class", "all"}:
+        raise ValueError("invalid replacement mode")
+    conn = get_db()
+    try:
+        current = conn.execute(
+            "SELECT mi.dish_id,mi.meal_type,d.category_id,m.location "
+            "FROM menu_items mi JOIN dishes d ON d.id=mi.dish_id "
+            "JOIN menus m ON m.id=mi.menu_id WHERE mi.id=? AND mi.menu_id=?",
+            (menu_item_id, menu_id),
+        ).fetchone()
+        if not current:
+            return None
+        pool = _load_pool()["dishes"]
+        analyzed = {dish["id"]: NutritionAnalyzer.analyze(dish) for dish in pool}
+        slot = _replacement_slot(analyzed.get(current["dish_id"]), current["meal_type"])
+        occupied = {row["dish_id"] for row in conn.execute(
+            "SELECT dish_id FROM menu_items WHERE menu_id=? AND meal_type=?",
+            (menu_id, current["meal_type"]),
+        ).fetchall()}
+        candidates = []
+        for dish in pool:
+            analysis = analyzed[dish["id"]]
+            if dish["id"] in occupied:
+                continue
+            if current["meal_type"] == "supper":
+                if analysis.get("category_id") != "one_pot_meal":
+                    continue
+            elif current["meal_type"] not in analysis.get("meal_tags", []):
+                continue
+            if mode == "same_class":
+                if slot and not filter_candidates_for_slot([analysis], slot):
+                    continue
+                if not slot and dish.get("category_id") != current["category_id"]:
+                    continue
+            candidates.append(dish)
+
+        if location and location != current["location"]:
+            raise ValueError("menu location mismatch")
+        target_location = current["location"]
+        availability = {
+            dish["id"]: check_dish_availability(dish["id"], target_location)
+            for dish in candidates
+        }
+        groups = {"available": [], "almost_available": [], "other": []}
+        for dish in candidates:
+            state = availability.get(dish["id"], {})
+            status = state.get("status", "incomplete")
+            item = {
+                "id": dish["id"], "status": status,
+                "missing_names": [row.get("name_cn", "") for row in state.get("missing_required", []) if row.get("name_cn")],
+                "missing_names_en": [row.get("name_en", "") for row in state.get("missing_required", []) if row.get("name_en")],
+            }
+            group = status if status in {"available", "almost_available"} else "other"
+            groups[group].append(item)
+        preference = {}
+        if candidates:
+            try:
+                preference = {row["id"]: int(row["vv_confirm_count"] or 0) for row in conn.execute(
+                    "SELECT id,vv_confirm_count FROM dishes WHERE id IN (%s)" % ",".join("?" * len(candidates)),
+                    [dish["id"] for dish in candidates],
+                ).fetchall()}
+            except sqlite3.OperationalError as exc:
+                if "no such column" not in str(exc).lower():
+                    raise
+        favorite = {dish["id"]: "favorite" in (dish.get("custom_tags") or []) for dish in candidates}
+        for rows in groups.values():
+            rows.sort(key=lambda item: (-int(favorite.get(item["id"], False)), -preference.get(item["id"], 0), item["id"]))
+        return {"mode": mode, "slot": slot, "meal_type": current["meal_type"], **groups}
     finally:
         conn.close()
 
@@ -4457,6 +4552,20 @@ class AppHandler(BaseHTTPRequestHandler):
                 body.get("location", location),
             )
             self.send_json(rec)
+
+        elif path == "/api/dishes/replacement-options":
+            try:
+                options = get_replacement_options(
+                    body["menu_id"], body["menu_item_id"],
+                    body.get("location", location), body.get("mode", "all"),
+                )
+            except (KeyError, ValueError) as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+                return
+            if options is None:
+                self.send_json({"ok": False, "error": "menu item not found"}, 404)
+            else:
+                self.send_json({"ok": True, **options})
 
         elif path == "/api/tomorrow/add":
             ok = add_dish_to_menu(body["menu_id"], body["dish_id"], body["meal_type"])

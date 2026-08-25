@@ -169,13 +169,7 @@ button { font-family: inherit; }
   width: 4px; background: var(--c-dinner); z-index: 1;
 }
 .meal-hero.is-skipped { opacity: .55; }
-.mh-top { display: flex; align-items: flex-start; gap: 12px; padding: 18px 18px 12px 20px; }
-.mh-title { flex: 1; }
-.mh-title h2 { font-size: 21px; font-weight: 800; letter-spacing: .02em; }
-.mh-title small {
-  font-size: 10px; color: var(--c-mut); letter-spacing: .18em;
-  text-transform: uppercase; display: block; margin-top: 3px;
-}
+.mh-top { display: flex; justify-content: flex-end; align-items: flex-start; gap: 12px; padding: 10px 18px 4px 20px; }
 .mh-actions { display: flex; gap: 6px; align-items: center; }
 .tag-btn {
   border: 0; border-radius: var(--r-pill); padding: 7px 13px;
@@ -761,6 +755,10 @@ button { font-family: inherit; }
 .mo-item .mo-info { flex: 1; min-width: 0; }
 .mo-item .mo-info strong { display: block; font-size: 14.5px; }
 .mo-item .mo-info small { font-size: 10.5px; color: var(--c-mut); }
+.mo-item .mo-info .mo-missing {
+  display: block; margin-top: 4px; color: var(--c-danger);
+  white-space: normal; overflow: visible; text-overflow: clip; line-height: 1.35;
+}
 .mo-item .d-badge { position: static; flex-shrink: 0; }
 .mo-empty { text-align: center; color: var(--c-mut); font-size: 13px; padding: 26px 0; }
 .mo-empty small { display: block; font-size: 10px; margin-top: 4px; letter-spacing: .08em; }
@@ -1126,10 +1124,6 @@ button { font-family: inherit; }
       <div class="card meal-hero" id="heroCard">
         <div class="mh-side">
           <div class="mh-top">
-            <div class="mh-title">
-              <h2>下一餐</h2>
-              <small>Next Meal</small>
-            </div>
             <div class="mh-actions">
               <button class="skip-btn" id="skipBtn">取消<small style="display:block;font-size:8px;letter-spacing:.08em;">CANCEL</small></button>
             </div>
@@ -2037,7 +2031,7 @@ button { font-family: inherit; }
 <div class="modal-mask" id="swapModal">
   <div class="modal">
     <div class="mo-head">
-      <div><strong>更换菜品</strong><small>Swap Dish</small></div>
+      <div><strong id="swapTitle">更换菜品</strong><small id="swapSubtitle">Swap Dish</small></div>
       <button class="mo-close" id="moClose" aria-label="close">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
              stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -2445,6 +2439,7 @@ const modal   = document.getElementById('swapModal');
 const moList  = document.getElementById('moList');
 const moInput = document.getElementById('moSearch');
 let swapRow = null;
+let swapOptions = null;
 
 function moItem(d) {
   const a = AVAIL_OF[d.avail] || AVAIL_OF.miss;
@@ -2459,6 +2454,17 @@ function moItem(d) {
   const small = document.createElement('small');
   small.textContent = d.en || '';
   info.append(strong, small);
+  if (d.missingNames?.length) {
+    const missing = document.createElement('small');
+    missing.className = 'mo-missing';
+    missing.textContent = '缺：' + d.missingNames.join('、');
+    info.appendChild(missing);
+  } else if (d.resolutionStatus === 'incomplete') {
+    const incomplete = document.createElement('small');
+    incomplete.className = 'mo-missing';
+    incomplete.textContent = '食材资料待完善';
+    info.appendChild(incomplete);
+  }
   const badge = document.createElement('span');
   badge.className = 'd-badge ' + a[2];
   badge.append(document.createTextNode(a[0]));
@@ -2481,16 +2487,26 @@ function renderMoList(q) {
   const query  = q.trim().toLowerCase();
   const hit = d => !query || d.zh.includes(q.trim()) || d.en.toLowerCase().includes(query);
 
-  const supperOnly = addTarget?.card?.dataset.mtype === '宵夜' || swapRow?.closest('.meal-card')?.dataset.mtype === '宵夜';
-  const visible = DISH_DB.filter(d => d.id !== curId && !occupiedInMeal.has(d.id) && hit(d) &&
-    (!supperOnly || d.categoryId === 'one_pot_meal'));
+  const optionRows = swapOptions ? [
+    ...swapOptions.available, ...swapOptions.almost_available, ...swapOptions.other
+  ] : [];
+  const allowed = swapOptions ? new Set(optionRows.map(item => item.id)) : null;
+  const optionById = new Map(optionRows.map(item => [item.id, item]));
+  const visible = DISH_DB.filter(d => d.id !== curId && !occupiedInMeal.has(d.id) && hit(d) && (!allowed || allowed.has(d.id)))
+    .map(d => {
+      const option = optionById.get(d.id) || {};
+      return {...d, avail: option.status === 'available' ? 'ok' : option.status === 'almost_available' ? 'low' : 'miss',
+        resolutionStatus: option.status, missingNames: option.missing_names || [], missingNamesEn: option.missing_names_en || []};
+    });
   const stableDishSort = (a, b) => (b.vvConfirmCount || 0) - (a.vvConfirmCount || 0) ||
     String(b.createdAt || '').localeCompare(String(a.createdAt || '')) ||
     a.zh.localeCompare(b.zh, 'zh-CN');
-  const scoped = addTarget ? visible : visible.filter(d => d.cat === curCat);
+  const scoped = visible;
   const availableFav = scoped.filter(d => d.avail === 'ok' && d.fav).sort(stableDishSort);
   const available = scoped.filter(d => d.avail === 'ok' && !d.fav).sort(stableDishSort);
   const almost = scoped.filter(d => d.avail === 'low').sort(stableDishSort);
+  const other = scoped.filter(d => d.avail === 'miss').sort((a, b) =>
+    (a.resolutionStatus === 'incomplete') - (b.resolutionStatus === 'incomplete') || stableDishSort(a, b));
 
   const fragment = document.createDocumentFragment();
   const addSection = (label, english, rows, plain = false) => {
@@ -2503,12 +2519,11 @@ function renderMoList(q) {
     fragment.appendChild(section);
     rows.forEach(dish => fragment.appendChild(moItem(dish)));
   };
-  if (availableFav.length) addSection('♥ 库存可做 · 收藏同类菜',
-    'AVAILABLE · FAVORITE · SAME CATEGORY', availableFav);
-  if (available.length) addSection(addTarget ? '✅ 当前食材可做' : '✅ 库存可做 · 同类菜',
-    addTarget ? 'AVAILABLE NOW' : 'AVAILABLE · SAME CATEGORY', available);
-  if (almost.length) addSection('差少量 · 同类菜', 'ALMOST · SAME CATEGORY', almost, true);
-  if (!availableFav.length && !available.length && !almost.length) {
+  if (availableFav.length) addSection('♥ 库存可做 · 收藏', 'AVAILABLE · FAVORITE', availableFav);
+  if (available.length) addSection('✅ 库存可做', 'AVAILABLE NOW', available);
+  if (almost.length) addSection('差少量', 'ALMOST AVAILABLE', almost, true);
+  if (other.length) addSection('其他', 'OTHER · MISSING INGREDIENTS', other, true);
+  if (!availableFav.length && !available.length && !almost.length && !other.length) {
     const empty = document.createElement('div');
     empty.className = 'mo-empty';
     empty.innerHTML = '没有匹配的菜品<small>NO MATCHING DISH</small>';
@@ -2517,23 +2532,40 @@ function renderMoList(q) {
   moList.replaceChildren(fragment);
 }
 
-function openSwap(row) {
+async function openSwap(row, mode = 'all') {
   swapRow = row;
+  swapOptions = null;
   moInput.value = '';
-  renderMoList('');
+  document.getElementById('swapTitle').textContent = mode === 'same_class' ? '同类更换' : '所有菜品';
+  document.getElementById('swapSubtitle').textContent = mode === 'same_class' ? 'Same Type' : 'All Meal-Compatible Dishes';
   modal.classList.add('open');
+  moList.innerHTML = '<div class="mo-empty">加载中<small>LOADING</small></div>';
+  try {
+    swapOptions = await writeJSON('/api/dishes/replacement-options', {
+      menu_id:Number(row.dataset.menuId), menu_item_id:Number(row.dataset.menuItemId),
+      location:window.currentFamilyLocation(), mode
+    });
+    renderMoList('');
+  } catch (error) { moList.innerHTML = '<div class="mo-empty">' + error.message + '</div>'; }
   setTimeout(() => moInput.focus(), 120);
 }
-function closeSwap() { modal.classList.remove('open'); swapRow = null; }
+function closeSwap() { modal.classList.remove('open'); swapRow = null; swapOptions = null; }
 
 document.addEventListener('click', async e => {
   const findBtn = e.target.closest('.op-btn.find');
-  if (findBtn) { e.stopPropagation(); openSwap(findBtn.closest('.dish-row')); return; }
+  if (findBtn) { e.stopPropagation(); openSwap(findBtn.closest('.dish-row'), 'all'); return; }
 
   const item = e.target.closest('.mo-item');
   if (item && swapRow && !addTarget) {
     const d = DISH_DB.find(x => x.id === item.dataset.dishId);
     if (!d) return;
+    const option = [...(swapOptions?.available || []), ...(swapOptions?.almost_available || []), ...(swapOptions?.other || [])]
+      .find(row => row.id === d.id);
+    if (option && option.status !== 'available') {
+      const detail = option.status === 'incomplete' ? '食材资料待完善' :
+        '仍缺少：' + ((option.missing_names || []).join('、') || '食材');
+      if (!confirm(detail + '\n\n仍然选择？')) return;
+    }
     try {
       await writeJSON('/api/tomorrow/replace', {
         menu_id:Number(swapRow.dataset.menuId),
@@ -3051,16 +3083,7 @@ document.addEventListener('click', async e => {
   const shuf = e.target.closest('.op-btn.shuf, .mh-dishes .op-btn:not(.find):not(.del)');
   if (shuf) {
     const row  = shuf.closest('.dish-row');
-    try {
-      const result = await writeJSON('/api/tomorrow/cycle-replace', {
-        menu_id:Number(row.dataset.menuId), menu_item_id:Number(row.dataset.menuItemId),
-        location:window.currentFamilyLocation()
-      });
-      const cycleMessage = result.cycle_wrapped
-        ? '本位置可换菜已轮换一遍，现从头继续'
-        : `已切换为：${result.dish?.name_cn || '新菜品'}`;
-      await reloadLiveData(result.replaced ? cycleMessage : (result.message || '暂无可换菜品'));
-    } catch (error) { toast(error.message); }
+    await openSwap(row, 'same_class');
     return;
   }
   /* 每餐操作按钮：备注 / 智能补充 / 添加（下一餐卡与餐卡通用） */

@@ -658,6 +658,44 @@ class DatabaseFeatureTests(unittest.TestCase):
 
         self.assertEqual(set(self._cycle_ids(1, 1, 6)), {"dish_coarse_a", "dish_coarse_b"})
 
+    def test_replacement_picker_keeps_porridge_narrow_and_all_mode_meal_compatible(self):
+        conn = db.get_db()
+        self._prepare_switch_inventory(conn)
+        for dish_id, carb_type, meal in (
+            ("porridge_current", "porridge", "breakfast"),
+            ("porridge_available", "porridge", "breakfast"),
+            ("rice_breakfast", "rice", "breakfast"),
+            ("porridge_dinner_only", "porridge", "dinner"),
+        ):
+            self._insert_switch_dish(
+                conn, dish_id, "staple_carb", ["staple"], meal=meal, carb_type=carb_type
+            )
+        conn.execute(
+            "INSERT INTO ingredients (ingredient_id,name_cn,name_en) VALUES ('missing','缺货','Missing')"
+        )
+        self._insert_switch_dish(
+            conn, "porridge_missing", "staple_carb", ["staple"], carb_type="porridge"
+        )
+        conn.execute("DELETE FROM dish_ingredients WHERE dish_id='porridge_missing'")
+        conn.execute(
+            "INSERT INTO dish_ingredients (dish_id,ingredient_id,required) VALUES ('porridge_missing','missing',1)"
+        )
+        self._insert_switch_menu(conn, 1, 1, "porridge_current")
+        conn.commit()
+        conn.close()
+        menu_service.invalidate_catalog_cache()
+
+        same = app.get_replacement_options(1, 1, "shenzhen", "same_class")
+        same_ids = {row["id"] for key in ("available", "almost_available", "other") for row in same[key]}
+        self.assertEqual(same["slot"], "porridge")
+        self.assertEqual(same_ids, {"porridge_available", "porridge_missing"})
+        self.assertEqual(same["other"][0]["missing_names"], ["缺货"])
+
+        all_options = app.get_replacement_options(1, 1, "shenzhen", "all")
+        all_ids = {row["id"] for key in ("available", "almost_available", "other") for row in all_options[key]}
+        self.assertIn("rice_breakfast", all_ids)
+        self.assertNotIn("porridge_dinner_only", all_ids)
+
     def test_direct_switch_vegetable_slot_stays_in_vegetable_mushroom_category(self):
         conn = db.get_db()
         self._prepare_switch_inventory(conn)
