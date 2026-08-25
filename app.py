@@ -1660,14 +1660,6 @@ def build_family_tabs_bootstrap(location="shenzhen", role="owner", now=None):
         "breakfast_drinks": get_breakfast_drinks(),
         **build_family_ui_readonly_tabs(location, as_of=now.date()),
     }
-    if role == "owner":
-        conn = get_db()
-        try:
-            payload["pending_ingredients"] = list_pending(conn)
-        except sqlite3.OperationalError:
-            payload["pending_ingredients"] = []
-        finally:
-            conn.close()
     return payload
 
 
