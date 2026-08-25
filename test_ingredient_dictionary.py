@@ -46,6 +46,15 @@ class IngredientDictionaryTests(unittest.TestCase):
         self.assertEqual(parsed[0]["ingredient_id"], "maitake")
         self.assertEqual(parsed[0]["name_cn"], "舞茸")
 
+    def test_unchanged_legacy_incomplete_rows_round_trip(self):
+        self.conn.execute("INSERT INTO ingredients(ingredient_id,name_cn,name_en,aliases) "
+                          "VALUES('legacy','旧食材','','[]')")
+        self.conn.commit()
+        rows = parse_xlsx(export_xlsx(list_dictionary(self.conn)))
+        results, errors = validate_rows(self.conn, rows)
+        self.assertFalse(errors)
+        self.assertTrue(all(row["action"] == "unchanged" for row in results))
+
     def test_preview_detects_version_change(self):
         preview = create_preview(self.conn, [{"ingredient_id": "maitake", "name_cn": "舞茸",
             "name_en": "Maitake Mushroom", "aliases": ["maitake mush", "hen of the woods"]}])

@@ -80,10 +80,10 @@ def _new_id(name_cn, name_en, occupied):
 def validate_rows(conn, rows):
     current = {row["ingredient_id"]: row for row in list_dictionary(conn)}
     occupied = set(current)
-    edited_ids = {str(row.get("ingredient_id") or "").strip() for row in rows}
     alias_owners = {row["alias_key"]: row["ingredient_id"] for row in conn.execute(
         "SELECT alias_key,ingredient_id FROM ingredient_aliases"
-    ).fetchall() if row["ingredient_id"] not in edited_ids}
+    ).fetchall()}
+    proposed_owners = {}
     results, errors = [], []
     seen_ids = set()
     for index, source in enumerate(rows, start=2):
@@ -92,8 +92,6 @@ def validate_rows(conn, rows):
         name_en = " ".join(str(source.get("name_en") or "").strip().split())
         aliases = _aliases(source.get("aliases"))
         row_errors = []
-        if not name_cn or not name_en:
-            row_errors.append("标准中文名和英文名均为必填")
         if ingredient_id and ingredient_id not in current:
             row_errors.append("ingredient_id 不存在；新增行请留空")
         if ingredient_id in seen_ids:
@@ -101,17 +99,22 @@ def validate_rows(conn, rows):
         if not ingredient_id:
             ingredient_id = _new_id(name_cn, name_en, occupied)
         seen_ids.add(ingredient_id)
-        for text in [name_cn, name_en, *aliases]:
-            key = normalize_key(text)
-            owner = alias_owners.get(key)
-            if owner and owner != ingredient_id:
-                row_errors.append(f"名称或别名“{text}”与表格中的 {owner} 冲突")
-            elif key:
-                alias_owners[key] = ingredient_id
         before = current.get(ingredient_id)
         action = "create" if not before else (
             "unchanged" if name_cn == before["name_cn"] and name_en == before["name_en"]
             and set(map(normalize_key, aliases)) == set(map(normalize_key, before["aliases"])) else "update")
+        # Legacy rows may be incomplete or ambiguous. An untouched exported row
+        # must remain round-trippable; strict checks apply only to actual edits.
+        if action != "unchanged":
+            if not name_cn or not name_en:
+                row_errors.append("标准中文名和英文名均为必填")
+            for text in [name_cn, name_en, *aliases]:
+                key = normalize_key(text)
+                owner = proposed_owners.get(key) or alias_owners.get(key)
+                if owner and owner != ingredient_id:
+                    row_errors.append(f"名称或别名“{text}”与 {owner} 冲突")
+                elif key:
+                    proposed_owners[key] = ingredient_id
         result = {"row": index, "ingredient_id": ingredient_id, "name_cn": name_cn,
                   "name_en": name_en, "aliases": aliases, "action": action,
                   "errors": row_errors}
