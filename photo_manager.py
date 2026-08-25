@@ -19,6 +19,13 @@ from photo_security import (
     PhotoValidationError, resolve_photo_path, safe_slug, validate_image_bytes,
 )
 from runtime_config import app_env, max_upload_bytes, photo_dir, server_host
+from ingredient_dictionary import (
+    commit_preview as commit_dictionary_preview,
+    create_preview as create_dictionary_preview,
+    export_xlsx as export_dictionary_xlsx,
+    list_dictionary,
+    parse_xlsx as parse_dictionary_xlsx,
+)
 
 # ========== 路径配置 ==========
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -331,6 +338,11 @@ body {
   transition: all 0.15s;
 }
 .btn-secondary:hover { border-color: #007aff; color: #007aff; }
+.dictionary-help { margin: 0 0 16px; padding: 12px; border-radius: 10px; background: #f0f7ff; color: #3a526b; font-size: 14px; }
+.dictionary-actions { display:flex; gap:10px; flex-wrap:wrap; }
+.dictionary-actions a { text-decoration:none; display:inline-flex; align-items:center; }
+.dictionary-preview { margin-top:14px; padding:12px; border-radius:10px; background:#f5f5f7; white-space:pre-wrap; font-size:13px; }
+.dictionary-errors { color:#c62828; max-height:220px; overflow:auto; }
 .search-box {
   max-width: 1200px;
   margin: 20px auto 0;
@@ -778,6 +790,7 @@ body {
       <div class="stats" id="stats">加载中...</div>
       <button class="btn-secondary" onclick="openCategoryManager()">管理分类</button>
       <button class="btn-secondary" onclick="openTagManager()">管理标签</button>
+      <button class="btn-secondary" onclick="openIngredientDictionary()">食材词典 Excel</button>
       <button class="btn-add" onclick="openAddModal()">+ 添加菜品</button>
     </div>
   </div>
@@ -954,6 +967,24 @@ body {
   </div>
 </div>
 
+<!-- Ingredient Dictionary Excel Modal -->
+<div class="modal-overlay" id="ingredientDictionaryModal">
+  <div class="modal modal-large">
+    <h3>食材词典 Excel</h3>
+    <div class="dictionary-help">下载当前词典，在 Excel 中修改后上传。已有 ingredient_id 不可修改；新增食材请将 ID 留空。别名可用换行或逗号分隔。系统会先预检，确认后才整批写入。</div>
+    <div class="dictionary-actions">
+      <a class="btn-secondary" href="/api/ingredient_dictionary/export">下载当前 Excel</a>
+      <button class="btn-secondary" type="button" onclick="document.getElementById('ingredientDictionaryFile').click()">上传修改后的 Excel</button>
+      <input id="ingredientDictionaryFile" type="file" accept=".xlsx" hidden onchange="previewIngredientDictionary(this)">
+    </div>
+    <div class="dictionary-preview" id="ingredientDictionaryPreview" hidden></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('ingredientDictionaryModal')">关闭</button>
+      <button class="btn-save" id="ingredientDictionaryCommit" onclick="commitIngredientDictionary()" hidden>确认导入</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -984,6 +1015,66 @@ let allCustomTags = [];
 let currentMealFilter = 'all';
 let currentCategoryFilter = 'all';
 let editingDish = null;
+let ingredientDictionaryPreviewToken = '';
+
+function openIngredientDictionary() {
+  ingredientDictionaryPreviewToken = '';
+  document.getElementById('ingredientDictionaryPreview').hidden = true;
+  document.getElementById('ingredientDictionaryCommit').hidden = true;
+  document.getElementById('ingredientDictionaryModal').classList.add('show');
+}
+
+async function previewIngredientDictionary(input) {
+  const file = input.files[0];
+  if (!file) return;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let binary = '';
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    const response = await fetch('/api/ingredient_dictionary/import-preview', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({xlsx_base64:btoa(binary)})
+    });
+    const result = await response.json();
+    const box = document.getElementById('ingredientDictionaryPreview');
+    box.hidden = false;
+    if (!response.ok || !result.ok) {
+      ingredientDictionaryPreviewToken = '';
+      document.getElementById('ingredientDictionaryCommit').hidden = true;
+      const errors = (result.errors || []).map(item => `第 ${item.row} 行：${item.message}`).join('\n');
+      box.className = 'dictionary-preview dictionary-errors';
+      box.textContent = errors || result.error || '预检失败';
+      return;
+    }
+    ingredientDictionaryPreviewToken = result.preview_token;
+    const counts = result.counts || {};
+    box.className = 'dictionary-preview';
+    box.textContent = `预检通过\n新增：${counts.create || 0}\n修改：${counts.update || 0}\n无变化：${counts.unchanged || 0}`;
+    document.getElementById('ingredientDictionaryCommit').hidden = false;
+  } catch (error) {
+    showToast('Excel 预检失败: ' + error.message, 'error');
+  } finally { input.value = ''; }
+}
+
+async function commitIngredientDictionary() {
+  if (!ingredientDictionaryPreviewToken) return;
+  const button = document.getElementById('ingredientDictionaryCommit');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/ingredient_dictionary/import-commit', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({preview_token:ingredientDictionaryPreviewToken})
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.error || '导入失败');
+    ingredientDictionaryPreviewToken = '';
+    closeModal('ingredientDictionaryModal');
+    showToast(`食材词典已导入（${result.applied} 行）`, 'success');
+  } catch (error) { showToast(error.message, 'error'); }
+  finally { button.disabled = false; }
+}
 
 // ========== 初始化 ==========
 async function loadDishes() {
@@ -1649,7 +1740,7 @@ function closeModal(id) { document.getElementById(id).classList.remove('show'); 
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
-    ['editModal','addModal','categoryModal','tagModal'].forEach(id => closeModal(id));
+    ['editModal','addModal','categoryModal','tagModal','ingredientDictionaryModal'].forEach(id => closeModal(id));
   }
 });
 
@@ -1706,6 +1797,8 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._serve_categories()
         elif path == "/api/custom_tags":
             self._serve_custom_tags()
+        elif path == "/api/ingredient_dictionary/export":
+            self._serve_ingredient_dictionary()
         elif path in ("/manifest.webmanifest", "/apple-touch-icon.png", "/icon-192.png", "/icon-512.png", "/favicon.png"):
             self._serve_pwa_asset(path[1:])
         elif path.startswith("/photos/"):
@@ -1730,6 +1823,10 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._handle_save_categories()
         elif parsed.path == "/api/save_custom_tags":
             self._handle_save_custom_tags()
+        elif parsed.path == "/api/ingredient_dictionary/import-preview":
+            self._handle_ingredient_dictionary_preview()
+        elif parsed.path == "/api/ingredient_dictionary/import-commit":
+            self._handle_ingredient_dictionary_commit()
         else:
             self._json_response(404, {"error": "Not found"})
 
@@ -1779,6 +1876,21 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
             self._json_response(200, tags)
         finally:
             conn.close()
+
+    def _serve_ingredient_dictionary(self):
+        from db import get_db
+        conn = get_db()
+        try:
+            body = export_dictionary_xlsx(list_dictionary(conn))
+        finally:
+            conn.close()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.send_header("Content-Disposition", 'attachment; filename="ingredient-dictionary.xlsx"')
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_health(self):
         status, payload = health_result()
@@ -1837,6 +1949,40 @@ class PhotoManagerHandler(BaseHTTPRequestHandler):
         except Exception as e:
             print(f"  [ERROR] 上传失败: {e}")
             self._json_response(500, {"success": False, "error": str(e)})
+
+    def _handle_ingredient_dictionary_preview(self):
+        try:
+            encoded = str(self._read_body().get("xlsx_base64") or "")
+            if len(encoded) > 12_000_000:
+                self._json_response(413, {"success": False, "error": "Excel 文件过大"})
+                return
+            rows = parse_dictionary_xlsx(base64.b64decode(encoded, validate=True))
+            from db import get_db
+            conn = get_db()
+            try:
+                result = create_dictionary_preview(conn, rows)
+            finally:
+                conn.close()
+            result["success"] = result["ok"]
+            self._json_response(200 if result["ok"] else 409, result)
+        except (ValueError, TypeError, base64.binascii.Error) as error:
+            self._json_response(400, {"success": False, "error": str(error)})
+
+    def _handle_ingredient_dictionary_commit(self):
+        try:
+            token = self._read_body().get("preview_token")
+            from db import get_db, log_event
+            conn = get_db()
+            try:
+                applied = commit_dictionary_preview(conn, token)
+            finally:
+                conn.close()
+            _invalidate_menu_cache()
+            log_event("ingredient_dictionary_imported", "ingredient", "dictionary",
+                      {"rows": len(applied), "via": "photo_manager"})
+            self._json_response(200, {"success": True, "applied": len(applied)})
+        except ValueError as error:
+            self._json_response(409, {"success": False, "error": str(error)})
 
     def _handle_edit_dish(self):
         try:

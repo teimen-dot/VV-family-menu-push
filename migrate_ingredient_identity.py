@@ -4,7 +4,10 @@
 import argparse
 import json
 from db import get_db, log_event
-from ingredient_resolution import backfill_aliases, ensure_resolution_schema, merge_ingredient
+from ingredient_resolution import (
+    backfill_aliases, ensure_resolution_schema, merge_ingredient,
+    resolve_ingredient_input,
+)
 
 
 def migrate(dry_run=False):
@@ -12,6 +15,7 @@ def migrate(dry_run=False):
     try:
         conn.execute("BEGIN IMMEDIATE")
         ensure_resolution_schema(conn)
+        backfill_aliases(conn)
         counts = {}
         for source_id, target_id in (
             ("salad", "沙拉菜"),
@@ -28,7 +32,17 @@ def migrate(dry_run=False):
                 merge_ingredient(conn, source_id, target_id)
                 if source and target else {"already_merged": True}
             )
-        backfill_aliases(conn)
+        # Deterministically re-resolve legacy pending inputs after aliases exist.
+        pending_rows = conn.execute(
+            "SELECT pending_id,raw_input FROM pending_ingredients WHERE status='pending'"
+        ).fetchall()
+        counts["pending_reresolved"] = {}
+        for pending in pending_rows:
+            resolved = resolve_ingredient_input(conn, pending["raw_input"], allow_pending=False)
+            if resolved and resolved["ingredient_id"] != pending["pending_id"]:
+                counts["pending_reresolved"][pending["pending_id"]] = merge_ingredient(
+                    conn, pending["pending_id"], resolved["ingredient_id"]
+                )
         if dry_run:
             conn.rollback()
         else:
