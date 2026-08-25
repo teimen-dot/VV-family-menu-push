@@ -1374,7 +1374,7 @@ def _get_recent_pantry_rows(location, limit=20):
         ).fetchall()
         return [
             dict(row) for row in rows
-            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"], conn)
         ]
     finally:
         conn.close()
@@ -3416,6 +3416,11 @@ async function addFromSearch(){{
   const button=document.querySelector('.pantry-add');button.disabled=true;
   try{{
     const result=await pantryPost('/api/pantry/add-by-name',{{ingredient_name:rawValue,quantity_level:pendingQuantity,location:pantryLocation,submitted_by:'owner'}});
+    if(result.pantry_exempt){{
+      input.value='';selectedIngredientId=null;
+      pantryMessage('默认食材，无需录入 / Default ingredient','success');
+      pantrySnack('默认食材，无需录入');button.disabled=false;return;
+    }}
     if(result.already_in_pantry){{
       pantryMessage('该食材已在库存中 / Already in pantry','error');
       const allFilter=document.querySelector('.inventory-filter[data-filter="all"]');
@@ -4158,7 +4163,7 @@ class AppHandler(BaseHTTPRequestHandler):
                 display_name_en = resolved["name_en"]
                 resolution_status = resolved["resolution_status"]
 
-                if is_pantry_exempt_ingredient(ingredient_id, display_name):
+                if is_pantry_exempt_ingredient(ingredient_id, display_name, conn):
                     conn.commit()
                     self.send_json({
                         "ok": True, "pantry_exempt": True,
@@ -4166,7 +4171,7 @@ class AppHandler(BaseHTTPRequestHandler):
                         "ingredient_id": ingredient_id, "name_cn": display_name,
                         "name_en": display_name_en,
                         "resolution_status": resolution_status,
-                        "message": "家庭常备，默认有货",
+                        "message": "默认食材，无需录入",
                     })
                     return
 
@@ -4397,12 +4402,12 @@ class AppHandler(BaseHTTPRequestHandler):
                 ).fetchall()
                 matched, resolved_name, corrected_from = resolve_ingredient_name(name_cn, ingredient_rows)
                 if matched:
-                    if is_pantry_exempt_ingredient(matched["ingredient_id"], matched["name_cn"]):
+                    if is_pantry_exempt_ingredient(matched["ingredient_id"], matched["name_cn"], conn):
                         self.send_json({
                             "ok": True, "ingredient_id": matched["ingredient_id"],
                             "exists": True, "pantry_exempt": True,
                             "name_cn": matched["name_cn"],
-                            "message": "家庭常备，默认有货",
+                            "message": "默认食材，无需录入",
                         })
                         return
                     self.send_json({"ok": True, "ingredient_id": matched["ingredient_id"],

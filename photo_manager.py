@@ -971,7 +971,7 @@ body {
 <div class="modal-overlay" id="ingredientDictionaryModal">
   <div class="modal modal-large">
     <h3>食材词典 Excel</h3>
-    <div class="dictionary-help">下载当前词典，在 Excel 中修改后上传。已有 ingredient_id 不可修改；新增食材请将 ID 留空。别名可用换行或逗号分隔。系统会先预检，确认后才整批写入。</div>
+    <div class="dictionary-help">下载当前词典，在 Excel 中修改后上传。状态可填写 canonical（按库存判断）、default（默认食材，无需录入）或 rule（逻辑规则）。已有 ingredient_id 不可修改；新增食材请将 ID 留空。别名可用换行或逗号分隔。系统会先预检，确认后才整批写入。</div>
     <div class="dictionary-actions">
       <a class="btn-secondary" href="/api/ingredient_dictionary/export">下载当前 Excel</a>
       <button class="btn-secondary" type="button" onclick="document.getElementById('ingredientDictionaryFile').click()">上传修改后的 Excel</button>

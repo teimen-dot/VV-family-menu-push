@@ -41,10 +41,30 @@ class IngredientDictionaryTests(unittest.TestCase):
         self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM ingredients WHERE name_cn='测试菜'").fetchone()[0], 0)
 
     def test_xlsx_round_trip(self):
+        self.conn.execute(
+            "INSERT INTO ingredient_dictionary_metadata(ingredient_id,status) VALUES('maitake','default')"
+        )
+        self.conn.commit()
         original = list_dictionary(self.conn)
         parsed = parse_xlsx(export_xlsx(original))
         self.assertEqual(parsed[0]["ingredient_id"], "maitake")
         self.assertEqual(parsed[0]["name_cn"], "舞茸")
+        self.assertEqual(parsed[0]["status"], "default")
+
+    def test_default_status_can_be_changed_back_to_canonical(self):
+        rows = [{"ingredient_id": "maitake", "name_cn": "舞茸",
+                 "name_en": "Maitake Mushroom", "aliases": ["maitake mush"],
+                 "status": "default"}]
+        apply_rows(self.conn, rows)
+        self.assertEqual(list_dictionary(self.conn)[0]["status"], "default")
+        rows[0]["status"] = "canonical"
+        apply_rows(self.conn, rows)
+        self.assertEqual(list_dictionary(self.conn)[0]["status"], "canonical")
+
+    def test_invalid_status_is_rejected(self):
+        _, errors = validate_rows(self.conn, [{"ingredient_id": "maitake", "name_cn": "舞茸",
+            "name_en": "Maitake Mushroom", "aliases": ["maitake mush"], "status": "always"}])
+        self.assertTrue(any("状态必须" in item["message"] for item in errors))
 
     def test_unchanged_legacy_incomplete_rows_round_trip(self):
         self.conn.execute("INSERT INTO ingredients(ingredient_id,name_cn,name_en,aliases) "

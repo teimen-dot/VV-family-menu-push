@@ -8,6 +8,7 @@ import app
 import db
 import inventory
 import menu_service
+from ingredient_resolution import ensure_resolution_schema
 from rule_engine import (
     GapFiller, MealState, NutritionAnalyzer, analyze_meal_slots,
     is_breakfast_tofu_candidate, is_breakfast_egg_candidate,
@@ -281,6 +282,31 @@ class DatabaseFeatureTests(unittest.TestCase):
         self.assertEqual(inventory.get_common_ingredients_static(), [])
         result = inventory.add_ingredient_to_pantry("shenzhen", "ginger")
         self.assertTrue(result["pantry_exempt"])
+
+    def test_dictionary_default_status_is_authoritative(self):
+        conn = db.get_db()
+        ensure_resolution_schema(conn)
+        conn.execute(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en,is_common) "
+            "VALUES('custom_default','测试常备','House Default',1)"
+        )
+        conn.execute(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en) VALUES('ginger','姜','Ginger')"
+        )
+        conn.execute(
+            "INSERT INTO ingredient_dictionary_metadata(ingredient_id,status) "
+            "VALUES('custom_default','default')"
+        )
+        conn.execute(
+            "INSERT INTO ingredient_dictionary_metadata(ingredient_id,status) "
+            "VALUES('ginger','canonical')"
+        )
+        conn.commit()
+        self.assertTrue(inventory.is_pantry_exempt_ingredient(
+            "custom_default", "测试常备", conn))
+        self.assertFalse(inventory.is_pantry_exempt_ingredient("ginger", "姜", conn))
+        conn.close()
+        self.assertEqual(inventory.get_common_ingredients_static(), [])
 
     def test_ai_fill_falls_back_to_exactly_one_missing_ingredient(self):
         conn = db.get_db()

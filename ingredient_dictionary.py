@@ -19,6 +19,13 @@ PREVIEW_TTL = 15 * 60
 _PREVIEWS = {}
 
 
+def _invalidate_runtime_caches():
+    from inventory import invalidate_all_availability_cache
+    from menu_service import invalidate_catalog_cache
+    invalidate_all_availability_cache()
+    invalidate_catalog_cache()
+
+
 def _aliases(value):
     if isinstance(value, list):
         values = value
@@ -38,8 +45,10 @@ def _aliases(value):
 def dictionary_version(conn):
     ensure_resolution_schema(conn)
     rows = conn.execute(
-        "SELECT i.ingredient_id,i.name_cn,i.name_en,a.alias_key,a.ingredient_id AS alias_owner "
+        "SELECT i.ingredient_id,i.name_cn,i.name_en,a.alias_key,a.ingredient_id AS alias_owner,"
+        "COALESCE(m.status,'canonical') AS dictionary_status "
         "FROM ingredients i LEFT JOIN ingredient_aliases a ON a.ingredient_id=i.ingredient_id "
+        "LEFT JOIN ingredient_dictionary_metadata m ON m.ingredient_id=i.ingredient_id "
         "WHERE i.ingredient_id NOT LIKE 'pending_%' ORDER BY i.ingredient_id,a.alias_key"
     ).fetchall()
     payload = [tuple(row) for row in rows]
@@ -94,7 +103,10 @@ def validate_rows(conn, rows):
         name_cn = " ".join(str(source.get("name_cn") or "").strip().split())
         name_en = " ".join(str(source.get("name_en") or "").strip().split())
         aliases = _aliases(source.get("aliases"))
+        status = str(source.get("status") or "canonical").strip().casefold()
         row_errors = []
+        if status not in ("canonical", "default", "rule"):
+            row_errors.append("状态必须是 canonical、default 或 rule")
         if ingredient_id and ingredient_id not in current:
             row_errors.append("ingredient_id 不存在；新增行请留空")
         if ingredient_id in seen_ids:
@@ -105,7 +117,8 @@ def validate_rows(conn, rows):
         before = current.get(ingredient_id)
         action = "create" if not before else (
             "unchanged" if name_cn == before["name_cn"] and name_en == before["name_en"]
-            and set(map(normalize_key, aliases)) == set(map(normalize_key, before["aliases"])) else "update")
+            and set(map(normalize_key, aliases)) == set(map(normalize_key, before["aliases"]))
+            and status == before["status"] else "update")
         # Legacy rows may be incomplete or ambiguous. An untouched exported row
         # must remain round-trippable; strict checks apply only to actual edits.
         if action != "unchanged":
@@ -119,7 +132,7 @@ def validate_rows(conn, rows):
                 elif key:
                     proposed_owners[key] = ingredient_id
         result = {"row": index, "ingredient_id": ingredient_id, "name_cn": name_cn,
-                  "name_en": name_en, "aliases": aliases, "action": action,
+                  "name_en": name_en, "aliases": aliases, "status": status, "action": action,
                   "errors": row_errors}
         results.append(result)
         errors.extend({"row": index, "message": message} for message in row_errors)
@@ -150,10 +163,17 @@ def apply_rows(conn, rows):
                 register_alias(conn, ingredient_id, row["name_en"], "name_en")
                 for alias in row["aliases"]:
                     register_alias(conn, ingredient_id, alias, "owner")
+            conn.execute(
+                "INSERT INTO ingredient_dictionary_metadata(ingredient_id,status,updated_at) "
+                "VALUES(?,?,datetime('now')) ON CONFLICT(ingredient_id) DO UPDATE SET "
+                "status=excluded.status,updated_at=excluded.updated_at",
+                (ingredient_id, row["status"]),
+            )
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+    _invalidate_runtime_caches()
     return results
 
 
@@ -242,7 +262,8 @@ def parse_xlsx(data):
         table.append([values.get(chr(65 + index), '') for index in range(6)])
     if not table or tuple(table[0][:6]) != HEADERS:
         raise ValueError("Excel 表头不正确，请使用系统导出的模板")
-    return [{"ingredient_id": row[0], "name_cn": row[1], "name_en": row[2], "aliases": row[3]}
+    return [{"ingredient_id": row[0], "name_cn": row[1], "name_en": row[2],
+             "aliases": row[3], "status": row[4] or "canonical"}
             for row in table[1:] if any(str(value).strip() for value in row[:4])]
 
 
@@ -299,7 +320,7 @@ def apply_authoritative_workbook(conn, rows, operations):
     for row in rows:
         if not row["name_cn"] or not row["name_en"]:
             raise ValueError(f"{row['ingredient_id']} 缺少标准中文名或英文名")
-        if row["status"] not in ("canonical", "rule"):
+        if row["status"] not in ("canonical", "default", "rule"):
             raise ValueError(f"{row['ingredient_id']} 状态无效")
     conn.execute("BEGIN IMMEDIATE")
     report = {"merged": {}, "deleted": [], "created": 0, "updated": 0,
@@ -368,4 +389,5 @@ def apply_authoritative_workbook(conn, rows, operations):
     except Exception:
         conn.rollback()
         raise
+    _invalidate_runtime_caches()
     return report

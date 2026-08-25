@@ -2963,15 +2963,11 @@ function updateConfirmProgress() {
 
 /* 缺食材提示：雇主在餐单菜品行直接看到（反馈：缺食材要提示） */
 const MISS_TAG = { low: '差少量<small>ALMOST</small>', miss: '缺食材<small>MISSING</small>' };
-/* 家庭常备食材（米面粮油调味）：默认有货，不进食材库也不进缺食材判断（雇主反馈 #7）。
-   例：白米饭只含"大米"→ 永不缺；莲子米饭含"莲子"→ 莲子缺货时提示。 */
-const DEFAULT_PANTRY = ['大米','米','米饭','面粉','水','油','食用油','盐','糖','生抽','老抽',
-                        '蚝油','醋','料酒','葱','姜','蒜','淀粉','胡椒','鸡精','小米'];
 /* 原型演示用缺货清单（正式版由食材库 status 推导） */
 const PANTRY_OUT = ['排骨','莲子','四季豆','肉饼'];
 function dishMissing(d) {
   if (!d || !d.ingredients || !d.ingredients.length) return null;  /* 无食材数据 → 回退静态 avail */
-  return d.ingredients.filter(x => !DEFAULT_PANTRY.includes(x) && PANTRY_OUT.includes(x));
+  return d.ingredients.filter(x => PANTRY_OUT.includes(x));
 }
 function tagRowMissing(row) {
   row.querySelectorAll('.miss-tag').forEach(t => t.remove());
@@ -4248,6 +4244,11 @@ pickModal.addEventListener('click',
       });
       if (result.already_in_pantry) {
         await reloadLive(`该食材已在当前库存：${result.name_cn || name}`);
+        return;
+      }
+      if (result.pantry_exempt) {
+        pantrySearch.value = '';
+        toast(result.message || '默认食材，无需录入');
         return;
       }
       pantrySearch.value = '';

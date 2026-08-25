@@ -100,8 +100,8 @@ INGREDIENT_ALIASES = {
     "娃娃菜": "baby_cabbage",
 }
 
-# UI SoT deploy/index.html DEFAULT_PANTRY (20) + REQUIREMENTS_V2 v2.1 millet.
-# These are required recipe ingredients, but never need Current Pantry rows.
+# Legacy fallback for databases that have not yet received dictionary metadata.
+# Once a row has metadata, its Excel-managed status is authoritative.
 PANTRY_EXEMPT_SOURCE_NAMES = (
     "大米", "米", "米饭", "面粉", "水", "油", "食用油", "盐", "糖",
     "生抽", "老抽", "蚝油", "醋", "料酒", "葱", "姜", "蒜", "淀粉",
@@ -150,10 +150,26 @@ LEAFY_VEGETABLE_NAMES = frozenset({
 LEAFY_VEGETABLE_PLACEHOLDER_ID = "any_available_leafy_vegetable"
 
 
-def is_pantry_exempt_ingredient(ingredient_id, name_cn=""):
-    """Household staples are always available and never belong in Pantry UI."""
-    return (normalize_ingredient_id(ingredient_id) in PANTRY_EXEMPT_CANONICAL_IDS
-            or normalize_ingredient_id(name_cn) in PANTRY_EXEMPT_CANONICAL_IDS)
+def is_pantry_exempt_ingredient(ingredient_id, name_cn="", conn=None):
+    """Return the Excel-managed default status, with a legacy fallback only."""
+    owned_conn = conn is None
+    if owned_conn:
+        conn = get_db()
+    try:
+        try:
+            row = conn.execute(
+                "SELECT status FROM ingredient_dictionary_metadata WHERE ingredient_id=?",
+                (ingredient_id,),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            row = None
+        if row is not None:
+            return row["status"] == "default"
+        return (normalize_ingredient_id(ingredient_id) in PANTRY_EXEMPT_CANONICAL_IDS
+                or normalize_ingredient_id(name_cn) in PANTRY_EXEMPT_CANONICAL_IDS)
+    finally:
+        if owned_conn:
+            conn.close()
 
 
 def ensure_ingredient_classification(conn, ingredient_id, name_cn=""):
@@ -281,6 +297,11 @@ def _invalidate_availability_cache(location):
         del _availability_cache[k]
 
 
+def invalidate_all_availability_cache():
+    """Dictionary status changes affect every kitchen immediately."""
+    _availability_cache.clear()
+
+
 # ============================================================
 # V4: Current Pantry 增量维护
 # ============================================================
@@ -307,7 +328,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
         current_map = {
             r["ingredient_id"]: (r["status"], r["quantity_level"] or "enough")
             for r in current_rows
-            if not is_pantry_exempt_ingredient(r["ingredient_id"])
+            if not is_pantry_exempt_ingredient(r["ingredient_id"], conn=conn)
         }
 
         added = 0
@@ -315,7 +336,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
 
         for item in items:
             ing_id = item["ingredient_id"]
-            if is_pantry_exempt_ingredient(ing_id):
+            if is_pantry_exempt_ingredient(ing_id, conn=conn):
                 continue
             status = item.get("status", "available")
             quantity_level = item.get("quantity_level", "enough")
@@ -383,7 +404,7 @@ def save_pantry_changes(location, items, submitted_by="nanny"):
             "WHERE cp.location=? AND cp.is_active=1", (location,)
         ).fetchall()
         pantry_count = sum(
-            not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+            not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"], conn)
             for row in pantry_rows
         )
 
@@ -464,7 +485,7 @@ def get_current_pantry(location):
         ).fetchall()
         visible_rows = [
             dict(row) for row in rows
-            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"], conn)
         ]
         return {
             "location": location,
@@ -515,11 +536,11 @@ def add_ingredient_to_pantry(location, ingredient_id, status="available", quanti
             "SELECT name_cn FROM ingredients WHERE ingredient_id=?", (ingredient_id,)
         ).fetchone()
         if is_pantry_exempt_ingredient(
-                ingredient_id, ingredient["name_cn"] if ingredient else ""):
+                ingredient_id, ingredient["name_cn"] if ingredient else "", conn):
             return {
                 "ok": True, "pantry_exempt": True,
                 "ingredient_id": ingredient_id,
-                "message": "家庭常备，默认有货",
+                "message": "默认食材，无需录入",
             }
         if quantity_level not in ("enough", "low"):
             quantity_level = "enough"
@@ -744,7 +765,7 @@ def check_dish_availability(dish_id, location, inventory_version=None):
                         available_required.append(ing_data)
                     else:
                         missing_required.append(ing_data)
-                elif (norm_id in PANTRY_EXEMPT_CANONICAL_IDS
+                elif (is_pantry_exempt_ingredient(ing["ingredient_id"], ing["name_cn"], conn)
                         or norm_id in normalized_pantry
                         or ing["ingredient_id"] in available_ings):
                     available_required.append(ing_data)
@@ -836,7 +857,7 @@ def get_common_ingredients_static():
         ).fetchall()
         return [
             dict(row) for row in rows
-            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"])
+            if not is_pantry_exempt_ingredient(row["ingredient_id"], row["name_cn"], conn)
         ]
     finally:
         conn.close()
