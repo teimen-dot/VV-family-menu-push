@@ -8,6 +8,10 @@ from datetime import datetime
 
 
 SALAD_ALIASES = ("沙拉菜", "salad", "salad greens", "salad leaves", "mixed salad greens")
+MAITAKE_ALIASES = (
+    "舞茸", "maitake", "maitake mush", "maitake mushroom",
+    "japan maitake mush", "japanese maitake mushroom",
+)
 
 
 def normalize_key(value):
@@ -92,6 +96,12 @@ def backfill_aliases(conn):
     if salad:
         for alias in SALAD_ALIASES:
             register_alias(conn, "沙拉菜", alias, "seed")
+    maitake = conn.execute(
+        "SELECT 1 FROM ingredients WHERE ingredient_id='maitake'"
+    ).fetchone()
+    if maitake:
+        for alias in MAITAKE_ALIASES:
+            register_alias(conn, "maitake", alias, "seed")
 
 
 def resolve_ingredient_input(conn, raw_input, allow_pending=True):
@@ -120,7 +130,7 @@ def resolve_ingredient_input(conn, raw_input, allow_pending=True):
         return None
     pending_id = "pending_" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:20]
     language = _language(raw)
-    name_cn, name_en = (raw, "") if language == "zh" else (raw, raw)
+    name_cn, name_en = (raw, "") if language == "zh" else ("", raw)
     conn.execute(
         "INSERT OR IGNORE INTO ingredients(ingredient_id,name_cn,name_en,aliases,category,ingredient_group,is_common) "
         "VALUES(?,?,?,'[]','','other',0)", (pending_id, name_cn, name_en),

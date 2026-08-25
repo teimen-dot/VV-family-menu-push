@@ -12,9 +12,22 @@ def migrate(dry_run=False):
     try:
         conn.execute("BEGIN IMMEDIATE")
         ensure_resolution_schema(conn)
-        source = conn.execute("SELECT 1 FROM ingredients WHERE ingredient_id='salad'").fetchone()
-        target = conn.execute("SELECT 1 FROM ingredients WHERE ingredient_id='沙拉菜'").fetchone()
-        counts = merge_ingredient(conn, "salad", "沙拉菜") if source and target else {"already_merged": True}
+        counts = {}
+        for source_id, target_id in (
+            ("salad", "沙拉菜"),
+            ("maitake_mush", "maitake"),
+            ("japan_maitake_mush", "maitake"),
+        ):
+            source = conn.execute(
+                "SELECT 1 FROM ingredients WHERE ingredient_id=?", (source_id,)
+            ).fetchone()
+            target = conn.execute(
+                "SELECT 1 FROM ingredients WHERE ingredient_id=?", (target_id,)
+            ).fetchone()
+            counts[source_id] = (
+                merge_ingredient(conn, source_id, target_id)
+                if source and target else {"already_merged": True}
+            )
         backfill_aliases(conn)
         if dry_run:
             conn.rollback()
@@ -26,8 +39,8 @@ def migrate(dry_run=False):
     finally:
         conn.close()
     if not dry_run:
-        log_event("ingredient_merged", "ingredient", "沙拉菜",
-                  {"source_id": "salad", "target_id": "沙拉菜", "counts": counts})
+        log_event("ingredient_identity_migrated", "ingredient", "canonical",
+                  {"merges": counts})
     return counts
 
 

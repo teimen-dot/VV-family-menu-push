@@ -43,7 +43,17 @@ class IngredientResolutionTests(unittest.TestCase):
         self.conn.commit()
         self.assertEqual(first["ingredient_id"], second["ingredient_id"])
         self.assertTrue(first["ingredient_id"].startswith("pending_"))
+        self.assertEqual(first["name_cn"], "")
+        self.assertEqual(first["name_en"], "Mystery   Leaves")
         self.assertEqual(len(list_pending(self.conn)), 1)
+
+    def test_maitake_english_aliases_resolve_to_canonical_id(self):
+        self.conn.execute(
+            "INSERT INTO ingredients(ingredient_id,name_cn,name_en,aliases) VALUES('maitake','舞茸','Maitake','[]')"
+        )
+        backfill_aliases(self.conn)
+        for value in ("Maitake Mush", "maitake mushroom", "Japan Maitake Mush"):
+            self.assertEqual(resolve_ingredient_input(self.conn, value)["ingredient_id"], "maitake")
 
     def test_merge_rewrites_references_and_resolves_conflicts(self):
         pending = resolve_ingredient_input(self.conn, "mystery leaves")

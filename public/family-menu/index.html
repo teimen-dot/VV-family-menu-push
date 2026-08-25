@@ -4091,11 +4091,14 @@ pickModal.addEventListener('click',
   function pantryRow(item, recent = false) {
     const expiring = item.status === 'expiring';
     const englishPending = !String(item.name_en || '').trim();
-    const meta = recent ? `已用完 Used up · ${safe(String(item.updated_at || '').slice(0, 10))}`
-      : safe(item.name_en || '英文待补 / English pending');
     const pending = String(item.ingredient_id || '').startsWith('pending_');
+    const pendingEnglish = pending && !String(item.name_cn || '').trim() && String(item.name_en || '').trim();
+    const displayName = pendingEnglish ? item.name_en : (item.name_cn || item.ingredient_id);
+    const meta = recent ? `已用完 Used up · ${safe(String(item.updated_at || '').slice(0, 10))}`
+      : pendingEnglish ? '待补充中文 / Chinese pending'
+      : safe(item.name_en || '英文待补 / English pending');
     return `<div class="ing-row ${expiring ? 'is-expiring' : ''}" data-ingredient-id="${safe(item.ingredient_id)}" data-source="sqlite">
-      <div class="info"><h4>${safe(item.name_cn || item.ingredient_id)}${pending ? '<span class="pending-badge">待匹配 PENDING</span>' : ''}${expiring ? '<span class="exp-badge">⏱ 快过期 EXP</span>' : ''}</h4><small>${meta}</small></div>
+      <div class="info"><h4>${safe(displayName)}${pending ? '<span class="pending-badge">待匹配 PENDING</span>' : ''}${expiring ? '<span class="exp-badge">⏱ 快过期 EXP</span>' : ''}</h4><small>${meta}</small></div>
       <div class="ops">${recent
         ? '<button class="mini-btn restock" type="button" data-action="restock">补货 Restock</button>'
         : `${englishPending ? '<button class="mini-btn" type="button" data-action="english">补英文 English</button>' : ''}<button class="mini-btn warn ${expiring ? 'marked' : ''}" type="button" data-action="expiring">${expiring ? '撤销快过期 Undo' : '标记快过期 Expiring'}</button><button class="mini-btn used-up" type="button" data-action="consume">已用完 Used up</button>`}
