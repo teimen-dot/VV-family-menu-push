@@ -9,7 +9,9 @@ import time
 import zipfile
 from xml.etree import ElementTree as ET
 
-from ingredient_resolution import ensure_resolution_schema, normalize_key, register_alias
+from ingredient_resolution import (
+    ensure_resolution_schema, merge_ingredient, normalize_key, register_alias,
+)
 
 
 HEADERS = ("ingredient_id", "标准中文名", "标准英文名", "别名", "状态", "校验结果")
@@ -48,8 +50,9 @@ def list_dictionary(conn):
     ensure_resolution_schema(conn)
     rows = conn.execute(
         "SELECT i.ingredient_id,i.name_cn,i.name_en,i.aliases," 
-        "CASE WHEN p.status='canonical' THEN 'canonical' ELSE 'canonical' END AS status "
+        "COALESCE(m.status,'canonical') AS status "
         "FROM ingredients i LEFT JOIN pending_ingredients p ON p.pending_id=i.ingredient_id "
+        "LEFT JOIN ingredient_dictionary_metadata m ON m.ingredient_id=i.ingredient_id "
         "WHERE i.ingredient_id NOT LIKE 'pending_%' OR p.status='canonical' "
         "ORDER BY i.name_cn COLLATE NOCASE,i.name_en COLLATE NOCASE"
     ).fetchall()
@@ -241,3 +244,128 @@ def parse_xlsx(data):
         raise ValueError("Excel 表头不正确，请使用系统导出的模板")
     return [{"ingredient_id": row[0], "name_cn": row[1], "name_en": row[2], "aliases": row[3]}
             for row in table[1:] if any(str(value).strip() for value in row[:4])]
+
+
+def parse_authoritative_workbook(data):
+    """Parse the user-curated first sheet plus its explicit ID migration map."""
+    archive = zipfile.ZipFile(io.BytesIO(data))
+    shared = []
+    if 'xl/sharedStrings.xml' in archive.namelist():
+        root = ET.fromstring(archive.read('xl/sharedStrings.xml'))
+        shared = [''.join(node.itertext()) for node in root]
+
+    def sheet_values(path):
+        root = ET.fromstring(archive.read(path))
+        ns = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+        result = []
+        for row in root.findall('.//m:sheetData/m:row', ns):
+            values = {}
+            for cell in row.findall('m:c', ns):
+                match = re.match(r'[A-Z]+', cell.attrib.get('r', ''))
+                if not match:
+                    continue
+                kind = cell.attrib.get('t')
+                if kind == 'inlineStr':
+                    node = cell.find('m:is', ns); value = ''.join(node.itertext()) if node is not None else ''
+                else:
+                    node = cell.find('m:v', ns); value = node.text if node is not None else ''
+                    if kind == 's' and value: value = shared[int(value)]
+                values[match.group(0)] = value
+            result.append([values.get(chr(65 + index), '') for index in range(6)])
+        return result
+
+    rows = sheet_values('xl/worksheets/sheet1.xml')
+    if not rows or tuple(rows[0][:6]) != HEADERS:
+        raise ValueError("清理版表头不正确")
+    canonical = [{"ingredient_id": row[0].strip(), "name_cn": row[1].strip(),
+                  "name_en": row[2].strip(), "aliases": _aliases(row[3]),
+                  "status": row[4].strip() or "canonical"}
+                 for row in rows[1:] if any(str(value).strip() for value in row[:4])]
+    mappings = sheet_values('xl/worksheets/sheet2.xml')
+    if not mappings or mappings[0][:6] != ["旧 ingredient_id", "旧中文名", "目标 canonical_id", "目标中文名", "处理", "原因"]:
+        raise ValueError("ID迁移映射表头不正确")
+    operations = [{"source_id": row[0].strip(), "target_id": row[2].strip(),
+                   "action": row[4].strip(), "reason": row[5].strip()}
+                  for row in mappings[1:] if str(row[0]).strip()]
+    return canonical, operations
+
+
+def apply_authoritative_workbook(conn, rows, operations):
+    """Apply an explicit curated workbook atomically; standard names outrank aliases."""
+    ensure_resolution_schema(conn)
+    row_ids = [row["ingredient_id"] for row in rows]
+    if not row_ids or len(row_ids) != len(set(row_ids)):
+        raise ValueError("清理版 ingredient_id 为空或重复")
+    for row in rows:
+        if not row["name_cn"] or not row["name_en"]:
+            raise ValueError(f"{row['ingredient_id']} 缺少标准中文名或英文名")
+        if row["status"] not in ("canonical", "rule"):
+            raise ValueError(f"{row['ingredient_id']} 状态无效")
+    conn.execute("BEGIN IMMEDIATE")
+    report = {"merged": {}, "deleted": [], "created": 0, "updated": 0,
+              "preserved_unlisted": [], "skipped_conflicting_aliases": []}
+    try:
+        for operation in operations:
+            source = operation["source_id"]
+            if operation["action"] == "合并":
+                if conn.execute("SELECT 1 FROM ingredients WHERE ingredient_id=?", (source,)).fetchone():
+                    report["merged"][source] = merge_ingredient(conn, source, operation["target_id"])
+            elif operation["action"] == "删除":
+                referenced = sum(conn.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE ingredient_id=?", (source,)
+                ).fetchone()[0] for table in ("dish_ingredients", "current_pantry", "inventory_items",
+                                               "purchase_requests", "ingredient_classifications",
+                                               "pantry_usage_stats", "consumed_history"))
+                if referenced:
+                    raise ValueError(f"不能删除仍有引用的食材: {source}")
+                conn.execute("DELETE FROM ingredient_aliases WHERE ingredient_id=?", (source,))
+                conn.execute("DELETE FROM ingredient_dictionary_metadata WHERE ingredient_id=?", (source,))
+                conn.execute("DELETE FROM ingredients WHERE ingredient_id=?", (source,))
+                report["deleted"].append(source)
+            else:
+                raise ValueError(f"未知迁移操作: {operation['action']}")
+
+        for row in rows:
+            exists = conn.execute("SELECT 1 FROM ingredients WHERE ingredient_id=?", (row["ingredient_id"],)).fetchone()
+            if exists:
+                conn.execute("UPDATE ingredients SET name_cn=?,name_en=?,aliases=? WHERE ingredient_id=?",
+                             (row["name_cn"], row["name_en"], json.dumps(row["aliases"], ensure_ascii=False),
+                              row["ingredient_id"]))
+                report["updated"] += 1
+            else:
+                conn.execute("INSERT INTO ingredients(ingredient_id,name_cn,name_en,aliases,category,ingredient_group,is_common) "
+                             "VALUES(?,?,?,?,?,'other',0)", (row["ingredient_id"], row["name_cn"], row["name_en"],
+                             json.dumps(row["aliases"], ensure_ascii=False), "rule" if row["status"] == "rule" else ""))
+                report["created"] += 1
+            conn.execute("INSERT INTO ingredient_dictionary_metadata(ingredient_id,status,updated_at) VALUES(?,?,datetime('now')) "
+                         "ON CONFLICT(ingredient_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at",
+                         (row["ingredient_id"], row["status"]))
+
+        # The workbook is authoritative. Standard Chinese/English names win over
+        # aliases; equal-priority duplicates use the earlier workbook row.
+        preserved = [row for row in list_dictionary(conn) if row["ingredient_id"] not in set(row_ids)]
+        report["preserved_unlisted"] = [row["ingredient_id"] for row in preserved]
+        ownership = {}
+        candidates = []
+        for order, row in enumerate([*rows, *preserved]):
+            for rank, kind, text in ((3, "name_cn", row["name_cn"]), (2, "name_en", row["name_en"])):
+                candidates.append((rank, -order, row["ingredient_id"], kind, text))
+            for text in row["aliases"]:
+                candidates.append((1, -order, row["ingredient_id"], "owner", text))
+        for rank, neg_order, ingredient_id, kind, text in sorted(candidates, reverse=True):
+            key = normalize_key(text)
+            if key and key not in ownership:
+                ownership[key] = (ingredient_id, kind, text)
+            elif key and ownership[key][0] != ingredient_id:
+                report["skipped_conflicting_aliases"].append({"text": text, "ingredient_id": ingredient_id,
+                                                               "kept_by": ownership[key][0]})
+        conn.execute("DELETE FROM ingredient_aliases WHERE ingredient_id NOT LIKE 'pending_%'")
+        for ingredient_id in [*row_ids, *report["preserved_unlisted"]]:
+            register_alias(conn, ingredient_id, ingredient_id, "id")
+        for ingredient_id, kind, text in ownership.values():
+            register_alias(conn, ingredient_id, text, kind)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    return report

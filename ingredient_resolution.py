@@ -45,10 +45,24 @@ def ensure_resolution_schema(conn):
             FOREIGN KEY (resolved_ingredient_id) REFERENCES ingredients(ingredient_id)
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ingredient_dictionary_metadata (
+            ingredient_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'canonical',
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (ingredient_id) REFERENCES ingredients(ingredient_id)
+        )
+    """)
 
 
 def _language(value):
     return "zh" if re.search(r"[\u3400-\u9fff]", value) else "en"
+
+
+def _table_exists(conn, table):
+    return bool(conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone())
 
 
 def register_alias(conn, ingredient_id, alias_text, alias_type="alias"):
@@ -207,12 +221,43 @@ def merge_ingredient(conn, source_id, target_id):
         cursor = conn.execute(f"UPDATE {table} SET ingredient_id=? WHERE ingredient_id=?",
                               (target_id, source_id))
         counts[table] = cursor.rowcount
+    usage_rows = conn.execute(
+        "SELECT location,add_count,last_action_at FROM pantry_usage_stats WHERE ingredient_id=?",
+        (source_id,),
+    ).fetchall() if _table_exists(conn, "pantry_usage_stats") else []
+    for row in usage_rows:
+        target = conn.execute(
+            "SELECT add_count,last_action_at FROM pantry_usage_stats WHERE location=? AND ingredient_id=?",
+            (row["location"], target_id),
+        ).fetchone()
+        if target:
+            conn.execute(
+                "UPDATE pantry_usage_stats SET add_count=?,last_action_at=? WHERE location=? AND ingredient_id=?",
+                (target["add_count"] + row["add_count"],
+                 max(target["last_action_at"] or "", row["last_action_at"] or ""),
+                 row["location"], target_id),
+            )
+            conn.execute("DELETE FROM pantry_usage_stats WHERE location=? AND ingredient_id=?",
+                         (row["location"], source_id))
+        else:
+            conn.execute("UPDATE pantry_usage_stats SET ingredient_id=? WHERE location=? AND ingredient_id=?",
+                         (target_id, row["location"], source_id))
+    counts["pantry_usage_stats"] = len(usage_rows)
+    if _table_exists(conn, "consumed_history"):
+        cursor = conn.execute("UPDATE consumed_history SET ingredient_id=? WHERE ingredient_id=?",
+                              (target_id, source_id))
+        counts["consumed_history"] = cursor.rowcount
+    else:
+        counts["consumed_history"] = 0
+    conn.execute("UPDATE pending_ingredients SET resolved_ingredient_id=? WHERE resolved_ingredient_id=?",
+                 (target_id, source_id))
     conn.execute("UPDATE pending_ingredients SET status='resolved',resolved_ingredient_id=?,"
                  "updated_at=datetime('now') WHERE pending_id=?", (target_id, source_id))
     conn.execute("DELETE FROM ingredient_aliases WHERE ingredient_id=?", (source_id,))
+    conn.execute("DELETE FROM ingredient_dictionary_metadata WHERE ingredient_id=?", (source_id,))
     remaining = sum(conn.execute(f"SELECT COUNT(*) FROM {table} WHERE ingredient_id=?", (source_id,)).fetchone()[0]
                     for table in ("dish_ingredients", "current_pantry", "inventory_items", "purchase_requests",
-                                  "ingredient_classifications"))
+                                  "ingredient_classifications", "pantry_usage_stats") if _table_exists(conn, table))
     is_pending = conn.execute(
         "SELECT 1 FROM pending_ingredients WHERE pending_id=?", (source_id,)
     ).fetchone()
